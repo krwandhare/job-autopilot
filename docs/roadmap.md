@@ -1,0 +1,59 @@
+# Roadmap
+
+The roadmap is constrained to capabilities and gaps visible in the repository. Priority ordering is a recommendation, not a committed delivery schedule.
+
+## Implemented capabilities
+
+- Local Next.js dashboard, profile, job detail, and auto-fill pages.
+- SQLite persistence for resumes, filters, normalized jobs, drafts, source configurations, remembered profile answers, match metadata, and local statuses.
+- PDF, DOCX, and TXT resume extraction with editable curated skill detection.
+- Greenhouse and Lever public-board synchronization.
+- Optional Adzuna keyword/location search with local environment credentials.
+- Static curated Greenhouse/Lever source seeding.
+- One-off public LinkedIn URL import without login or bulk crawling.
+- Deterministic filters, hard exclusions, skill-overlap scoring, match explanations, ranking, status filtering, zero-score visibility, and pagination.
+- Deterministic cover-letter and screening-answer generation.
+- Visible Playwright browser sessions that scan and fill supported native and React-style controls.
+- Stored resume attachment, ad hoc file attachment, and remembered semantic answers.
+- Manual boundaries for sensitive/ambiguous controls and CAPTCHA/bot-block detection.
+- Explicit no-auto-submit workflow and manual local status tracking.
+
+## Stabilization work
+
+- Add an automated test framework and `npm test` script. Start with pure modules: matching, skill extraction, TXT parsing, drafts, HTML cleanup, and source normalization.
+- Add isolated SQLite/route integration tests that never touch the user's `data/app.db`.
+- Add controlled Playwright fixtures for field matching, native selects, React-style comboboxes, embedded forms, browser closure, CAPTCHA boundaries, and confirmation that submit controls are ignored.
+- Remove the production build's dependency on fetching Google Fonts at build time or otherwise provide a reproducible network-enabled build path.
+- Add file-size, supported-content/MIME, and error handling limits to both upload endpoints.
+- Add remote-fetch timeouts and response-size bounds, especially for the user-supplied LinkedIn page.
+- Add retention/deletion behavior for old resumes, upload directories, drafts, and profile answers.
+- Add source-configuration validation and deduplication.
+
+## Near-term improvements
+
+- Recompute stored job scores when profile filters or resume skills change, or clearly prompt the user to resync.
+- Add draft editing and persistence before copy/use.
+- Improve user-visible failure handling for profile, source, status, and file requests that currently assume successful JSON responses.
+- Add explicit local completion notes or timestamps without implying employer verification.
+- Add safe structured diagnostics for source and autofill failures while excluding personal data, page contents, cookies, answers, and credentials.
+- Add a controlled way to choose among stored resumes rather than implicitly using only the latest.
+- Clarify and test stale-job handling when a posting disappears from a configured source.
+
+## Later enhancements
+
+- Add authentication, authorization, and per-user data isolation before any hosted or multi-user deployment.
+- Add encrypted-at-rest or OS-protected storage options for resumes and profile answers.
+- Add scheduled synchronization only after rate limits, source terms, error isolation, and privacy behavior are defined.
+- Expand source adapters only for APIs and user-authorized import mechanisms compatible with provider terms.
+- Add richer matching only if explanations remain inspectable and users can distinguish heuristic suggestions from verified qualifications.
+- Add multi-page application assistance while retaining visible operation, manual sensitive fields, CAPTCHA boundaries, and human-controlled submission.
+- Add optional evidence capture for a user-confirmed submission outcome. This must not infer success from a closed window or a local `applied` label.
+
+## Explicit uncertainty
+
+- The repository contains comments describing live behavior observed on some Greenhouse, Lever, and embedded forms, but there is no automated test evidence or fixture set for those observations.
+- Current compatibility with any particular ATS posting is uncertain because external markup and anti-bot behavior can change independently.
+- LinkedIn public-page parsing may fail when markup, access policy, or blocking behavior changes.
+- The accuracy of salary, location, remote, company, sponsorship, and job-status data is not independently verified.
+- A network-restricted `npm run build` currently fails while fetching Google-hosted Geist fonts; a complete production build remains unverified in this environment.
+- No timeline, deployment target, multi-user requirement, or external submission integration is specified in the repository.
