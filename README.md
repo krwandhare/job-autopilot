@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Job Autopilot
 
-## Getting Started
+Finds job postings that match your resume/filters, scores them, and drafts a cover letter +
+screening-question answers for you to review — you always click submit yourself.
 
-First, run the development server:
+## What it does
+
+- **Resume**: upload a PDF/DOCX/TXT resume; it extracts text and a skills list (editable).
+- **Job sources**:
+  - Greenhouse and Lever company job boards (public APIs, no key needed) — add a company slug on the dashboard.
+  - Adzuna keyword/location search (needs a free API key, see below).
+  - LinkedIn: paste a single job posting URL to import just that one listing. No login, no bulk scraping, no auto-apply — that would violate LinkedIn's ToS.
+- **Matching**: score each job against filters you set on the Profile page (title include/exclude, location, remote-only, min salary, required skills, excluded companies).
+- **Drafts**: generate a tailored cover letter + answers to common screening questions per job, for you to copy into the real application.
+
+Nothing auto-submits anywhere. This app prepares your materials and tracks status (New / Drafted / Applied / Rejected / Skipped); you do the actual applying.
+
+## Setup
 
 ```bash
+npm install
+cp .env.local.example .env.local   # only needed if you want Adzuna
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Go to **Profile & Filters** — upload your resume, review/edit the detected skills, set your filters.
+2. Go to **Dashboard** — add a Greenhouse/Lever company slug (e.g. `stripe`, `netflix`) or an Adzuna search, then click **Sync jobs**. Or paste a LinkedIn job URL to import a single listing.
+3. Click into a job, check the match breakdown, and click **Generate draft** for a cover letter + answers.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Data is stored locally in `data/app.db` (SQLite) — nothing leaves your machine except the outbound reads to the job-source APIs above.
 
-## Learn More
+### Adzuna key
 
-To learn more about Next.js, take a look at the following resources:
+Free at https://developer.adzuna.com/ — put `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env.local`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Finding Greenhouse/Lever slugs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Look at a company's careers page URL — if it redirects to `job-boards.greenhouse.io/<slug>` or `jobs.lever.co/<slug>`, that's the slug to use here.
