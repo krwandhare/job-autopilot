@@ -1,0 +1,17 @@
+# Shared-runtime work establishes database, storage, instance, and claim primitives.
+lib/db.ts
+lib/runtimePaths.ts
+app/api/jobs/**
+app/api/autofill/**
+lib/autofill/**
+scripts/**
+config/agent-tasks/**
+.github/workflows/**
+package.json
+package-lock.json
+.gitignore
+AGENTS.md
+CLAUDE.md
+SESSION.md
+TODO.md
+docs/**

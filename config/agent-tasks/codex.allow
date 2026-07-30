@@ -1,0 +1,12 @@
+# Codex owns automated coverage, fixtures, and CI/integration tooling.
+tests/**
+test/**
+fixtures/**
+scripts/integrate-branch.sh
+scripts/test-integration-automation.sh
+.github/workflows/**
+package.json
+package-lock.json
+SESSION.md
+TODO.md
+docs/**

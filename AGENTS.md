@@ -136,6 +136,16 @@ For autofill changes, static checks are not enough. Manually verify in a visible
 ## Git workflow
 
 - Inspect `git status`, the relevant diff, and recent history before editing.
+- Concurrent Codex and Claude work uses `feature/codex-*` and `feature/claude-*`
+  branches. Integrate them through `integration/concurrent-work` with
+  `scripts/integrate-branch.sh`; do not merge either feature directly into
+  `main` while concurrent work is active.
+- Keep each task inside its `config/agent-tasks/<task>.allow` ownership
+  patterns. Shared files still require semantic review even when the allowlist
+  permits both tasks to edit them.
+- The guarded integrator must stop on ownership violations, textual conflicts,
+  failed validation, or a concurrently advanced target. Never bypass those
+  gates with an automatic ours/theirs conflict choice.
 - Treat existing working-tree changes as user-owned. Do not overwrite or discard them.
 - Work in small, reviewable changes and keep application changes separate from documentation-only changes where practical.
 - Do not commit `.env.local`, credentials, `data/app.db*`, anything under `data/resumes/`, build output, or personal application data.
