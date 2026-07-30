@@ -2,7 +2,7 @@
 config/agent-tasks/action-center.allow
 app/page.tsx
 app/api/actions/**
-app/api/jobs/[id]/route.ts
+app/api/jobs/\[id\]/route.ts
 lib/actions.ts
 lib/db.ts
 scripts/test-action-center.mjs
