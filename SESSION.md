@@ -105,6 +105,12 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
   when Turbopack rejected an external `node_modules` symlink. Dependency reuse
   now creates an in-worktree copy-on-write or hard-linked directory, and the
   E2E harness verifies that layout before the real trial is rerun.
+- The corrected real-branch run passed full validation and atomically advanced
+  `integration/concurrent-work` to merge commit `6cd53d0`.
+- `feature/codex-tests` and `feature/claude-autofill` now start at the validated
+  foundation commit `b962094` in sibling `job-autopilot-codex` and
+  `job-autopilot-claude` worktrees. Each has an independent copy-on-write
+  dependency tree suitable for simultaneous Next.js processes.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -113,9 +119,9 @@ implementation session.
 
 ## Current objective
 
-Establish isolated Codex and Claude feature branches with guarded automated
-integration, then implement shared-runtime database paths and atomic job claims
-before concurrent feature development begins.
+Implement shared-runtime database/upload paths, instance identity, SQLite
+contention handling, and atomic job claims before concurrent feature
+development begins.
 
 ## Blockers
 
