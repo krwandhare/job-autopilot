@@ -134,9 +134,18 @@ git worktree add --detach "$TEMP_WORKTREE" "$TARGET_BRANCH" >/dev/null
 
 # Dependencies are intentionally ignored by Git. Reuse the already installed
 # locked dependencies from the primary worktree so validation is fast and does
-# not perform a network install inside every disposable worktree.
+# not perform a network install inside every disposable worktree. Turbopack
+# rejects a node_modules symlink that points outside its project root, so use
+# APFS copy-on-write cloning when available, then GNU hard links as a portable
+# fallback. Both produce a real directory inside the trial worktree.
 if [[ -d "$REPO_ROOT/node_modules" && ! -e "$TEMP_WORKTREE/node_modules" ]]; then
-  ln -s "$REPO_ROOT/node_modules" "$TEMP_WORKTREE/node_modules"
+  if cp -cR "$REPO_ROOT/node_modules" "$TEMP_WORKTREE/node_modules" 2>/dev/null; then
+    :
+  elif cp -al "$REPO_ROOT/node_modules" "$TEMP_WORKTREE/node_modules" 2>/dev/null; then
+    :
+  else
+    fail "could not clone node_modules into the trial worktree"
+  fi
 fi
 
 if ! git -C "$TEMP_WORKTREE" merge --no-commit --no-ff "$SOURCE_BRANCH" >/dev/null 2>&1; then

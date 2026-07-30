@@ -101,6 +101,10 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
 - `bash -n scripts/integrate-branch.sh scripts/test-integration-automation.sh`,
   `npm run test:integration-automation`, `npm run lint`,
   `npx tsc --noEmit`, `npm run build`, and `git diff --check` passed.
+- The first real-branch trial correctly left the integration ref unchanged
+  when Turbopack rejected an external `node_modules` symlink. Dependency reuse
+  now creates an in-worktree copy-on-write or hard-linked directory, and the
+  E2E harness verifies that layout before the real trial is rerun.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported

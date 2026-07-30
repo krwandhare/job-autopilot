@@ -20,8 +20,16 @@ new_repo() {
   cp "$INTEGRATOR" "$repo/scripts/integrate-branch.sh"
   chmod +x "$repo/scripts/integrate-branch.sh"
   printf 'app/**\n' > "$repo/config/agent-tasks/codex.allow"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/scripts/validate.sh"
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    '[[ -d node_modules/example-package ]]' \
+    '[[ ! -L node_modules ]]' \
+    '[[ "$(cat node_modules/example-package/index.js)" == "installed" ]]' \
+    > "$repo/scripts/validate.sh"
   chmod +x "$repo/scripts/validate.sh"
+  mkdir -p "$repo/node_modules/example-package"
+  printf 'installed\n' > "$repo/node_modules/example-package/index.js"
+  printf 'node_modules/\n' > "$repo/.gitignore"
   printf 'base\n' > "$repo/app/shared.txt"
   git -C "$repo" init -q -b main
   git -C "$repo" config user.name "Integration Test"
