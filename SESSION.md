@@ -119,6 +119,13 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
   source, ownership violation, textual conflict, and failed validation all
   leave the target unchanged. Shell syntax, lint, TypeScript, production build,
   and diff checks also passed.
+- The Action Center checkpoint `608c42c` added prioritized manual-action
+  summaries/cards, persisted structured reasons, conservative status fallbacks,
+  bounded route validation, and a disposable SQLite model test.
+- A disposable detached checkout with six synthetic jobs verified desktop and
+  390px mobile rendering, all five action groups, exact blocker details,
+  summary-to-pipeline filtering, and structured reason persistence through the
+  real route. No live database, resume, employer page, or application was used.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -140,5 +147,6 @@ autofill safety boundaries.
 
 ## Exact next recommended task
 
-Run the Action Center against a disposable synthetic database in desktop and
-mobile browser sizes, then integrate the feature through the guarded pipeline.
+Integrate `feature/codex-work` through the guarded pipeline, then connect
+autofill and queue-runner blocker outcomes to the structured action context in
+coordination with Claude.

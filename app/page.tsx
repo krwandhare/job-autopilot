@@ -415,8 +415,8 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="border rounded-lg p-4 space-y-4">
-        <div className="flex items-center justify-between">
+      <section className="space-y-4 rounded-lg border p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-medium">Sources</h2>
           <button
             onClick={seedAllSources}
@@ -431,7 +431,7 @@ export default function DashboardPage() {
           curated list of ~50 known company slugs in one click, no manual typing needed. Remove
           any you don&apos;t want with the × on its tag below.
         </p>
-        <div className="grid grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
           <div className="space-y-2">
             <p className="font-medium">Greenhouse company slug</p>
             <div className="flex gap-2">
@@ -536,13 +536,13 @@ export default function DashboardPage() {
         )}
       </section>
 
-      <section className="border rounded-lg p-4 space-y-2">
+      <section className="space-y-2 rounded-lg border p-4">
         <h2 className="text-lg font-medium">Import a LinkedIn job posting</h2>
         <p className="text-xs text-gray-500">
           Paste a single LinkedIn job URL you found manually. This fetches only that one public
           page — no login, no bulk scraping.
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={linkedinUrl}
             onChange={(e) => setLinkedinUrl(e.target.value)}
@@ -562,7 +562,7 @@ export default function DashboardPage() {
       </section>
 
       <section id="job-pipeline" className="scroll-mt-6 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-medium">Job pipeline ({total})</h2>
             {maxScore > 0 && (
@@ -572,7 +572,7 @@ export default function DashboardPage() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <label className="flex items-center gap-1 text-sm text-gray-600">
               <input
                 type="checkbox"
@@ -610,7 +610,10 @@ export default function DashboardPage() {
             </p>
           )}
           {jobs.map((job) => (
-            <div key={job.id} className="flex items-center justify-between p-4 hover:bg-gray-50">
+            <div
+              key={job.id}
+              className="flex flex-col gap-3 p-4 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
+            >
               <Link href={`/jobs/${job.id}`} className="flex-1 min-w-0">
                 <p className="font-medium">{job.title}</p>
                 <p className="text-sm text-gray-500">
@@ -618,7 +621,7 @@ export default function DashboardPage() {
                   {job.remote ? " · Remote" : ""} · {job.source}
                 </p>
               </Link>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
                 {job.status === "needs_code" && (
                   <Link
                     href={`/autofill?jobId=${job.id}`}
