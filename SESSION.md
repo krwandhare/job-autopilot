@@ -111,6 +111,14 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
   foundation commit `b962094` in sibling `job-autopilot-codex` and
   `job-autopilot-claude` worktrees. Each has an independent copy-on-write
   dependency tree suitable for simultaneous Next.js processes.
+- A standing checkpoint policy now authorizes both feature agents to commit
+  coherent validated units without repeated user prompting, normally every
+  30–90 minutes and before handoff. The guarded integrator rejects any checked
+  out source worktree with tracked or untracked changes.
+- The expanded five-scenario E2E harness passed: clean merge succeeds; dirty
+  source, ownership violation, textual conflict, and failed validation all
+  leave the target unchanged. Shell syntax, lint, TypeScript, production build,
+  and diff checks also passed.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported

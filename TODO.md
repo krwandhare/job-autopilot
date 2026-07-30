@@ -31,6 +31,9 @@
 - Created isolated shared-runtime, Codex, Claude, and integration branches and
   sibling feature worktrees; added ownership policies and end-to-end-tested
   fail-closed merge automation (`1f3f9dc`, `b962094`, integrated as `6cd53d0`).
+- Added autonomous validated checkpoint-commit policy and dirty-source
+  worktree rejection to prevent integration from silently omitting an agent's
+  local changes (uncommitted on `feature/shared-runtime`).
 - Created the Next.js/React/TypeScript/Tailwind application scaffold (`70dc5b1`).
 - Implemented local SQLite persistence and schema initialization.
 - Implemented resume upload, PDF/DOCX/TXT extraction, skill detection, and editable filters.

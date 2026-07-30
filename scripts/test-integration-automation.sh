@@ -47,7 +47,7 @@ assert_ref_unchanged() {
     { printf 'expected %s to remain at %s, got %s\n' "$branch" "$expected" "$actual" >&2; exit 1; }
 }
 
-printf '1/4 clean merge updates the integration branch...\n'
+printf '1/5 clean merge updates the integration branch...\n'
 CLEAN_REPO="$TEST_ROOT/clean"
 new_repo "$CLEAN_REPO"
 git -C "$CLEAN_REPO" switch -q -c feature/codex-tests main
@@ -65,7 +65,30 @@ git -C "$CLEAN_REPO" commit -q -m "add covered file"
 )
 git -C "$CLEAN_REPO" merge-base --is-ancestor feature/codex-tests integration/concurrent-work
 
-printf '2/4 ownership violations are rejected without moving the target...\n'
+printf '2/5 dirty source worktrees are rejected without moving the target...\n'
+DIRTY_REPO="$TEST_ROOT/dirty"
+new_repo "$DIRTY_REPO"
+git -C "$DIRTY_REPO" switch -q -c feature/codex-tests main
+printf 'covered\n' > "$DIRTY_REPO/app/test.txt"
+git -C "$DIRTY_REPO" add app/test.txt
+git -C "$DIRTY_REPO" commit -q -m "add covered file"
+printf 'unfinished\n' > "$DIRTY_REPO/app/unfinished.txt"
+DIRTY_BEFORE="$(git -C "$DIRTY_REPO" rev-parse integration/concurrent-work)"
+if (
+  cd "$DIRTY_REPO"
+  INTEGRATION_VALIDATE_CMD=./scripts/validate.sh \
+    ./scripts/integrate-branch.sh \
+      --source feature/codex-tests \
+      --target integration/concurrent-work \
+      --task codex \
+      --apply
+); then
+  printf 'dirty-worktree scenario unexpectedly succeeded\n' >&2
+  exit 1
+fi
+assert_ref_unchanged "$DIRTY_REPO" integration/concurrent-work "$DIRTY_BEFORE"
+
+printf '3/5 ownership violations are rejected without moving the target...\n'
 OWNER_REPO="$TEST_ROOT/ownership"
 new_repo "$OWNER_REPO"
 git -C "$OWNER_REPO" switch -q -c feature/codex-tests main
@@ -87,7 +110,7 @@ if (
 fi
 assert_ref_unchanged "$OWNER_REPO" integration/concurrent-work "$OWNER_BEFORE"
 
-printf '3/4 textual conflicts are rejected without moving the target...\n'
+printf '4/5 textual conflicts are rejected without moving the target...\n'
 CONFLICT_REPO="$TEST_ROOT/conflict"
 new_repo "$CONFLICT_REPO"
 git -C "$CONFLICT_REPO" switch -q -c feature/codex-tests main
@@ -111,7 +134,7 @@ if (
 fi
 assert_ref_unchanged "$CONFLICT_REPO" integration/concurrent-work "$CONFLICT_BEFORE"
 
-printf '4/4 validation failures are rejected without moving the target...\n'
+printf '5/5 validation failures are rejected without moving the target...\n'
 VALIDATION_REPO="$TEST_ROOT/validation"
 new_repo "$VALIDATION_REPO"
 git -C "$VALIDATION_REPO" switch -q -c feature/codex-tests main
