@@ -125,6 +125,23 @@ exist. Live source synchronization, resume parsing across all supported
 formats, and real ATS autofill behavior were not re-run during this
 implementation session.
 
+Later on `feature/claude-autofill`, a rate-limited Gmail-alert-to-lead import
+script was added (`scripts/import-gmail-leads.mjs`), with a small additive
+change to `POST /api/jobs/import-url` (out-of-scope-by-default under
+`shared-runtime.allow`, touched here with the user's explicit one-task
+exception) so the response includes the upserted row's `id` and `status`.
+The script imports LinkedIn job-alert URLs already extracted from Gmail
+(never scrapes LinkedIn itself), relies on the existing
+`(source, source_job_id)` upsert for dedup, caps imports per run at a
+configurable rate limit (default 5), and tags a freshly-created job
+`external_lead` so it never enters the `new` autofill queue -- unless the
+job already has a further-along status, which is left untouched. `node
+--check`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` passed.
+Not run live: this worktree's `data/` is empty (no resume/filters/jobs), and
+the original worktree currently has Codex's uncommitted shared-runtime work
+in progress against real data, so no execution against a live server was
+performed this session.
+
 ## Current objective
 
 Implement shared-runtime database/upload paths, instance identity, SQLite

@@ -83,5 +83,9 @@ export async function POST(req: NextRequest) {
     matchReasonsJson: JSON.stringify(match),
   });
 
-  return NextResponse.json({ job, match });
+  const row = db
+    .prepare("SELECT id, status FROM jobs WHERE source = ? AND source_job_id = ?")
+    .get(job.source, job.sourceJobId) as { id: number; status: string };
+
+  return NextResponse.json({ job, match, id: row.id, status: row.status });
 }
