@@ -20,6 +20,8 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Review-only autofill by default, plus explicit guarded auto-submit with conservative fallback and manual local status tracking.
 - Explicit user-confirmed autofill completion: mark locally `applied` and advance only after the user says they submitted; allow closing without changing `new`.
 - Auto-fill queue cards show stored matched and missing skills before the user starts filling.
+- Dashboard Action Center prioritizes manual application work with readable
+  reasons, exact persisted details when available, and status-specific actions.
 - Skill comparison uses conservative canonical aliases and labels results as mentioned/not mentioned in the posting; draft generation does not claim the user lacks an unmentioned target skill.
 
 ## Stabilization work

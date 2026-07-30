@@ -35,6 +35,19 @@ This document describes behavior present in the repository. “Implemented” me
 
 The dashboard shows 50 jobs per page, hides score-zero jobs by default, supports local status filtering, and can show non-matches.
 
+Before the job pipeline, the dashboard Action Center groups work that requires
+the user: verification codes, manual application review, external leads,
+drafts, and watchlist decisions. Each item states why the user is needed,
+shows up to three exact persisted details when available, and exposes one
+status-specific primary action plus job details. Summary cards show counts and
+filter the pipeline to the selected status.
+
+Action reasons are persisted separately from local job status. If older code
+sets only an actionable status, the dashboard uses a conservative fallback
+reason rather than inventing an exact blocker. A caller can include structured
+action context in `PATCH /api/jobs/[id]`; route validation bounds reason and
+detail sizes. Moving to a non-actionable status resolves open action records.
+
 ### Incomplete or unverified
 
 - There is no scheduler/background sync; synchronization is user-triggered.

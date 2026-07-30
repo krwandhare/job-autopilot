@@ -1,0 +1,12 @@
+# Codex Action Center: persistent manual-action context and dashboard presentation.
+config/agent-tasks/action-center.allow
+app/page.tsx
+app/api/actions/**
+app/api/jobs/\[id\]/route.ts
+lib/actions.ts
+lib/db.ts
+scripts/test-action-center.mjs
+package.json
+SESSION.md
+TODO.md
+docs/**

@@ -75,6 +75,22 @@ function init(db: Database.Database) {
       answer TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS job_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      action_type TEXT NOT NULL,
+      reason_code TEXT NOT NULL,
+      reason_text TEXT NOT NULL,
+      details_json TEXT NOT NULL DEFAULT '[]',
+      source TEXT NOT NULL DEFAULT 'status',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_job_actions_open_job
+      ON job_actions(job_id, resolved_at, updated_at DESC);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -160,4 +176,17 @@ export type ProfileAnswerRow = {
   label: string;
   answer: string;
   updated_at: string;
+};
+
+export type JobActionRow = {
+  id: number;
+  job_id: number;
+  action_type: string;
+  reason_code: string;
+  reason_text: string;
+  details_json: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
 };
