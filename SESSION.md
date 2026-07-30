@@ -122,6 +122,14 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
 - The Action Center checkpoint `608c42c` added prioritized manual-action
   summaries/cards, persisted structured reasons, conservative status fallbacks,
   bounded route validation, and a disposable SQLite model test.
+- Responsive refinements and the corrected ownership manifest were committed as
+  `263ff85` and `6c2f9af`. The guarded integrator then passed lint, TypeScript,
+  and the production build and atomically advanced
+  `integration/concurrent-work` to `8aecb65`.
+- The first Action Center integration attempt was safely rejected because the
+  dynamic route brackets in its ownership pattern were interpreted as glob
+  syntax. Escaping those brackets fixed the policy without weakening the
+  ownership gate.
 - A disposable detached checkout with six synthetic jobs verified desktop and
   390px mobile rendering, all five action groups, exact blocker details,
   summary-to-pipeline filtering, and structured reason persistence through the
@@ -147,6 +155,6 @@ autofill safety boundaries.
 
 ## Exact next recommended task
 
-Integrate `feature/codex-work` through the guarded pipeline, then connect
-autofill and queue-runner blocker outcomes to the structured action context in
-coordination with Claude.
+Connect autofill and queue-runner blocker outcomes to the structured Action
+Center context in coordination with Claude, using the shared-runtime/claim
+foundation before overlapping application behavior.
