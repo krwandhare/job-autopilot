@@ -87,11 +87,31 @@ On 2026-07-30, after the queue, verification-code, session-serialization, diagno
 - `git diff --check` passed.
 - No live ATS submission or unattended queue run was performed during this validation.
 
-No automated unit, integration, or end-to-end tests exist. Live source synchronization, resume parsing across all supported formats, and real ATS autofill behavior were not re-run during this implementation session.
+Later on 2026-07-30, concurrent-agent integration foundations were added on
+`feature/shared-runtime`:
+
+- Created `feature/shared-runtime`, `feature/codex-tests`,
+  `feature/claude-autofill`, and `integration/concurrent-work` from commit
+  `4b88042`.
+- Added task ownership manifests and a fail-closed integration command that
+  uses disposable worktrees, full validation, and an atomic target-ref update.
+- Added an end-to-end harness using disposable Git repositories. Clean
+  integration passed, while ownership violations, textual conflicts, and
+  validation failures were all rejected without moving the target branch.
+- `bash -n scripts/integrate-branch.sh scripts/test-integration-automation.sh`,
+  `npm run test:integration-automation`, `npm run lint`,
+  `npx tsc --noEmit`, `npm run build`, and `git diff --check` passed.
+
+No automated application unit, route-integration, or browser end-to-end tests
+exist. Live source synchronization, resume parsing across all supported
+formats, and real ATS autofill behavior were not re-run during this
+implementation session.
 
 ## Current objective
 
-Commit and live-validate the guarded autofill workflow, verification-code recovery, and unattended queue behavior, then add repeatable automated coverage.
+Establish isolated Codex and Claude feature branches with guarded automated
+integration, then implement shared-runtime database paths and atomic job claims
+before concurrent feature development begins.
 
 ## Blockers
 
@@ -102,4 +122,7 @@ Commit and live-validate the guarded autofill workflow, verification-code recove
 
 ## Exact next recommended task
 
-Run a user-authorized live test that exercises one successful guarded submission, one verification-code recovery, and one job parked as `needs_review`; confirm the queue runner never guesses or bypasses a manual blocker. Then add a minimal automated test setup and repository-local fixtures.
+Implement configurable shared database/upload paths, instance identity,
+SQLite contention handling, and atomic expiring job claims on
+`feature/shared-runtime`. Then advance the Codex and Claude feature baselines
+and begin their isolated assignments.

@@ -187,3 +187,21 @@ Review mode never clicks an employer submit control. The separately selected opt
 - reliable detection that the user submitted before clicking “Done.”
 
 The local `applied` value records only what the user confirmed. It is not proof that the employer received the application. Therefore, never report successful submission or employer-side application status from this app unless separate verified evidence is provided.
+
+## Concurrent-agent integration
+
+Codex and Claude work from separate feature branches and worktrees. Task
+allowlists under `config/agent-tasks/` constrain the files each feature is
+expected to change. `scripts/integrate-branch.sh` compares the source branch
+with the integration target, rejects out-of-scope paths, performs the merge in
+a disposable detached worktree, and runs `npm run validate`.
+
+Without `--apply`, the command is a complete dry run. With `--apply`, it
+creates the merge commit only after validation and atomically advances
+`integration/concurrent-work`. If that branch moved during validation, the
+compare-and-swap update fails instead of overwriting the newer work.
+
+The automation intentionally does not resolve conflicts. A conflict or failed
+validation leaves both branch refs unchanged. After both feature branches pass
+the integration queue, the combined integration branch receives final
+shared-database and browser testing before a reviewed merge to `main`.

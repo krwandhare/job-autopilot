@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "validate": "npm run lint && npx tsc --noEmit && npm run build",
+    "test:integration-automation": "bash scripts/test-integration-automation.sh"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.1",
