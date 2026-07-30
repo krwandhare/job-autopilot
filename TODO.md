@@ -2,7 +2,10 @@
 
 ## In Progress
 
-- No application implementation task is currently in progress. The repository is at the documented post-`3059f22` foundation baseline.
+- Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
+- Manually verify the new opt-in "Auto-fill & submit" mode against a real, user-authorized test application before relying on it for real submissions -- static checks and a production build passed, but no live ATS run has confirmed the submit-control detection or confirmation logic yet.
+- Retest Twilio's location autocomplete, grouped referral-source question, the narrowly allowlisted submit-mode policy acknowledgements, and exact manual-blocker messaging in a visible browser; static checks pass, but the live form has not been rerun after the latest fixes.
+- Live-test the unattended queue runner and verification-code recovery against user-authorized forms; confirm uncertain jobs are parked as `needs_review` or `needs_code` and no manual blocker is bypassed.
 
 ## Next
 
@@ -18,7 +21,6 @@
 - Add timeouts/size limits for remote LinkedIn page reads and strengthen URL validation while keeping import limited to one user-supplied public posting.
 - Add structured observability that reports source/autofill errors without logging resume contents, profile answers, credentials, cookies, or full application pages.
 - Add user-visible editing of generated drafts before use; the current job-detail view displays drafts but does not persist edits.
-- Add an explicit user-confirmed local completion action if needed, while keeping employer submission manual and treating local status as unverified.
 - Add authentication and authorization before any non-local or multi-user deployment.
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
@@ -32,5 +34,13 @@
 - Implemented deterministic matching, ranking, match explanations, pagination, and local status filtering.
 - Implemented deterministic cover-letter and screening-answer drafts.
 - Implemented visible-browser Playwright autofill with remembered answers, file attachment, combobox support, manual-field boundaries, CAPTCHA/load-failure handling, and no automatic submit (`3059f22`).
+- Added an opt-in "Auto-fill & submit" mode alongside the original review-only mode, with fallback to review whenever the submit control or a confirmation can't be identified confidently (uncommitted, awaiting live-ATS verification).
+- Implemented an explicit user-confirmed “I submitted it” autofill action that records local `applied` status before closing and advancing; closing without marking leaves the job `new` (uncommitted, awaiting review).
+- Displayed stored matched and missing skills directly on the Auto-fill queue card (uncommitted, awaiting review).
+- Enforced configured preferred locations for Remote-only matching so geographically restricted remote roles do not qualify solely as remote (uncommitted, awaiting review).
+- Added conservative canonical skill aliases, clearer mentioned/not-mentioned labels, and removed draft language that treated an unmentioned target skill as a user skill gap (uncommitted, awaiting review).
+- Collapsed grouped referral-source checkboxes into one answerable question, kept policy acknowledgements manual with full labels, and made auto-submit refusal messages enumerate the exact blockers (uncommitted, awaiting live retest).
+- Added watchlist, verification-code, review, and external-lead workflow statuses; resumable jobs; serialized Playwright actions; guarded success watching; diagnostic inspect/snapshot routes; and an unattended queue runner that parks uncertain jobs (uncommitted, static validation passed).
 - Established shared agent, session, workflow, architecture, and roadmap documentation.
+- Added GitHub Actions quality checks (`933c4bc`), following the shared-context documentation commit (`d314240`).
 - Verified `npm run lint` on 2026-07-29; documented the network-bound Google Fonts build failure.

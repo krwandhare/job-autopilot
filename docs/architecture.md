@@ -2,7 +2,7 @@
 
 ## System shape
 
-Job Autopilot is a local-first Next.js App Router application. Client components call same-origin route handlers; route handlers use local filesystem/SQLite services and, for selected operations, external job APIs or Playwright. There is no separate backend service, worker, queue, authentication layer, or hosted database.
+Job Autopilot is a local-first Next.js App Router application. Client components call same-origin route handlers; route handlers use local filesystem/SQLite services and, for selected operations, external job APIs or Playwright. An optional local shell queue runner calls those same routes; there is no separate backend service, hosted queue, authentication layer, or hosted database.
 
 ```text
 Browser UI
@@ -38,15 +38,18 @@ Browser UI
 | `POST /api/sources/seed` | Insert curated Greenhouse/Lever configurations that are not already present. |
 | `GET /api/jobs` | Query jobs by optional status and zero-score visibility, sorted by score/fetch time, with 50-row pagination. |
 | `GET /api/jobs/[id]` | Return one job, its latest draft, match details, and the current maximum possible score. |
-| `PATCH /api/jobs/[id]` | Set a validated local status: `new`, `drafted`, `applied`, `rejected`, or `skipped`. |
+| `PATCH /api/jobs/[id]` | Set a validated local status: `new`, `drafted`, `applied`, `rejected`, `skipped`, `watchlist`, `needs_code`, `needs_review`, or `external_lead`. |
 | `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
 | `POST /api/jobs/import-url` | Import, score, and upsert exactly one user-supplied LinkedIn URL. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
-| `GET /api/autofill/next` | Return the highest-score, newest-fetched job whose local status is `new`. |
+| `GET /api/autofill/next` | Return the highest-score, newest-fetched `new` job, or a specifically requested job for resumption, with match and extracted posting details. |
 | `POST /api/autofill/start` | Create/reuse a visible browser session and run the form scanner/filler. |
 | `POST /api/autofill/answer` | Upsert a remembered answer by semantic key and attempt to fill the corresponding live field. |
 | `POST /api/autofill/upload-file` | Store an ad hoc file and attach it to the live field; a resume-classified file also becomes the latest resume's canonical path. |
 | `POST /api/autofill/finish` | Close and remove the in-memory browser session for a job. It does not update job status or verify submission. |
+| `POST /api/autofill/submit` | In explicitly selected submit mode, conservatively locate and click the submit control and require a confirmation signal; otherwise return an unconfirmed/manual result. |
+| `GET /api/autofill/inspect` | Return diagnostic metadata for a field in an open local browser session. |
+| `GET /api/autofill/snapshot` | Return a diagnostic snapshot of an open local browser session. |
 
 ## SQLite persistence
 
@@ -71,7 +74,7 @@ Synchronization and URL import use upserts. They update normalized fields and sc
 - `mammoth.extractRawText` for DOCX,
 - UTF-8 decoding for TXT.
 
-`lib/skills.ts` performs case-insensitive boundary matching against a curated vocabulary. Users can edit the detected list in `/profile`. Extracted text and skills are stored in SQLite; original bytes are written to `data/resumes/<resume-id>/<sanitized-original-name>`. The route does not currently enforce file-size, MIME, retention, or cleanup limits.
+`lib/skills.ts` performs case-insensitive boundary matching against a curated vocabulary and a conservative canonical alias map (for example, NodeJS → Node.js, K8s → Kubernetes, and continuous integration → CI/CD). Users can edit the detected list in `/profile`. Extracted text and skills are stored in SQLite; original bytes are written to `data/resumes/<resume-id>/<sanitized-original-name>`. The route does not currently enforce file-size, MIME, retention, or cleanup limits.
 
 ## Job-source integrations
 
@@ -95,9 +98,9 @@ Remote detection is heuristic: “remote” in title or location (and LinkedIn e
 - known salary meeting the minimum: 15,
 - proportional target-skill overlap: up to 35.
 
-Title include/exclude phrases match when every word appears somewhere in the title. Missing an included title, matching an excluded title/company, failing remote-only/location, or having a known salary below minimum forces the score to zero. Unknown salary does not hard-fail the job.
+Title include/exclude phrases match when every word appears somewhere in the title. Missing an included title, matching an excluded title/company, failing remote-only/location, or having a known salary below minimum forces the score to zero. When Remote-only and preferred locations are both configured, a job must be remote and its location text must match a preferred location; a role such as “Remote - India” does not satisfy a US preference. Unknown salary does not hard-fail the job.
 
-Target skills are `requiredSkills` when configured, otherwise the latest resume's skills. The stored result includes score, matched/missing skills, and reasons. The UI displays scores relative to a configuration-dependent `maxPossibleScore`; scores are not an absolute confidence percentage.
+Target skills are `requiredSkills` when configured, otherwise the latest resume's skills. Canonical names and conservative aliases are matched against the job title and description with alphanumeric boundaries. The stored `matchedSkills` and `missingSkills` fields mean “target skills mentioned in the posting” and “target skills not mentioned in the posting”; they do not describe skills the user possesses or lacks. The UI uses those clearer labels. Scores are displayed relative to a configuration-dependent `maxPossibleScore`; they are not an absolute confidence percentage.
 
 Scores are computed on source synchronization or LinkedIn import. Saving new filters or resume skills does not itself rescore existing rows; another sync/import is required.
 
@@ -107,10 +110,9 @@ Scores are computed on source synchronization or LinkedIn import. Saving new fil
 
 - a template cover letter,
 - an interest answer,
-- a relevant-experience answer,
-- optionally, an answer about up to three missing skills.
+- a relevant-experience answer.
 
-`POST /api/draft/[id]` stores each generation as a new draft and the detail route returns only the latest. The UI then changes the local job status to `drafted`. There is no LLM, external generation service, fact verification, or persisted draft editing.
+Draft generation never interprets a target skill omitted from the posting as a skill the user lacks. `POST /api/draft/[id]` stores each generation as a new draft and the detail route returns only the latest. The UI then changes the local job status to `drafted`. There is no LLM, external generation service, fact verification, or persisted draft editing.
 
 ## Autofill pipeline
 
@@ -126,9 +128,9 @@ Scores are computed on source synchronization or LinkedIn import. Saving new fil
 6. fills the stored resume, latest draft or generated cover letter, and remembered profile answers;
 7. returns missing fields and manual-only fields to the UI.
 
-`fieldMatcher.ts` classifies semantic fields, native inputs/selects, React-style comboboxes, search-as-you-type controls, custom questions, sensitive exclusions, and grouped radio/checkbox controls. Stored select answers are checked against the live options and are re-surfaced when they no longer apply.
+`fieldMatcher.ts` classifies semantic fields, native inputs/selects, React-style comboboxes, search-as-you-type controls, custom questions, sensitive exclusions, and grouped radio/checkbox controls. It collapses each option group into one answerable question while retaining policy acknowledgements and certifications as manual-only controls with their full parent question. Submit-mode orchestration has a narrow text allowlist for Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy acknowledgements; it does not generalize to other agreements. Stored answers are checked against live options and re-surfaced when they no longer apply.
 
-The filler does not locate or click submit buttons. `finish` only closes the browser. It does not prove or record an employer submission.
+In opt-in submit mode, the filler locates and clicks a narrowly matched submit button only after all fillable questions are resolved and no manual-only controls remain. It requires a navigation or confirmation-text signal; otherwise it leaves the browser open and reports an unconfirmed result. `finish` only closes the browser and never proves employer receipt.
 
 ## Module responsibilities
 
@@ -136,7 +138,7 @@ The filler does not locate or click submit buttons. `finish` only closes the bro
 | --- | --- |
 | `lib/db.ts` | Connection, schema, compatibility alteration, and database row types. |
 | `lib/resume.ts` | File-format-specific text extraction. |
-| `lib/skills.ts` | Curated vocabulary and deterministic skill detection. |
+| `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
 | `lib/draft.ts` | Template-based cover letters and screening answers. |
 | `lib/sources/*` | External fetch/parsing and normalization. |
@@ -171,5 +173,5 @@ highest-ranked local `new` job + latest resume/draft + profile answers
 - The LinkedIn importer restricts the hostname suffix but has no response-size or fetch-time limit in application code.
 - Uploads sanitize basenames but currently lack explicit size/MIME/content validation and cleanup.
 - CAPTCHA and detected bot-block pages stop automated filling. The system must not bypass them.
-- Sensitive identifiers/password-like fields and grouped choices are manual-only.
+- Sensitive identifiers/password-like fields, acknowledgements, certifications, and ambiguous choices are manual-only. Ordinary option groups are answerable but are never guessed.
 - Local status values, salary strings, sponsorship answers, and “ready for review” are not evidence of employer facts or successful submission.

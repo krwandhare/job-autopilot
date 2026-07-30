@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 const SKIP_SENTINEL = "__skip__";
@@ -13,6 +13,12 @@ type QueueJob = {
   url: string;
   source: string;
   matchScore: number | null;
+  matchedSkills: string[];
+  skillsInPostingNotInResume: string[];
+  salaryText: string | null;
+  responsibilities: string | null;
+  qualifications: string | null;
+  status?: string;
 };
 
 type FieldKind = "text" | "textarea" | "select" | "file" | "checkbox" | "radio";
@@ -26,6 +32,7 @@ type MissingField = {
   kind: FieldKind;
   options?: SelectOption[];
   isCombobox?: boolean;
+  isOptionGroup?: boolean;
 };
 
 type Phase =
@@ -37,6 +44,17 @@ type Phase =
   | "queue_empty"
   | "error";
 
+// A dropped connection (phone locks, tab backgrounds mid-request, Wi-Fi
+// hiccup) makes fetch() itself reject -- browsers word that rejection
+// differently ("Failed to fetch" on Chrome, "Load failed" on WebKit/mobile
+// Chrome-on-iOS) but it's always a network-level failure, not a server
+// error. Left uncaught, that's an unhandled promise rejection that crashes
+// into Next's dev error overlay instead of a recoverable in-app message.
+function friendlyNetworkError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return `Lost connection to the server (${message}). Check your network connection and try again.`;
+}
+
 export default function AutofillPage() {
   const [job, setJob] = useState<QueueJob | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -46,69 +64,179 @@ export default function AutofillPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [completionAction, setCompletionAction] = useState<"applied" | "close" | null>(null);
+  const [completionError, setCompletionError] = useState<string | null>(null);
+
+  // "review" (default) always leaves the real submit click to the human.
+  // "submit" is an opt-in, per-job escape hatch that also clicks the real
+  // submit control once nothing is left requiring manual judgment -- see
+  // lib/autofill/filler.ts's submitApplication() for the safety fallbacks.
+  // A ref (not state) because it's read from async callbacks fired well
+  // after the render that set it.
+  const modeRef = useRef<"review" | "submit">("review");
+  const [autoSubmitting, setAutoSubmitting] = useState(false);
+  const [submitNote, setSubmitNote] = useState<string | null>(null);
 
   async function loadNextJob() {
     setPhase("idle");
     setReason(null);
+    setCompletionAction(null);
+    setCompletionError(null);
     setMissingFields([]);
     setManualFields([]);
     setDrafts({});
-    const res = await fetch("/api/autofill/next");
-    const data = await res.json();
-    if (!data.job) {
-      setJob(null);
-      setPhase("queue_empty");
-    } else {
-      setJob(data.job);
+    setAutoSubmitting(false);
+    setSubmitNote(null);
+    modeRef.current = "review";
+    try {
+      // A jobId in the URL resumes that specific job (e.g. one sitting in
+      // "needs_code" from the dashboard's "Resume" link) instead of always
+      // pulling whatever's next in the "new" queue. Read directly from
+      // window.location rather than useSearchParams() -- this only runs
+      // client-side inside an effect/handler, never during render, so
+      // there's no hydration-mismatch risk, and it avoids the Suspense
+      // boundary useSearchParams() would otherwise require.
+      const requestedId = new URLSearchParams(window.location.search).get("jobId");
+      const url = requestedId
+        ? `/api/autofill/next?jobId=${encodeURIComponent(requestedId)}`
+        : "/api/autofill/next";
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.job) {
+        setJob(null);
+        setPhase("queue_empty");
+      } else {
+        setJob(data.job);
+      }
+    } catch (err) {
+      setReason(friendlyNetworkError(err));
+      setPhase("error");
     }
   }
 
   useEffect(() => {
     // Initial data load on mount, not synchronous render-derived state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadNextJob();
   }, []);
 
-  async function startFilling() {
+  async function startFilling(mode: "review" | "submit") {
     if (!job) return;
+    if (mode === "submit") {
+      const confirmed = window.confirm(
+        "This will automatically fill the application, acknowledge Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy when present, and click Submit once every other field is resolved -- no review step. Continue?"
+      );
+      if (!confirmed) return;
+    }
+    modeRef.current = mode;
+    setSubmitNote(null);
     setPhase("starting");
-    const res = await fetch("/api/autofill/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job.id }),
-    });
-    const data = await res.json();
+
+    let data: { status: string; reason?: string; missingFields?: MissingField[]; manualFields?: MissingField[] };
+    try {
+      const res = await fetch("/api/autofill/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, mode }),
+      });
+      data = await res.json();
+    } catch (err) {
+      setReason(friendlyNetworkError(err));
+      setPhase("error");
+      return;
+    }
 
     if (data.status === "blocked" || data.status === "error") {
-      setReason(data.reason);
-      setPhase(data.status);
+      setReason(data.reason ?? null);
+      setPhase(data.status as Phase);
       return;
     }
 
     setMissingFields(data.missingFields ?? []);
     setManualFields(data.manualFields ?? []);
-    setPhase(data.status);
+    setPhase(data.status as Phase);
+
+    if (data.status === "ready_for_review") {
+      await maybeAutoSubmit(data.manualFields ?? []);
+    }
+  }
+
+  // Called every time the fill flow reaches "ready_for_review" -- right
+  // after Start, or after the last missing field gets answered. Only ever
+  // clicks the real submit control when the user chose "submit" mode AND
+  // nothing is left that needs their own judgment; see submitApplication()
+  // in lib/autofill/filler.ts for the rest of the safety fallbacks (missing
+  // submit control, CAPTCHA, no confirmable result all fall back here too).
+  async function maybeAutoSubmit(currentManualFields: MissingField[]) {
+    if (modeRef.current !== "submit" || !job) return;
+
+    if (currentManualFields.length > 0) {
+      const blockers = currentManualFields.map((field) => `“${field.label}”`).join("; ");
+      setSubmitNote(
+        `Auto-submit refused before clicking Submit because ${currentManualFields.length} manual-only field${
+          currentManualFields.length === 1 ? " remains" : "s remain"
+        }: ${blockers}. Complete and review ${
+          currentManualFields.length === 1 ? "it" : "them"
+        } in the open application window, then submit there yourself.`
+      );
+      return;
+    }
+
+    setAutoSubmitting(true);
+    let data: { status: string; reason?: string };
+    try {
+      const res = await fetch("/api/autofill/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+      data = await res.json();
+    } catch (err) {
+      setAutoSubmitting(false);
+      setSubmitNote(
+        `${friendlyNetworkError(err)} It may or may not have submitted -- check the open browser window before marking this Applied.`
+      );
+      return;
+    }
+    setAutoSubmitting(false);
+
+    if (data.status === "submitted") {
+      setSubmitNote("Submitted. Marking Applied and loading the next job…");
+      await markAppliedAndNext();
+    } else {
+      setSubmitNote(
+        data.reason ??
+          "Could not confirm the submission went through -- check the open browser window before marking this Applied."
+      );
+    }
   }
 
   async function answerField(field: MissingField, answer: string) {
     if (!job) return;
     setSaving(field.autofillId);
     setFieldErrors((e) => ({ ...e, [field.autofillId]: "" }));
-    const res = await fetch("/api/autofill/answer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jobId: job.id,
-        autofillId: field.autofillId,
-        key: field.key,
-        label: field.label,
-        kind: field.kind,
-        options: field.options,
-        isCombobox: field.isCombobox,
-        answer,
-      }),
-    });
-    const data = await res.json();
+    let data: { ok?: boolean; filled?: boolean };
+    try {
+      const res = await fetch("/api/autofill/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: job.id,
+          autofillId: field.autofillId,
+          key: field.key,
+          label: field.label,
+          kind: field.kind,
+          options: field.options,
+          isCombobox: field.isCombobox,
+          isOptionGroup: field.isOptionGroup,
+          answer,
+        }),
+      });
+      data = await res.json();
+    } catch (err) {
+      setSaving(null);
+      setFieldErrors((e) => ({ ...e, [field.autofillId]: friendlyNetworkError(err) }));
+      return;
+    }
     setSaving(null);
 
     if (answer !== SKIP_SENTINEL && data.filled === false) {
@@ -119,11 +247,16 @@ export default function AutofillPage() {
       return;
     }
 
+    let reachedReview = false;
     setMissingFields((prev) => {
       const next = prev.filter((f) => f.autofillId !== field.autofillId);
-      if (next.length === 0) setPhase("ready_for_review");
+      if (next.length === 0) {
+        setPhase("ready_for_review");
+        reachedReview = true;
+      }
       return next;
     });
+    if (reachedReview) await maybeAutoSubmit(manualFields);
   }
 
   async function answerFileField(field: MissingField, file: File) {
@@ -136,38 +269,165 @@ export default function AutofillPage() {
     formData.append("key", field.key);
     formData.append("label", field.label);
     formData.append("kind", field.kind);
-    await fetch("/api/autofill/upload-file", { method: "POST", body: formData });
+    try {
+      await fetch("/api/autofill/upload-file", { method: "POST", body: formData });
+    } catch (err) {
+      setSaving(null);
+      setFieldErrors((e) => ({ ...e, [field.autofillId]: friendlyNetworkError(err) }));
+      return;
+    }
     setSaving(null);
+    let reachedReview = false;
     setMissingFields((prev) => {
       const next = prev.filter((f) => f.autofillId !== field.autofillId);
-      if (next.length === 0) setPhase("ready_for_review");
+      if (next.length === 0) {
+        setPhase("ready_for_review");
+        reachedReview = true;
+      }
       return next;
     });
+    if (reachedReview) await maybeAutoSubmit(manualFields);
   }
 
   async function finishAndNext() {
     if (job) {
+      try {
+        await fetch("/api/autofill/finish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobId: job.id }),
+        });
+      } catch {
+        // Best-effort session cleanup -- a dropped connection here shouldn't
+        // block moving on; the browser window (if still open) can be closed
+        // manually.
+      }
+    }
+    loadNextJob();
+  }
+
+  async function markAppliedAndNext() {
+    if (!job) return;
+    setCompletionAction("applied");
+    setCompletionError(null);
+
+    let statusRes: Response;
+    try {
+      statusRes = await fetch(`/api/jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "applied" }),
+      });
+    } catch {
+      setCompletionError(
+        "Could not mark this job Applied. The browser is still open and no next job was loaded."
+      );
+      setCompletionAction(null);
+      return;
+    }
+
+    const statusData = await statusRes.json().catch(() => null);
+    if (!statusRes.ok || statusData?.ok !== true) {
+      setCompletionError(
+        statusData?.error ??
+          "Could not mark this job Applied. The browser is still open and no next job was loaded."
+      );
+      setCompletionAction(null);
+      return;
+    }
+
+    try {
+      const finishRes = await fetch("/api/autofill/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+
+      if (!finishRes.ok) {
+        setCompletionError(
+          "The job was marked Applied locally, but the browser session could not be closed. Close it manually."
+        );
+        setCompletionAction(null);
+        return;
+      }
+    } catch {
+      setCompletionError(
+        "The job was marked Applied locally, but the browser session could not be closed. Close it manually."
+      );
+      setCompletionAction(null);
+      return;
+    }
+
+    await loadNextJob();
+  }
+
+  async function closeWithoutMarkingApplied() {
+    if (!job) return;
+    setCompletionAction("close");
+    setCompletionError(null);
+
+    try {
+      const finishRes = await fetch("/api/autofill/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+
+      if (!finishRes.ok) {
+        setCompletionError("Could not close the browser session. Close it manually.");
+        return;
+      }
+
+      setMissingFields([]);
+      setManualFields([]);
+      setPhase("idle");
+    } catch {
+      setCompletionError("Could not close the browser session. Close it manually.");
+    } finally {
+      setCompletionAction(null);
+    }
+  }
+
+  async function skipJob() {
+    if (!job) return;
+    try {
+      await fetch(`/api/jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "skipped" }),
+      });
       await fetch("/api/autofill/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId: job.id }),
       });
+    } catch {
+      // Best-effort -- see finishAndNext.
     }
     loadNextJob();
   }
 
-  async function skipJob() {
+  // For a job that partially fits (some real skill overlap, but doesn't
+  // match past experience closely enough to decide right now) -- distinct
+  // from "Skip", which is a firm pass. Watchlist jobs drop out of this
+  // queue (only status='new' feeds it) but stay filterable on the
+  // dashboard, and can be moved back to New from the job detail page.
+  async function saveForLaterAndNext() {
     if (!job) return;
-    await fetch(`/api/jobs/${job.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "skipped" }),
-    });
-    await fetch("/api/autofill/finish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job.id }),
-    });
+    try {
+      await fetch(`/api/jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "watchlist" }),
+      });
+      await fetch("/api/autofill/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+    } catch {
+      // Best-effort -- see finishAndNext.
+    }
     loadNextJob();
   }
 
@@ -177,8 +437,10 @@ export default function AutofillPage() {
         <h1 className="text-2xl font-semibold">Auto-fill</h1>
         <p className="text-sm text-gray-500">
           Opens the real application in a visible browser window, fills what it can, asks about
-          anything it doesn&apos;t know yet. It never clicks submit — that&apos;s always you,
-          after reviewing the open window.
+          anything it doesn&apos;t know yet. &quot;Auto-fill (review)&quot; leaves the actual
+          submit click to you in that window. &quot;Auto-fill &amp; submit&quot; also clicks
+          submit itself once nothing is left that needs your judgment — it still falls back to
+          review whenever it can&apos;t confidently find the submit button or confirm it worked.
         </p>
       </div>
 
@@ -193,6 +455,18 @@ export default function AutofillPage() {
         </div>
       )}
 
+      {!job && phase === "error" && (
+        <div className="border rounded-lg p-6 space-y-3">
+          <p className="text-sm text-red-600">{reason}</p>
+          <button
+            onClick={loadNextJob}
+            className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {job && (
         <div className="border rounded-lg p-4 space-y-4">
           <div>
@@ -201,6 +475,49 @@ export default function AutofillPage() {
               {job.company} · {job.location ?? "Unknown location"} · {job.source}
               {job.matchScore !== null && ` · score ${job.matchScore}`}
             </p>
+            {job.status === "needs_code" && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+                Resuming -- this one was previously blocked on an emailed verification code.
+              </p>
+            )}
+            {job.status === "needs_review" && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+                Resuming -- the background queue runner couldn&apos;t resolve this one on its own and left it for you.
+              </p>
+            )}
+            <div className="mt-2 space-y-1 text-sm">
+              <p>
+                <span className="font-medium">Salary range:</span>{" "}
+                {job.salaryText ?? "Not listed"}
+              </p>
+              <p>
+                <span className="font-medium">Your skills mentioned in posting:</span>{" "}
+                {job.matchedSkills.length > 0 ? job.matchedSkills.join(", ") : "None"}
+              </p>
+              <p>
+                <span className="font-medium">Skills this posting mentions that aren&apos;t in your resume:</span>{" "}
+                {job.skillsInPostingNotInResume.length > 0
+                  ? job.skillsInPostingNotInResume.join(", ")
+                  : "None detected"}
+              </p>
+              {job.responsibilities && (
+                <p>
+                  <span className="font-medium">Roles &amp; responsibilities:</span>{" "}
+                  {job.responsibilities}
+                </p>
+              )}
+              {job.qualifications && (
+                <p>
+                  <span className="font-medium">Qualifications:</span> {job.qualifications}
+                </p>
+              )}
+              {!job.responsibilities && !job.qualifications && (
+                <p className="text-gray-400">
+                  Couldn&apos;t auto-detect labeled responsibilities/qualifications sections in this
+                  posting — check the full description on the job page.
+                </p>
+              )}
+            </div>
             <Link
               href={`/jobs/${job.id}`}
               className="text-sm text-blue-600 hover:underline"
@@ -210,12 +527,26 @@ export default function AutofillPage() {
           </div>
 
           {phase === "idle" && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
-                onClick={startFilling}
+                onClick={() => startFilling("review")}
                 className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
               >
-                Start filling
+                Auto-fill (review before submit)
+              </button>
+              <button
+                onClick={() => startFilling("submit")}
+                className="bg-red-700 text-white text-sm px-4 py-2 rounded"
+                title="Also clicks the real submit button once everything's filled -- no review step"
+              >
+                Auto-fill &amp; submit
+              </button>
+              <button
+                onClick={saveForLaterAndNext}
+                className="border text-sm px-4 py-2 rounded"
+                title="Partial match -- keep it for review later instead of skipping outright"
+              >
+                Save for later
               </button>
               <button
                 onClick={skipJob}
@@ -228,6 +559,10 @@ export default function AutofillPage() {
 
           {phase === "starting" && (
             <p className="text-sm text-gray-500">Opening browser and scanning the form…</p>
+          )}
+
+          {autoSubmitting && (
+            <p className="text-sm text-gray-500">Looking for the submit button and clicking it…</p>
           )}
 
           {(phase === "blocked" || phase === "error") && (
@@ -267,6 +602,7 @@ export default function AutofillPage() {
                           if (f) answerFileField(field, f);
                         }}
                         className="text-sm flex-1"
+                        suppressHydrationWarning
                       />
                       <button
                         disabled={saving === field.autofillId}
@@ -332,6 +668,7 @@ export default function AutofillPage() {
                             setDrafts((d) => ({ ...d, [field.autofillId]: e.target.value }))
                           }
                           className="border rounded px-2 py-1 text-sm flex-1"
+                          suppressHydrationWarning
                         />
                       )}
                       <button
@@ -359,12 +696,21 @@ export default function AutofillPage() {
             </div>
           )}
 
-          {phase === "ready_for_review" && (
+          {phase === "ready_for_review" && !autoSubmitting && (
             <div className="space-y-3">
               <p className="text-sm text-green-700">
                 Filled everything it could. Check the open browser window, review it, and click
                 submit there yourself when you&apos;re ready.
               </p>
+              <p className="text-xs text-gray-500">
+                Marking Applied records your confirmation in this local tracker only. It is not
+                proof that the employer received the application.
+              </p>
+              {submitNote && (
+                <p className="text-sm text-amber-700 border border-amber-200 bg-amber-50 rounded p-3">
+                  {submitNote}
+                </p>
+              )}
               {manualFields.length > 0 && (
                 <div className="text-sm text-amber-700 border border-amber-200 bg-amber-50 rounded p-3">
                   <p className="font-medium">These need your own input (never auto-filled):</p>
@@ -375,12 +721,25 @@ export default function AutofillPage() {
                   </ul>
                 </div>
               )}
-              <div className="flex gap-2">
+              {completionError && <p className="text-sm text-red-600">{completionError}</p>}
+              <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={finishAndNext}
-                  className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
+                  onClick={markAppliedAndNext}
+                  disabled={completionAction !== null}
+                  className="bg-gray-900 text-white text-sm px-4 py-2 rounded disabled:opacity-50"
                 >
-                  Done, next job
+                  {completionAction === "applied"
+                    ? "Marking Applied…"
+                    : "I submitted it — mark Applied & next"}
+                </button>
+                <button
+                  onClick={closeWithoutMarkingApplied}
+                  disabled={completionAction !== null}
+                  className="border text-sm px-4 py-2 rounded disabled:opacity-50"
+                >
+                  {completionAction === "close"
+                    ? "Closing…"
+                    : "Close without marking Applied"}
                 </button>
               </div>
             </div>

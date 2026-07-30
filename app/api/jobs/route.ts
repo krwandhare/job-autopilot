@@ -2,7 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, type JobRow, type FilterRow, type ResumeRow } from "@/lib/db";
 import { maxPossibleScore, type FilterRules } from "@/lib/matching";
 
-const VALID_STATUSES = ["new", "drafted", "applied", "rejected", "skipped"];
+const VALID_STATUSES = [
+  "new",
+  "drafted",
+  "applied",
+  "rejected",
+  "skipped",
+  "watchlist",
+  "needs_code",
+  "needs_review",
+  "external_lead",
+];
 const PAGE_SIZE = 50;
 
 export async function GET(req: NextRequest) {

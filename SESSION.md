@@ -4,17 +4,17 @@
 
 Job Autopilot is an implemented local MVP on the `main` branch. The working application includes profile/resume setup, configurable job-source synchronization, one-off LinkedIn URL import, deterministic matching and ranking, deterministic draft generation, local status tracking, and visible-browser assisted form filling. There is no automated test suite, authentication layer, deployment configuration, or verified submission tracking.
 
-At this documentation baseline, application source is unchanged. The local workspace contains ignored runtime artifacts such as the SQLite database, resume uploads, environment configuration, dependencies, and Next.js build output; they are sensitive or generated and must remain uncommitted.
+The current working tree includes a completed batch of workflow improvements awaiting commit: explicit applied/close/watchlist actions; conservative skill comparison and posting-gap display; Remote-only location enforcement; opt-in guarded submission; grouped-field, autocomplete, CAPTCHA, and verification-code handling; serialized Playwright actions; resumable `needs_code` jobs; additional local workflow statuses; diagnostic inspect/snapshot routes; and an unattended queue runner that parks uncertain jobs rather than guessing. The local workspace also contains ignored runtime artifacts such as the SQLite database, resume uploads, environment configuration, dependencies, Next.js build output, and queue-runner logs/PIDs; they are sensitive or generated and must remain uncommitted.
 
 ## Latest completed milestone and Git commit
 
-The latest completed application milestone is **“job search, profile, and autofill foundation”**, committed as:
+The latest committed repository milestone is **GitHub Actions quality checks**, committed as:
 
-- `3059f22464e81f9097fcbdfde24ce43c97563072` (`3059f22`)
+- `933c4bc1c34872f96b94ffc7d4ced4175c380bc0` (`933c4bc`)
 - Commit date: 2026-07-29
-- Subject: `feat: add job search, profile, and autofill foundation`
+- Subject: `ci: add GitHub Actions quality checks`
 
-The only earlier commit is `70dc5b1`, the initial Create Next App scaffold.
+The preceding documentation milestone is `d314240` (`docs: add shared Claude and Codex project context`). The latest committed application milestone remains `3059f22` (`feat: add job search, profile, and autofill foundation`), preceded by the `70dc5b1` Create Next App scaffold.
 
 ## Implemented features
 
@@ -32,7 +32,11 @@ The only earlier commit is `70dc5b1`, the initial Create Next App scaffold.
 - Remember profile answers, support native selects and React-style comboboxes, surface missing inputs, and retain manual-only categories.
 - Detect visible CAPTCHAs, bot-block pages, common load failures, and disconnected browser sessions.
 - Close browser sessions on “Done” and mark explicitly skipped jobs as `skipped`.
-- Preserve the core safety boundary: the app does not click submit.
+- Awaiting review: explicitly mark a job `applied` only after the user confirms they submitted it; close without marking preserves `new`, while a failed status update keeps the browser session open.
+- Awaiting review: show stored matched and missing skills directly on the Auto-fill queue card.
+- Awaiting review: require Remote-only jobs to match configured preferred locations instead of accepting geographically restricted remote roles worldwide.
+- Awaiting review: use boundary-aware canonical skill aliases, relabel results as mentioned/not mentioned in the posting, and stop drafts from treating unmentioned target skills as user skill gaps.
+- Awaiting review: added an opt-in "Auto-fill & submit" mode alongside the original "Auto-fill (review)" mode, at the sole user's explicit request for their own single-user instance. `submitApplication()` in `lib/autofill/filler.ts` locates and clicks the real submit control only once every field is filled and no fields require manual judgment; it falls back to leaving the browser open for the human whenever it can't confidently find the submit control, detects a CAPTCHA, or can't confirm the click produced a result. Review mode is unchanged and remains the default.
 
 ## Important architecture decisions
 
@@ -44,30 +48,58 @@ The only earlier commit is `70dc5b1`, the initial Create Next App scaffold.
 - Draft generation is a deterministic template, not an external AI call.
 - Source synchronization rescans current source results but does not delete postings absent from a later fetch.
 - Job statuses are local user-entered workflow labels and are not synchronized with employer systems.
-- Autofill uses a visible, in-memory Playwright session keyed by job ID. It fills for review, never submits, and cannot prove application completion.
+- Autofill uses a visible, in-memory Playwright session keyed by job ID. It always fills for review; an opt-in per-job "submit" mode additionally clicks the real submit control once nothing needs manual judgment, with fallback to review whenever the submit control or a confirmation can't be identified confidently. Neither mode can prove application completion to the employer -- `applied` is a user-confirmed local status only.
 - Sensitive or ambiguous fields and CAPTCHA challenges are manual boundaries.
 
 ## Validation already performed
 
 On 2026-07-29:
 
-- `npm run lint` passed with no reported errors.
+- `npm run lint` passed with no reported errors after the autofill completion change.
+- `npx tsc --noEmit` passed with no reported errors.
 - `npm run build` reached the optimized production build but failed because the restricted environment could not fetch Geist and Geist Mono from Google Fonts through `next/font`. No source compilation error was reported before that external-resource failure.
-- Repository scope was checked with `git status`; no application source changes were made by this documentation task.
+- Repository scope was checked with `git status`; the only application source change is `app/autofill/page.tsx`, accompanied by the required handoff documentation.
 
-No automated unit, integration, or end-to-end tests exist. Live source synchronization, resume parsing across all supported formats, and real ATS autofill behavior were not re-run during this documentation session.
+Later the same day, after adding the opt-in "Auto-fill & submit" mode (`lib/autofill/filler.ts`'s `submitApplication()`, `app/api/autofill/submit/route.ts`, and `app/autofill/page.tsx` mode UI) plus mobile-hydration (`suppressHydrationWarning`) and `allowedDevOrigins` LAN-access fixes:
+
+- `npm run lint` passed with no reported errors.
+- `npx tsc --noEmit` passed with no reported errors.
+- `npm run build` completed successfully this time (Google Fonts were reachable), producing `/api/autofill/submit` as a registered dynamic route alongside the existing routes.
+- Not verified: an actual live submit-mode run against a real employer ATS form. Only static checks and a production build were run for this change.
+
+After a user-authorized Twilio run exposed grouped-field reporting:
+
+- Diagnosed nine referral-source options being emitted as nine manual blockers instead of one “How did you hear about Twilio?” question.
+- Identified the two generic “Acknowledge” blockers as Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy agreements.
+- Updated grouped checkbox/radio handling to present one answerable question with real options, while acknowledgements/certifications remain manual and retain their full parent question.
+- Updated submit-mode refusal text to state that refusal occurred before clicking Submit and enumerate every exact manual blocker.
+- `npm run lint`, `npx tsc --noEmit`, and `git diff --check` passed.
+- The first sandboxed `npm run build` failed only because Google Fonts were unreachable; the approved network-enabled rerun completed successfully and registered all expected routes.
+- A subsequent live Twilio attempt exposed location-autocomplete retries appending to stale input and failing to select “New York, NY, USA.” `fillSearchCombobox()` now clears with real keyboard events, waits for the dynamically attached listbox, and retries progressively shorter city queries while still requiring a real suggestion click. Lint, TypeScript, diff checking, and the network-enabled production build passed; live ATS retest remains required.
+- At the user's explicit request, submit mode now automatically checks only the two exact Twilio Applicant Privacy Policy and Candidate AI Responsible Use Policy acknowledgements. The submit confirmation dialog discloses this action; review mode and all unrelated agreements remain manual, and a failed check remains a blocker. Lint, TypeScript, diff checking, and the production build passed; live retest is pending.
+- Still required: live Twilio retest after this fix; no submit was triggered during implementation.
+
+On 2026-07-30, after the queue, verification-code, session-serialization, diagnostic-route, and dashboard workflow changes:
+
+- `npm run lint` passed with no reported errors.
+- `npx tsc --noEmit` passed with no reported errors.
+- `npm run build` completed successfully and registered the new inspect, snapshot, and submit routes.
+- `git diff --check` passed.
+- No live ATS submission or unattended queue run was performed during this validation.
+
+No automated unit, integration, or end-to-end tests exist. Live source synchronization, resume parsing across all supported formats, and real ATS autofill behavior were not re-run during this implementation session.
 
 ## Current objective
 
-Stabilize the foundation before expanding automation: add repeatable automated coverage for deterministic core behavior and route-level persistence while preserving the no-submit safety boundary.
+Commit and live-validate the guarded autofill workflow, verification-code recovery, and unattended queue behavior, then add repeatable automated coverage.
 
 ## Blockers
 
 - There is no test framework, fixtures, or `npm test` command.
 - A production build cannot be fully validated in the current network-restricted environment because `next/font` fetches Google-hosted Geist assets.
 - Real ATS forms and external source responses are unstable third-party dependencies; their current end-to-end behavior is unverified in this session.
-- “Applied” is only a manual local status. The app has no verified employer receipt or submission evidence.
+- “Applied” remains a user-confirmed local status. The app has no verified employer receipt or submission evidence.
 
 ## Exact next recommended task
 
-Add a minimal automated test setup and repository-local fixtures for `lib/matching.ts`, `lib/skills.ts`, `lib/resume.ts` TXT handling, `lib/draft.ts`, and source normalization/HTML parsing; add an `npm test` script, run it with lint, and document the results without changing submission behavior.
+Run a user-authorized live test that exercises one successful guarded submission, one verification-code recovery, and one job parked as `needs_review`; confirm the queue runner never guesses or bypasses a manual blocker. Then add a minimal automated test setup and repository-local fixtures.

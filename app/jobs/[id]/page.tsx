@@ -30,7 +30,17 @@ type Draft = {
   generatedAt: string;
 };
 
-const STATUS_OPTIONS = ["new", "drafted", "applied", "rejected", "skipped"];
+const STATUS_OPTIONS = [
+  "new",
+  "drafted",
+  "applied",
+  "rejected",
+  "skipped",
+  "watchlist",
+  "needs_code",
+  "needs_review",
+  "external_lead",
+];
 
 export default function JobDetailPage({
   params,
@@ -142,18 +152,18 @@ export default function JobDetailPage({
               <li key={i}>{r}</li>
             ))}
           </ul>
-          {job.matchReasons.matchedSkills.length > 0 && (
-            <p>
-              <span className="text-gray-500">Matched skills: </span>
-              {job.matchReasons.matchedSkills.join(", ")}
-            </p>
-          )}
-          {job.matchReasons.missingSkills.length > 0 && (
-            <p>
-              <span className="text-gray-500">Missing skills: </span>
-              {job.matchReasons.missingSkills.join(", ")}
-            </p>
-          )}
+          <p>
+            <span className="text-gray-500">Your skills mentioned in posting: </span>
+            {job.matchReasons.matchedSkills.length > 0
+              ? job.matchReasons.matchedSkills.join(", ")
+              : "None"}
+          </p>
+          <p>
+            <span className="text-gray-500">Your skills not mentioned in posting: </span>
+            {job.matchReasons.missingSkills.length > 0
+              ? job.matchReasons.missingSkills.join(", ")
+              : "None"}
+          </p>
         </div>
       )}
 

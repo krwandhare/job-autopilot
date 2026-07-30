@@ -2,11 +2,53 @@
 
 This file is the shared source of truth for Codex, Claude Code, and other coding agents working in this repository.
 
+## Session startup
+
+At the beginning of every session:
+
+1. Read:
+   - SESSION.md
+   - TODO.md
+   - docs/architecture.md
+   - docs/workflow.md
+   - docs/roadmap.md
+
+2. Inspect:
+   - git status --short
+   - git log --oneline -5
+   - git diff
+
+3. Summarize the current state before making changes.
+
+4. Never modify files until the user gives an implementation or review task.
+
+## Session completion
+
+After completing meaningful work:
+
+1. Run:
+   - npm run lint
+   - npx tsc --noEmit
+   - npm run build
+
+2. Update:
+   - SESSION.md
+   - TODO.md
+   - relevant docs under docs/
+
+3. Show:
+   - git diff --stat
+   - git status --short
+
+4. Do not commit unless explicitly instructed.
+
 ## Project purpose
 
-Job Autopilot is a local, single-user job-search assistant. It imports or synchronizes job postings, scores them against a resume and user-defined filters, generates deterministic application drafts, and opens real application forms in a visible Playwright browser for assisted filling and human review.
+Job Autopilot is a local, single-user job-search assistant. It imports or synchronizes job postings, scores them against a resume and user-defined filters, generates deterministic application drafts, and opens real application forms in a visible Playwright browser for assisted filling and, by default, human review before submission.
 
-The user remains responsible for reviewing every claim and performing every submission. Never submit a real job application without explicit user approval. In the current product flow, agents should preserve the stronger boundary already implemented in the UI: the human clicks the employer's submit control.
+The Auto-fill page offers two modes, chosen per job: **Auto-fill (review)** — the original and default behavior, where the human always clicks the employer's submit control themselves — and **Auto-fill & submit**, an opt-in escape hatch (added at the sole user's explicit request for their own single-user instance) where `submitApplication()` in `lib/autofill/filler.ts` locates and clicks the real submit control itself, but only once every field is filled and nothing is left that needs manual judgment (CAPTCHA, grouped radios, excluded/ambiguous fields). It refuses to guess: an unrecognized submit control, a captcha, or a click that produces no confirmable result all fall back to leaving the browser open for the human, exactly like review mode, rather than assuming success.
+
+The user remains responsible for reviewing every claim. Never submit a real job application via a mechanism other than these two explicit, user-chosen modes, and never make Auto-fill & submit more aggressive (looser button matching, ignoring CAPTCHA/manual-field blocks, assuming success without a confirmation signal) without being explicitly asked.
 
 Never claim that an employer sponsors visas, that compensation is available or guaranteed, that an application has a particular status, or that a submission succeeded without verified evidence. A value stored in the local `jobs.status` column is user-managed tracking metadata, not evidence from an employer or ATS.
 
@@ -57,7 +99,7 @@ The application creates `data/app.db` and its schema lazily on first database ac
 - `lib/matching.ts` performs deterministic rule-based scoring.
 - `lib/draft.ts` produces deterministic template-based cover letters and screening answers; it does not call an LLM.
 - `lib/resume.ts` and `lib/skills.ts` extract resume text and detect skills from a curated vocabulary.
-- `lib/autofill/` owns browser sessions, field scanning and classification, CAPTCHA/load-failure detection, and filling.
+- `lib/autofill/` owns browser sessions, field scanning and classification, CAPTCHA/load-failure detection, filling, and (opt-in) `submitApplication()` for clicking the real submit control.
 
 See `docs/architecture.md` and `docs/workflow.md` for route, module, data-flow, and behavioral details.
 
@@ -72,7 +114,7 @@ See `docs/architecture.md` and `docs/workflow.md` for route, module, data-flow, 
 - Keep scoring and draft generation deterministic unless a product decision explicitly changes that architecture.
 - Use parameterized SQL. If schema changes are necessary, make initialization idempotent and preserve existing local databases.
 - Validate request bodies and uploaded files at route boundaries. Return useful JSON errors without leaking credentials, resume text, filesystem paths, or internal stack traces.
-- Do not weaken the explicit manual-review and no-auto-submit boundary.
+- Do not weaken the manual-review default or the fallback-to-review-on-uncertainty behavior in Auto-fill & submit (see Project purpose above) without being explicitly asked.
 - Avoid introducing unsupported claims into drafts. Resume-derived text is user data, not independently verified evidence.
 - Keep changes focused and update documentation when routes, schema, workflows, or milestones change.
 
@@ -89,7 +131,7 @@ There is currently no `npm test` script. If a test suite is added, document and 
 
 `next build` fetches the configured Geist fonts from Google Fonts. A network-restricted environment can therefore fail the build even when compilation is otherwise healthy; report that exact limitation and rerun where network access is available rather than claiming success.
 
-For autofill changes, static checks are not enough. Manually verify in a visible browser against user-authorized, non-destructive test forms. Confirm that no submit control is activated, sensitive/manual fields remain manual, and the browser session closes cleanly.
+For autofill changes, static checks are not enough. Manually verify in a visible browser against user-authorized, non-destructive test forms. In review mode, confirm no submit control is activated; in submit mode, confirm it only activates once manualFields is empty and correctly falls back to review when it can't confidently find/confirm the submit action. Confirm sensitive/manual fields remain manual and the browser session closes cleanly.
 
 ## Git workflow
 

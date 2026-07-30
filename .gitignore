@@ -44,6 +44,10 @@ yarn-error.log*
 /data/resumes/
 !/data/.gitkeep
 
+# background queue runner
+/data/queue-runner.log
+/data/queue-runner.pid
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

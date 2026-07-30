@@ -147,6 +147,7 @@ export default function ProfilePage() {
           onChange={handleUpload}
           disabled={uploading}
           className="block text-sm"
+          suppressHydrationWarning
         />
         {uploading && <p className="text-sm text-gray-500">Parsing resume…</p>}
         {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
@@ -182,6 +183,7 @@ export default function ProfilePage() {
                   onKeyDown={(e) => e.key === "Enter" && addSkill()}
                   placeholder="Add a skill"
                   className="border rounded px-2 py-1 text-sm flex-1"
+                  suppressHydrationWarning
                 />
                 <button
                   onClick={addSkill}
@@ -205,6 +207,7 @@ export default function ProfilePage() {
               onChange={(e) => setFilter({ ...filter, titleInclude: e.target.value })}
               placeholder="engineer, developer"
               className="border rounded px-2 py-1 w-full"
+              suppressHydrationWarning
             />
           </label>
           <label className="text-sm space-y-1">
@@ -214,6 +217,7 @@ export default function ProfilePage() {
               onChange={(e) => setFilter({ ...filter, titleExclude: e.target.value })}
               placeholder="intern, senior"
               className="border rounded px-2 py-1 w-full"
+              suppressHydrationWarning
             />
           </label>
           <label className="text-sm space-y-1">
@@ -223,6 +227,7 @@ export default function ProfilePage() {
               onChange={(e) => setLocationsText(e.target.value)}
               placeholder="Remote, New York"
               className="border rounded px-2 py-1 w-full"
+              suppressHydrationWarning
             />
           </label>
           <label className="text-sm space-y-1">
@@ -238,6 +243,7 @@ export default function ProfilePage() {
               }
               placeholder="100000"
               className="border rounded px-2 py-1 w-full"
+              suppressHydrationWarning
             />
           </label>
           <label className="text-sm space-y-1 col-span-2">
@@ -247,6 +253,7 @@ export default function ProfilePage() {
               onChange={(e) => setExcludedCompaniesText(e.target.value)}
               placeholder="Acme Corp"
               className="border rounded px-2 py-1 w-full"
+              suppressHydrationWarning
             />
           </label>
           <label className="text-sm flex items-center gap-2">
@@ -254,6 +261,7 @@ export default function ProfilePage() {
               type="checkbox"
               checked={filter.remoteOnly}
               onChange={(e) => setFilter({ ...filter, remoteOnly: e.target.checked })}
+              suppressHydrationWarning
             />
             <span>Remote only</span>
           </label>

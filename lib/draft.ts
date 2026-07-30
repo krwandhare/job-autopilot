@@ -57,14 +57,5 @@ Best regards`;
     },
   ];
 
-  if (match.missingSkills.length > 0) {
-    answers.push({
-      question: "Are there any areas mentioned in the posting you're still developing?",
-      answer: `I'm continuing to build expertise in ${match.missingSkills
-        .slice(0, 3)
-        .join(", ")}, and I'm eager to grow further in these areas on the job.`,
-    });
-  }
-
   return { coverLetter, answers };
 }

@@ -27,7 +27,7 @@ export async function POST(
 
   const match: MatchResult = job.match_reasons_json
     ? JSON.parse(job.match_reasons_json)
-    : { score: 0, matchedSkills: [], missingSkills: [], reasons: [] };
+    : { score: 0, matchedSkills: [], missingSkills: [], skillsInPostingNotInResume: [], reasons: [] };
 
   const draft = generateDraft(resume.text, { title: job.title, company: job.company }, match);
 

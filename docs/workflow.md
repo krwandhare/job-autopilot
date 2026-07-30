@@ -66,16 +66,18 @@ The dashboard shows 50 jobs per page, hides score-zero jobs by default, supports
 
 ### Implemented
 
-Scoring happens during sync/import. Included titles, location/remote, known salary, and skill overlap add points. Excluded titles/companies and failed configured constraints can force zero. Required skills take precedence; otherwise latest resume skills are targets.
+Scoring happens during sync/import. Included titles, location/remote, known salary, and skill overlap add points. Excluded titles/companies and failed configured constraints can force zero. Required skills take precedence; otherwise latest resume skills are targets. Skill comparison uses conservative canonical aliases such as NodeJS/Node.js, K8s/Kubernetes, RESTful/REST, and continuous integration/CI/CD. If Remote-only and preferred locations are both set, both constraints must pass; a remotely labeled role in a different configured geography is scored zero.
 
 The dashboard ranks by stored score and the detail page explains stored reasons. The denominator is the maximum possible score for currently configured categories, not always 100.
 
 ### Important limitations
 
-- Matching is substring/word based, deterministic, and intentionally simple.
+- Matching is boundary- and alias-based, deterministic, and intentionally conservative; unlisted synonyms can still be missed.
+- “Your skills not mentioned in posting” means the posting text omitted those target skills. It does not mean they are absent from the profile/resume or that the user lacks them.
 - Unknown salary is not rejected by a minimum salary filter.
 - Remote detection is text heuristic.
 - Scores can become stale after filter/resume changes until the job is rescored.
+- Existing jobs must be synchronized again after changing location rules or preferences.
 - A match score is not evidence of qualification, sponsorship, compensation, or hiring likelihood.
 
 ## Job-detail review
@@ -112,15 +114,17 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 ### Implemented
 
 1. Open `/autofill`.
-2. `GET /api/autofill/next` selects the highest-score, newest-fetched job with local status `new`.
+2. `GET /api/autofill/next` selects the highest-score, newest-fetched job with local status `new`. A `jobId` query parameter can resume a parked job directly. The Auto-fill card displays salary, extracted responsibilities/qualifications, skills mentioned in the posting, and known posting skills absent from the resume.
 3. Click “Start filling.”
 4. The server launches a non-headless Chromium window and opens the stored job URL.
 5. Direct Lever listing URLs are changed to `/apply`.
 6. The filler checks page failures and visible CAPTCHA/bot-block signals.
 7. It resolves the page itself or a lazy Greenhouse/Lever iframe, scans fields, and tags them with ephemeral IDs.
 8. It attaches the stored resume, fills a stored/latest generated cover letter when possible, and applies remembered profile answers.
-9. The UI asks for remaining values; saved answers are reused by semantic key on later jobs.
-10. When filling is complete, the employer window remains open for manual review.
+9. The UI asks for remaining values; saved answers are reused by semantic key on later jobs. A grouped radio/checkbox question is presented once with its real options instead of once per option.
+   Search-as-you-type location controls are cleared before retries, wait for their live suggestion list, and may retry a shorter city query; success still requires clicking a real suggestion.
+10. Policy acknowledgements, certifications, and other agreement checkboxes retain their full parent question and remain manual-only by default. In explicitly selected submit mode, the two narrowly allowlisted Twilio Applicant Privacy Policy and Candidate AI Responsible Use Policy acknowledgements are checked automatically after the confirmation dialog names that behavior; all other agreements remain manual.
+11. When filling is complete, review mode leaves the employer window open. Opt-in submit mode proceeds only when no manual-only fields remain; otherwise the UI lists the exact blocking questions and states that refusal happened before any submit click.
 
 ### Incomplete or unverified
 
@@ -151,8 +155,10 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 - Visible CAPTCHA frames and common bot-block page phrases return a blocked state.
 - Invisible/background CAPTCHA frames are not automatically treated as a human challenge.
 - Government-ID/SSN/password-like fields are excluded from automatic filling.
-- Grouped radio/checkbox controls and other ambiguous fields are reported as manual.
+- Grouped radio/checkbox questions are presented once with their actual options. Policy acknowledgements, certifications, sensitive controls, and otherwise ambiguous fields remain manual.
 - Load failures and disconnected/closed browser sessions are converted to user-facing errors.
+- Email/SMS verification-code challenges are never filled automatically. A blocked submit can move the job to `needs_code` for later resumption.
+- Playwright actions for one job are serialized, and opening a new session closes any other tracked browser session.
 
 ### Required human behavior
 
@@ -162,17 +168,22 @@ Complete CAPTCHA or sensitive/ambiguous questions manually in the visible browse
 
 ### Implemented boundary
 
-The app never clicks an employer submit control. After “ready for review,” the user reviews the external window and decides whether to submit. “Done, next job” calls the finish endpoint, closes the browser, and loads the next local `new` job.
+Review mode never clicks an employer submit control. The separately selected opt-in submit mode clicks a conservatively matched submit control only when filling is complete and no manual-only fields remain. A refusal lists the exact blockers; CAPTCHA, an unknown submit control, or an unconfirmed result falls back to the open employer window.
 
-Skipping explicitly updates status to `skipped`; finishing does not automatically change the status to `applied` or verify any employer outcome.
+- **“I submitted it — mark Applied & next”** is an explicit user confirmation. It first patches the local job status to `applied`, verifies that update succeeded, then closes the Playwright session and loads the next local `new` job.
+- If the status update fails, the UI displays an error, keeps the browser session open, and does not advance.
+- **“Close without marking Applied”** closes the Playwright session without changing status. The current job remains `new` and can be started again.
+- CAPTCHA, load-error, and generic completion paths can close a session but never set `applied`.
+- Skipping explicitly updates status to `skipped`, closes the session, and advances as before.
+- “Save for later” moves a job to `watchlist`. The optional local queue runner processes only `new` jobs and parks unresolved work as `needs_review` or `needs_code`.
+- After an unconfirmed submit that requires manual completion, a read-only watcher can recognize a later success page, mark the local job `applied`, and close the session. It never types or clicks.
 
 ### Not implemented
 
-- automatic submission;
 - employer/ATS receipt verification;
 - confirmation-page or confirmation-email capture;
 - verified synchronization of applied/rejected status;
 - proof of sponsorship or compensation;
 - reliable detection that the user submitted before clicking “Done.”
 
-Therefore, never report successful submission or employer-side application status from this app unless separate verified evidence is provided.
+The local `applied` value records only what the user confirmed. It is not proof that the employer received the application. Therefore, never report successful submission or employer-side application status from this app unless separate verified evidence is provided.

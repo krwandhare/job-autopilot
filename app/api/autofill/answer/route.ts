@@ -4,7 +4,7 @@ import { fillAnsweredField, type MissingField } from "@/lib/autofill/filler";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { jobId, autofillId, key, label, kind, answer, options, isCombobox } = body as {
+  const { jobId, autofillId, key, label, kind, answer, options, isCombobox, isOptionGroup } = body as {
     jobId: number;
     autofillId: string;
     key: string;
@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
     answer: string;
     options?: MissingField["options"];
     isCombobox?: MissingField["isCombobox"];
+    isOptionGroup?: MissingField["isOptionGroup"];
   };
 
   if (!jobId || !autofillId || !key || answer === undefined) {
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   const filled = await fillAnsweredField(
     Number(jobId),
-    { autofillId, key, label, kind, options, isCombobox },
+    { autofillId, key, label, kind, options, isCombobox, isOptionGroup },
     answer
   );
 

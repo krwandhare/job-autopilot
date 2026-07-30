@@ -1,4 +1,5 @@
 import type { NormalizedJob } from "./sources/types";
+import { skillAppearsInText, extractSkills } from "./skills";
 
 export type FilterRules = {
   titleInclude: string;
@@ -14,6 +15,13 @@ export type MatchResult = {
   score: number;
   matchedSkills: string[];
   missingSkills: string[];
+  // Skills detected (via the same curated vocabulary used for resume
+  // extraction) in this posting's title/description that do not appear in
+  // the resume's skill list -- a genuine skill-gap signal, not to be
+  // confused with `missingSkills` above (which is about target skills not
+  // mentioned in the posting, the opposite direction). Heuristic and not
+  // exhaustive: only vocabulary the app already knows how to detect.
+  skillsInPostingNotInResume: string[];
   reasons: string[];
 };
 
@@ -86,11 +94,18 @@ export function scoreJob(
     score += 10;
   }
 
-  if (filters.locations.length > 0 && !filters.remoteOnly) {
+  if (filters.locations.length > 0) {
     const locLower = (job.location ?? "").toLowerCase();
-    const hit = filters.locations.some((l) => locLower.includes(l.toLowerCase())) || job.remote;
+    const locationMatches = filters.locations.some((l) =>
+      locLower.includes(l.toLowerCase())
+    );
+    // A remote-only search still needs to respect configured geography:
+    // "Remote - India" is not a US match merely because it says remote.
+    // When remote-only is off, preserve the existing behavior where a
+    // generally remote role can satisfy the location preference.
+    const hit = locationMatches || (!filters.remoteOnly && job.remote);
     if (hit) {
-      score += 15;
+      if (!filters.remoteOnly) score += 15;
       reasons.push("Location matches");
     } else {
       hardFail = true;
@@ -111,10 +126,21 @@ export function scoreJob(
     }
   }
 
-  const jobText = `${job.title} ${job.description ?? ""}`.toLowerCase();
+  const jobText = `${job.title} ${job.description ?? ""}`;
   const requiredSkills = filters.requiredSkills.length > 0 ? filters.requiredSkills : resumeSkills;
-  const matchedSkills = requiredSkills.filter((s) => jobText.includes(s.toLowerCase()));
+  const matchedSkills = requiredSkills.filter((s) => skillAppearsInText(jobText, s));
   const missingSkills = requiredSkills.filter((s) => !matchedSkills.includes(s));
+
+  // The reverse direction from matchedSkills/missingSkills above: scan the
+  // posting itself (independent of any target-skill list) for known
+  // vocabulary, then subtract what's actually in the resume -- this is the
+  // "what does this posting want that I don't have" gap, not "did my chosen
+  // target skills show up in the posting."
+  const skillsMentionedInPosting = extractSkills(jobText);
+  const resumeSkillsLower = new Set(resumeSkills.map((s) => s.toLowerCase()));
+  const skillsInPostingNotInResume = skillsMentionedInPosting.filter(
+    (s) => !resumeSkillsLower.has(s.toLowerCase())
+  );
 
   if (requiredSkills.length > 0) {
     const overlapRatio = matchedSkills.length / requiredSkills.length;
@@ -128,6 +154,7 @@ export function scoreJob(
     score: Math.max(0, Math.min(100, Math.round(score))),
     matchedSkills,
     missingSkills,
+    skillsInPostingNotInResume,
     reasons,
   };
 }

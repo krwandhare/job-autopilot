@@ -12,11 +12,15 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Static curated Greenhouse/Lever source seeding.
 - One-off public LinkedIn URL import without login or bulk crawling.
 - Deterministic filters, hard exclusions, skill-overlap scoring, match explanations, ranking, status filtering, zero-score visibility, and pagination.
+- Remote-only matching also enforces configured preferred locations, preventing geographically restricted remote roles from qualifying solely because they contain “remote.”
 - Deterministic cover-letter and screening-answer generation.
 - Visible Playwright browser sessions that scan and fill supported native and React-style controls.
 - Stored resume attachment, ad hoc file attachment, and remembered semantic answers.
 - Manual boundaries for sensitive/ambiguous controls and CAPTCHA/bot-block detection.
-- Explicit no-auto-submit workflow and manual local status tracking.
+- Review-only autofill by default, plus explicit guarded auto-submit with conservative fallback and manual local status tracking.
+- Explicit user-confirmed autofill completion: mark locally `applied` and advance only after the user says they submitted; allow closing without changing `new`.
+- Auto-fill queue cards show stored matched and missing skills before the user starts filling.
+- Skill comparison uses conservative canonical aliases and labels results as mentioned/not mentioned in the posting; draft generation does not claim the user lacks an unmentioned target skill.
 
 ## Stabilization work
 
@@ -34,7 +38,7 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Recompute stored job scores when profile filters or resume skills change, or clearly prompt the user to resync.
 - Add draft editing and persistence before copy/use.
 - Improve user-visible failure handling for profile, source, status, and file requests that currently assume successful JSON responses.
-- Add explicit local completion notes or timestamps without implying employer verification.
+- Optionally add local completion notes or timestamps without implying employer verification.
 - Add safe structured diagnostics for source and autofill failures while excluding personal data, page contents, cookies, answers, and credentials.
 - Add a controlled way to choose among stored resumes rather than implicitly using only the latest.
 - Clarify and test stale-job handling when a posting disappears from a configured source.

@@ -27,6 +27,10 @@ const STATUS_LABELS: Record<string, string> = {
   applied: "Applied",
   rejected: "Rejected",
   skipped: "Skipped",
+  watchlist: "Watchlist",
+  needs_code: "Needs Verification Code",
+  needs_review: "Needs Review",
+  external_lead: "External Lead (LinkedIn, etc.)",
 };
 
 export default function DashboardPage() {
@@ -192,6 +196,7 @@ export default function DashboardPage() {
                 onChange={(e) => setGhSlug(e.target.value)}
                 placeholder="e.g. stripe"
                 className="border rounded px-2 py-1 flex-1"
+                suppressHydrationWarning
               />
               <button
                 onClick={() => {
@@ -214,6 +219,7 @@ export default function DashboardPage() {
                 onChange={(e) => setLeverSlug(e.target.value)}
                 placeholder="e.g. netflix"
                 className="border rounded px-2 py-1 flex-1"
+                suppressHydrationWarning
               />
               <button
                 onClick={() => {
@@ -236,6 +242,7 @@ export default function DashboardPage() {
                 onChange={(e) => setAdzunaWhat(e.target.value)}
                 placeholder="keywords (what)"
                 className="border rounded px-2 py-1"
+                suppressHydrationWarning
               />
               <div className="flex gap-2">
                 <input
@@ -243,6 +250,7 @@ export default function DashboardPage() {
                   onChange={(e) => setAdzunaWhere(e.target.value)}
                   placeholder="location (where)"
                   className="border rounded px-2 py-1 flex-1"
+                  suppressHydrationWarning
                 />
                 <button
                   onClick={() => {
@@ -296,6 +304,7 @@ export default function DashboardPage() {
             onChange={(e) => setLinkedinUrl(e.target.value)}
             placeholder="https://www.linkedin.com/jobs/view/..."
             className="border rounded px-2 py-1 flex-1 text-sm"
+            suppressHydrationWarning
           />
           <button
             onClick={importLinkedin}
@@ -328,6 +337,7 @@ export default function DashboardPage() {
                   setShowAll(e.target.checked);
                   setPage(1);
                 }}
+                suppressHydrationWarning
               />
               Show non-matches (score 0)
             </label>
@@ -356,23 +366,36 @@ export default function DashboardPage() {
             </p>
           )}
           {jobs.map((job) => (
-            <Link
-              key={job.id}
-              href={`/jobs/${job.id}`}
-              className="flex items-center justify-between p-4 hover:bg-gray-50"
-            >
-              <div>
+            <div key={job.id} className="flex items-center justify-between p-4 hover:bg-gray-50">
+              <Link href={`/jobs/${job.id}`} className="flex-1 min-w-0">
                 <p className="font-medium">{job.title}</p>
                 <p className="text-sm text-gray-500">
                   {job.company} · {job.location ?? "Unknown location"}
                   {job.remote ? " · Remote" : ""} · {job.source}
                 </p>
-              </div>
+              </Link>
               <div className="flex items-center gap-3">
-                <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                {job.status === "needs_code" && (
+                  <Link
+                    href={`/autofill?jobId=${job.id}`}
+                    className="text-xs bg-amber-600 text-white px-2 py-1 rounded-full hover:bg-amber-700"
+                  >
+                    Resume &amp; enter code
+                  </Link>
+                )}
+                {job.status === "needs_review" && (
+                  <Link
+                    href={`/autofill?jobId=${job.id}`}
+                    className="text-xs bg-amber-600 text-white px-2 py-1 rounded-full hover:bg-amber-700"
+                  >
+                    Resume &amp; review
+                  </Link>
+                )}
+                <Link href={`/jobs/${job.id}`} className="text-xs bg-gray-100 px-2 py-1 rounded-full">
                   {STATUS_LABELS[job.status] ?? job.status}
-                </span>
-                <span
+                </Link>
+                <Link
+                  href={`/jobs/${job.id}`}
                   className={`text-sm font-semibold ${
                     maxScore > 0 && (job.matchScore ?? 0) >= maxScore * 0.7
                       ? "text-green-600"
@@ -383,9 +406,9 @@ export default function DashboardPage() {
                 >
                   {job.matchScore ?? 0}
                   {maxScore > 0 && <span className="text-gray-400">/{maxScore}</span>}
-                </span>
+                </Link>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
 
