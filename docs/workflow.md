@@ -196,6 +196,14 @@ expected to change. `scripts/integrate-branch.sh` compares the source branch
 with the integration target, rejects out-of-scope paths, performs the merge in
 a disposable detached worktree, and runs `npm run validate`.
 
+Each agent creates focused checkpoint commits on its own feature branch without
+requiring a repeated user instruction: after a coherent validated unit,
+normally every 30–90 minutes, and before a task switch or session handoff.
+Elapsed time alone never justifies committing broken or incoherent work. The
+integrator rejects a checked-out source branch with tracked or untracked
+changes, preventing an apparently successful merge that silently omits the
+agent's unfinished local diff.
+
 Without `--apply`, the command is a complete dry run. With `--apply`, it
 creates the merge commit only after validation and atomically advances
 `integration/concurrent-work`. If that branch moved during validation, the

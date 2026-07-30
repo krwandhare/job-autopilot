@@ -40,7 +40,10 @@ After completing meaningful work:
    - git diff --stat
    - git status --short
 
-4. Do not commit unless explicitly instructed.
+4. On an assigned concurrent feature branch, create a checkpoint commit for
+   each completed, validated unit without waiting for another commit
+   instruction. This standing authorization does not permit pushing, merging,
+   rebasing, or committing unrelated/user-owned changes.
 
 ## Project purpose
 
@@ -136,6 +139,14 @@ For autofill changes, static checks are not enough. Manually verify in a visible
 ## Git workflow
 
 - Inspect `git status`, the relevant diff, and recent history before editing.
+- On `feature/codex-*` and `feature/claude-*`, commit autonomously whenever a
+  coherent reviewable unit is complete, normally every 30–90 minutes of active
+  work and always before switching tasks or ending a session. Run validation
+  proportional to the checkpoint, use a focused message, and never commit
+  known-broken code, secrets, databases, resumes, logs, or unrelated changes.
+- Do not create timer-driven commits merely because time elapsed. The unit must
+  be coherent and validated. Longer unfinished work stays local until it
+  reaches a safe checkpoint; report it as uncommitted if the session must stop.
 - Concurrent Codex and Claude work uses `feature/codex-*` and `feature/claude-*`
   branches. Integrate them through `integration/concurrent-work` with
   `scripts/integrate-branch.sh`; do not merge either feature directly into
@@ -144,8 +155,9 @@ For autofill changes, static checks are not enough. Manually verify in a visible
   patterns. Shared files still require semantic review even when the allowlist
   permits both tasks to edit them.
 - The guarded integrator must stop on ownership violations, textual conflicts,
-  failed validation, or a concurrently advanced target. Never bypass those
-  gates with an automatic ours/theirs conflict choice.
+  a dirty source worktree, failed validation, or a concurrently advanced
+  target. Never bypass those gates with an automatic ours/theirs conflict
+  choice.
 - Treat existing working-tree changes as user-owned. Do not overwrite or discard them.
 - Work in small, reviewable changes and keep application changes separate from documentation-only changes where practical.
 - Do not commit `.env.local`, credentials, `data/app.db*`, anything under `data/resumes/`, build output, or personal application data.

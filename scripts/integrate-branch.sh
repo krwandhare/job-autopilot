@@ -75,6 +75,22 @@ git show-ref --verify --quiet "refs/heads/$TARGET_BRANCH" ||
 
 [[ "$SOURCE_BRANCH" != "$TARGET_BRANCH" ]] || fail "source and target must differ"
 
+# A branch can be committed while its checked-out worktree still contains a
+# newer unfinished diff. Integrating only the branch ref in that state would
+# silently omit work the agent may believe is included. Refuse until the agent
+# creates a coherent checkpoint commit (or deliberately cleans its worktree).
+SOURCE_WORKTREE="$(
+  git worktree list --porcelain |
+    awk -v wanted="refs/heads/$SOURCE_BRANCH" '
+      /^worktree / { path = substr($0, 10) }
+      /^branch / && substr($0, 8) == wanted { print path; exit }
+    '
+)"
+if [[ -n "$SOURCE_WORKTREE" ]] &&
+  [[ -n "$(git -C "$SOURCE_WORKTREE" status --porcelain --untracked-files=all)" ]]; then
+  fail "source worktree has uncommitted changes: $SOURCE_WORKTREE"
+fi
+
 ALLOW_FILE="$REPO_ROOT/config/agent-tasks/$TASK_NAME.allow"
 [[ -f "$ALLOW_FILE" ]] || fail "missing ownership allowlist: $ALLOW_FILE"
 
