@@ -2,6 +2,9 @@
 
 ## In Progress
 
+- Validate the new dashboard Action Center, persisted manual-action reasons,
+  summary counts, status fallbacks, and responsive presentation against a
+  disposable synthetic database.
 - Implement the shared-runtime and atomic job-claim foundation before either
   feature branch changes application behavior.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
@@ -28,6 +31,9 @@
 
 ## Completed
 
+- Added the Action Center data model, read API, validated action context on job
+  status updates, prioritized dashboard summaries/cards, and a disposable
+  SQLite model test (uncommitted on `feature/codex-work`).
 - Created isolated shared-runtime, Codex, Claude, and integration branches and
   sibling feature worktrees; added ownership policies and end-to-end-tested
   fail-closed merge automation (`1f3f9dc`, `b962094`, integrated as `6cd53d0`).

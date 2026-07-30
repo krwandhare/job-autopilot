@@ -127,9 +127,9 @@ implementation session.
 
 ## Current objective
 
-Implement shared-runtime database/upload paths, instance identity, SQLite
-contention handling, and atomic job claims before concurrent feature
-development begins.
+Build and validate a dashboard Action Center that makes every manual
+application step easy to identify, understand, and resume without weakening
+autofill safety boundaries.
 
 ## Blockers
 
@@ -140,7 +140,5 @@ development begins.
 
 ## Exact next recommended task
 
-Implement configurable shared database/upload paths, instance identity,
-SQLite contention handling, and atomic expiring job claims on
-`feature/shared-runtime`. Then advance the Codex and Claude feature baselines
-and begin their isolated assignments.
+Run the Action Center against a disposable synthetic database in desktop and
+mobile browser sizes, then integrate the feature through the guarded pipeline.

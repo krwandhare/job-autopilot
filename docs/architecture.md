@@ -16,7 +16,7 @@ Browser UI
 
 | Route | File | Responsibility |
 | --- | --- | --- |
-| `/` | `app/page.tsx` | Dashboard: configure/delete/seed sources, run synchronization, import one LinkedIn URL, filter and paginate jobs, and open job details. |
+| `/` | `app/page.tsx` | Action Center for manual application steps and decisions, followed by source management, LinkedIn import, and the filterable job pipeline. |
 | `/profile` | `app/profile/page.tsx` | Upload the latest resume, review/edit detected skills, and save matching filters. |
 | `/jobs/[id]` | `app/jobs/[id]/page.tsx` | Display normalized job data, local status, score/reasons, matched/missing skills, and the latest generated draft. |
 | `/autofill` | `app/autofill/page.tsx` | Work through the highest-ranked `new` job, launch filling, collect missing answers/files, show manual fields, and close/skip sessions. |
@@ -50,6 +50,7 @@ Browser UI
 | `POST /api/autofill/submit` | In explicitly selected submit mode, conservatively locate and click the submit control and require a confirmation signal; otherwise return an unconfirmed/manual result. |
 | `GET /api/autofill/inspect` | Return diagnostic metadata for a field in an open local browser session. |
 | `GET /api/autofill/snapshot` | Return a diagnostic snapshot of an open local browser session. |
+| `GET /api/actions` | Return prioritized unresolved manual actions and per-status counts for the dashboard Action Center, with safe status-derived fallback reasons. |
 
 ## SQLite persistence
 
@@ -61,8 +62,16 @@ Browser UI
 - `drafts`: immutable generated cover letters and JSON screening answers associated with a job.
 - `source_configs`: source type and JSON configuration.
 - `profile_answers`: one remembered answer per semantic field key.
+- `job_actions`: structured unresolved/resolved manual-action reasons, details,
+  source, and timestamps associated with jobs.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
+
+`job_actions` is created idempotently. The dashboard reads the latest unresolved
+record for each actionable job. Existing jobs without a record remain useful:
+their local status produces a conservative fallback explanation. Changing a
+job to a non-actionable status resolves its open action records; callers may
+attach validated structured action context when patching an actionable status.
 
 Synchronization and URL import use upserts. They update normalized fields and scores without deleting stale jobs or overwriting the job's local status.
 

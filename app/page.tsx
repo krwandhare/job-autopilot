@@ -21,6 +21,28 @@ type SourceConfig = {
   config: Record<string, unknown>;
 };
 
+type DashboardAction = {
+  id: number | null;
+  jobId: number;
+  status: string;
+  title: string;
+  company: string;
+  location: string | null;
+  remote: boolean;
+  matchScore: number | null;
+  reasonText: string;
+  details: string[];
+  updatedAt: string;
+  primaryLabel: string;
+  primaryHref: string;
+};
+
+type ActionCenterData = {
+  total: number;
+  counts: Record<string, number>;
+  actions: DashboardAction[];
+};
+
 const STATUS_LABELS: Record<string, string> = {
   new: "New",
   drafted: "Drafted",
@@ -33,6 +55,63 @@ const STATUS_LABELS: Record<string, string> = {
   external_lead: "External Lead (LinkedIn, etc.)",
 };
 
+const ACTION_META: Record<
+  string,
+  { shortLabel: string; eyebrow: string; accent: string; panel: string }
+> = {
+  needs_code: {
+    shortLabel: "Verification",
+    eyebrow: "Verification code required",
+    accent: "bg-red-600",
+    panel: "border-red-200 bg-red-50/60",
+  },
+  needs_review: {
+    shortLabel: "Needs review",
+    eyebrow: "Application needs your review",
+    accent: "bg-amber-500",
+    panel: "border-amber-200 bg-amber-50/60",
+  },
+  external_lead: {
+    shortLabel: "External",
+    eyebrow: "External application",
+    accent: "bg-violet-500",
+    panel: "border-violet-200 bg-violet-50/60",
+  },
+  drafted: {
+    shortLabel: "Drafts",
+    eyebrow: "Draft ready to review",
+    accent: "bg-blue-500",
+    panel: "border-blue-200 bg-blue-50/60",
+  },
+  watchlist: {
+    shortLabel: "Decisions",
+    eyebrow: "Decision needed",
+    accent: "bg-slate-500",
+    panel: "border-slate-200 bg-slate-50/70",
+  },
+};
+
+const ACTION_STATUS_ORDER = [
+  "needs_code",
+  "needs_review",
+  "external_lead",
+  "drafted",
+  "watchlist",
+];
+
+function relativeTime(value: string): string {
+  const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+  const timestamp = new Date(normalized).getTime();
+  if (!Number.isFinite(timestamp)) return "Recently";
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function DashboardPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [maxScore, setMaxScore] = useState(0);
@@ -42,6 +121,13 @@ export default function DashboardPage() {
   const [sources, setSources] = useState<SourceConfig[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [actionCenter, setActionCenter] = useState<ActionCenterData>({
+    total: 0,
+    counts: {},
+    actions: [],
+  });
+  const [actionsLoading, setActionsLoading] = useState(true);
+  const [actionsError, setActionsError] = useState<string | null>(null);
 
   const [ghSlug, setGhSlug] = useState("");
   const [leverSlug, setLeverSlug] = useState("");
@@ -75,11 +161,27 @@ export default function DashboardPage() {
     setSources(data.sources);
   }
 
+  async function loadActions() {
+    setActionsLoading(true);
+    setActionsError(null);
+    try {
+      const res = await fetch("/api/actions");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not load manual actions");
+      setActionCenter(data);
+    } catch (err) {
+      setActionsError(err instanceof Error ? err.message : "Could not load manual actions");
+    } finally {
+      setActionsLoading(false);
+    }
+  }
+
   useEffect(() => {
     // Initial data load on mount, not synchronous render-derived state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadJobs(statusFilter, page, showAll);
     loadSources();
+    loadActions();
   }, [statusFilter, page, showAll]);
 
   async function addSource(type: string, config: Record<string, unknown>) {
@@ -127,6 +229,7 @@ export default function DashboardPage() {
       setSyncMessage(`Synced ${data.synced} jobs from ${data.sourcesConfigured} source(s).`);
     }
     loadJobs(statusFilter, page, showAll);
+    loadActions();
   }
 
   async function importLinkedin() {
@@ -145,18 +248,22 @@ export default function DashboardPage() {
     } else {
       setLinkedinUrl("");
       loadJobs(statusFilter, page, showAll);
+      loadActions();
     }
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div className="max-w-5xl mx-auto p-8 space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-6xl space-y-8 p-4 sm:p-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
+            Application workspace
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-gray-950">Dashboard</h1>
           <p className="text-sm text-gray-500">
-            Matched jobs, sorted by fit score. Review a draft, then apply yourself.
+            See what needs you, why it needs you, and the next safe action to take.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -170,6 +277,143 @@ export default function DashboardPage() {
         </div>
       </div>
       {syncMessage && <p className="text-sm text-gray-600">{syncMessage}</p>}
+
+      <section aria-labelledby="action-center-heading" className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 id="action-center-heading" className="text-xl font-semibold text-gray-950">
+                Needs your attention
+              </h2>
+              {!actionsLoading && (
+                <span className="rounded-full bg-gray-950 px-2.5 py-0.5 text-xs font-semibold text-white">
+                  {actionCenter.total}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-gray-500">
+              Manual steps automation cannot safely complete or decisions only you can make.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadActions}
+            disabled={actionsLoading}
+            className="self-start text-sm font-medium text-gray-600 hover:text-gray-950 disabled:opacity-50"
+          >
+            {actionsLoading ? "Refreshing…" : "Refresh actions"}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {ACTION_STATUS_ORDER.map((status) => {
+            const meta = ACTION_META[status];
+            const count = actionCenter.counts[status] ?? 0;
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => {
+                  setStatusFilter(status);
+                  setPage(1);
+                  document.getElementById("job-pipeline")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:border-gray-400 hover:shadow"
+              >
+                <span className={`mb-3 block h-1.5 w-8 rounded-full ${meta.accent}`} />
+                <span className="block text-2xl font-semibold tabular-nums text-gray-950">
+                  {count}
+                </span>
+                <span className="text-xs font-medium text-gray-500">{meta.shortLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {actionsError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {actionsError}
+          </div>
+        )}
+
+        {!actionsLoading && !actionsError && actionCenter.actions.length === 0 && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
+            <p className="font-medium text-emerald-900">You&apos;re caught up.</p>
+            <p className="mt-1 text-sm text-emerald-700">
+              No application currently needs a manual step or decision.
+            </p>
+          </div>
+        )}
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          {actionCenter.actions.map((action) => {
+            const meta = ACTION_META[action.status] ?? ACTION_META.needs_review;
+            return (
+              <article
+                key={`${action.jobId}-${action.id ?? action.status}`}
+                className={`rounded-2xl border p-5 ${meta.panel}`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      {meta.eyebrow}
+                    </p>
+                    <h3 className="mt-1 truncate text-lg font-semibold text-gray-950">
+                      {action.title}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {action.company} · {action.location ?? "Location not listed"}
+                      {action.remote ? " · Remote" : ""}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs text-gray-500">{relativeTime(action.updatedAt)}</p>
+                    {action.matchScore != null && (
+                      <p className="mt-1 text-sm font-semibold text-gray-700">
+                        Match {Math.round(action.matchScore)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/80 bg-white/75 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Why you&apos;re needed
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-gray-800">{action.reasonText}</p>
+                  {action.details.length > 0 && (
+                    <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                      {action.details.slice(0, 3).map((detail) => (
+                        <li key={detail} className="flex gap-2">
+                          <span aria-hidden="true" className="text-gray-400">
+                            •
+                          </span>
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Link
+                    href={action.primaryHref}
+                    className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                  >
+                    {action.primaryLabel}
+                  </Link>
+                  <Link
+                    href={`/jobs/${action.jobId}`}
+                    className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Job details
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="border rounded-lg p-4 space-y-4">
         <div className="flex items-center justify-between">
@@ -317,10 +561,10 @@ export default function DashboardPage() {
         {importError && <p className="text-sm text-red-600">{importError}</p>}
       </section>
 
-      <section className="space-y-3">
+      <section id="job-pipeline" className="scroll-mt-6 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-medium">Jobs ({total})</h2>
+            <h2 className="text-lg font-medium">Job pipeline ({total})</h2>
             {maxScore > 0 && (
               <p className="text-xs text-gray-400">
                 Scores are out of {maxScore} for your current filters, not 100 — see Profile &amp;
