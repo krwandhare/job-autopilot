@@ -2,9 +2,8 @@
 
 ## In Progress
 
-- Commit guarded concurrent-agent integration automation, then implement the
-  shared-runtime and atomic job-claim foundation before either feature branch
-  changes application behavior.
+- Implement the shared-runtime and atomic job-claim foundation before either
+  feature branch changes application behavior.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
 - Manually verify the new opt-in "Auto-fill & submit" mode against a real, user-authorized test application before relying on it for real submissions -- static checks and a production build passed, but no live ATS run has confirmed the submit-control detection or confirmation logic yet.
 - Retest Twilio's location autocomplete, grouped referral-source question, the narrowly allowlisted submit-mode policy acknowledgements, and exact manual-blocker messaging in a visible browser; static checks pass, but the live form has not been rerun after the latest fixes.
@@ -29,9 +28,9 @@
 
 ## Completed
 
-- Created isolated shared-runtime, Codex, Claude, and integration branches;
-  added ownership policies and end-to-end-tested fail-closed merge automation
-  (uncommitted on `feature/shared-runtime`).
+- Created isolated shared-runtime, Codex, Claude, and integration branches and
+  sibling feature worktrees; added ownership policies and end-to-end-tested
+  fail-closed merge automation (`1f3f9dc`, `b962094`, integrated as `6cd53d0`).
 - Created the Next.js/React/TypeScript/Tailwind application scaffold (`70dc5b1`).
 - Implemented local SQLite persistence and schema initialization.
 - Implemented resume upload, PDF/DOCX/TXT extraction, skill detection, and editable filters.
