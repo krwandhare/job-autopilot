@@ -2,8 +2,6 @@
 
 ## In Progress
 
-- Integrate the validated Action Center checkpoint through
-  `integration/concurrent-work`.
 - Implement the shared-runtime and atomic job-claim foundation before either
   feature branch changes application behavior.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
@@ -33,7 +31,10 @@
 - Added the Action Center data model, read API, validated action context on job
   status updates, prioritized responsive dashboard summaries/cards, and a
   disposable SQLite model test (`608c42c`); desktop/mobile synthetic browser
-  E2E and real route persistence checks passed.
+  E2E and real route persistence checks passed. Responsive refinements and the
+  corrected dynamic-route ownership policy were committed as `263ff85` and
+  `6c2f9af`; guarded validation passed and the work was integrated as
+  `8aecb65`.
 - Created isolated shared-runtime, Codex, Claude, and integration branches and
   sibling feature worktrees; added ownership policies and end-to-end-tested
   fail-closed merge automation (`1f3f9dc`, `b962094`, integrated as `6cd53d0`).
