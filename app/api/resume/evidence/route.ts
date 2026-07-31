@@ -76,7 +76,10 @@ export async function PATCH(req: NextRequest) {
   }
   const candidate = body as Record<string, unknown>;
 
-  if (candidate.action === "verify_all_skills") {
+  if (
+    candidate.action === "verify_all_skills" ||
+    candidate.action === "verify_all_evidence"
+  ) {
     const resumeId = parseResumeId(candidate.resumeId);
     if (resumeId === null) {
       return NextResponse.json({ error: "Valid resumeId is required" }, { status: 400 });
@@ -88,15 +91,25 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Resume not found" }, { status: 404 });
     }
 
-    const result = db
-      .prepare(
-        `UPDATE resume_evidence
-         SET verification_status = 'verified', updated_at = datetime('now')
-         WHERE resume_id = ?
-           AND evidence_kind = 'skill'
-           AND verification_status = 'extracted'`
-      )
-      .run(resumeId);
+    const verifyAllEvidence = candidate.action === "verify_all_evidence";
+    const result = verifyAllEvidence
+      ? db
+          .prepare(
+            `UPDATE resume_evidence
+             SET verification_status = 'verified', updated_at = datetime('now')
+             WHERE resume_id = ?
+               AND verification_status = 'extracted'`
+          )
+          .run(resumeId)
+      : db
+          .prepare(
+            `UPDATE resume_evidence
+             SET verification_status = 'verified', updated_at = datetime('now')
+             WHERE resume_id = ?
+               AND evidence_kind = 'skill'
+               AND verification_status = 'extracted'`
+          )
+          .run(resumeId);
     const rows = db
       .prepare(
         `SELECT * FROM resume_evidence

@@ -349,3 +349,26 @@ tailored attachments in a real application.
 - Next action: the user can open `/profile`, click “Verify all skills,” confirm
   once, and refresh any existing job analysis or tailored draft that should
   use the newly verified skills.
+
+## 2026-07-30 full-resume inclusion correction
+
+- Real-data metadata inspection showed why the generated PDF contained only a
+  header, summary, skills, and duplicated additional-information content:
+  53 non-skill records were still awaiting review, and letter-spaced PDF
+  headings had classified the resume body as `other`. The master resume itself
+  remained intact.
+- Evidence extraction now recognizes compact/letter-spaced forms of Summary,
+  Selected Impact, Core Skills, Professional Experience, Education, and
+  Certifications. Existing evidence is reclassified in place without changing
+  text or verification decisions.
+- The Profile page now offers “Verify all resume content” with an explicit
+  confirmation. It verifies only pending records and preserves rejected items.
+- Existing approved variants and artifacts are immutable snapshots. After
+  verifying the remaining content, the user must create, approve, and generate
+  a new tailored variant to receive the complete resume body.
+- Focused extraction/persistence tests, lint, strict TypeScript, production
+  build, and the disposable resume analysis/variant/artifact route E2E passed.
+  The E2E proved the full-content bulk boundary while preserving a rejected
+  skill; it did not access or change live resume content.
+- Next action: reload `/profile`, confirm “Verify all resume content,” then
+  create and approve a new tailored draft for the job and generate fresh files.

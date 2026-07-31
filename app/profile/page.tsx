@@ -42,6 +42,7 @@ export default function ProfilePage() {
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [savingEvidenceId, setSavingEvidenceId] = useState<number | null>(null);
   const [verifyingSkills, setVerifyingSkills] = useState(false);
+  const [verifyingAllEvidence, setVerifyingAllEvidence] = useState(false);
   const [evidenceMessage, setEvidenceMessage] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<Filter>({
@@ -217,6 +218,47 @@ export default function ProfilePage() {
     }
   }
 
+  async function verifyAllPendingEvidence() {
+    if (!resume) return;
+    const pendingEvidence = evidence.filter(
+      (item) => item.verificationStatus === "extracted"
+    );
+    if (pendingEvidence.length === 0) return;
+    if (
+      !window.confirm(
+        `Verify all ${pendingEvidence.length} remaining resume items? This treats the unreviewed content in your uploaded resume as accurate. Rejected items will stay rejected.`
+      )
+    ) {
+      return;
+    }
+
+    setVerifyingAllEvidence(true);
+    setEvidenceError(null);
+    setEvidenceMessage(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify_all_evidence",
+          resumeId: resume.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not verify resume content");
+      setEvidence(data.evidence ?? []);
+      setEvidenceMessage(
+        `${data.updatedCount ?? pendingEvidence.length} resume items verified. Create a new tailored draft to include them.`
+      );
+    } catch (error) {
+      setEvidenceError(
+        error instanceof Error ? error.message : "Could not verify resume content"
+      );
+    } finally {
+      setVerifyingAllEvidence(false);
+    }
+  }
+
   async function saveFilters() {
     const payload = {
       ...filter,
@@ -356,6 +398,29 @@ export default function ProfilePage() {
                     </button>
                   )}
                 </div>
+
+                {evidence.some((item) => item.verificationStatus === "extracted") && (
+                  <div className="rounded border border-blue-200 bg-blue-50 p-3">
+                    <p className="text-xs text-blue-900">
+                      Trust all remaining content in this uploaded resume? This is faster, but you
+                      remain responsible for every claim.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={verifyAllPendingEvidence}
+                      disabled={
+                        verifyingAllEvidence ||
+                        verifyingSkills ||
+                        savingEvidenceId !== null
+                      }
+                      className="mt-2 rounded bg-blue-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {verifyingAllEvidence
+                        ? "Verifying resume content…"
+                        : "Verify all resume content"}
+                    </button>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   {evidence.map((item) => (

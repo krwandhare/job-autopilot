@@ -49,6 +49,7 @@ const SECTION_HEADINGS: Record<string, EvidenceKind> = {
   "professional summary": "summary",
   profile: "summary",
   "professional profile": "summary",
+  "selected impact": "experience",
   experience: "experience",
   "work experience": "experience",
   "professional experience": "experience",
@@ -67,6 +68,34 @@ const SECTION_HEADINGS: Record<string, EvidenceKind> = {
   publications: "publication",
 };
 
+const SECTION_LABELS: Record<string, string> = {
+  summary: "Summary",
+  "professional summary": "Professional Summary",
+  profile: "Profile",
+  "professional profile": "Professional Profile",
+  "selected impact": "Selected Impact",
+  experience: "Experience",
+  "work experience": "Work Experience",
+  "professional experience": "Professional Experience",
+  employment: "Employment",
+  "employment history": "Employment History",
+  skills: "Skills",
+  "technical skills": "Technical Skills",
+  "core skills": "Core Skills",
+  competencies: "Competencies",
+  projects: "Projects",
+  "selected projects": "Selected Projects",
+  education: "Education",
+  certifications: "Certifications",
+  certification: "Certification",
+  "licenses and certifications": "Licenses and Certifications",
+  publications: "Publications",
+};
+
+const COMPACT_SECTION_KEYS = new Map(
+  Object.keys(SECTION_HEADINGS).map((key) => [key.replace(/[^a-z0-9]/g, ""), key])
+);
+
 function cleanLine(line: string): string {
   return line
     .replace(/^[\s\u2022\u25cf\u25e6\u25aa\u25ab\u2013\u2014*-]+/, "")
@@ -75,7 +104,9 @@ function cleanLine(line: string): string {
 }
 
 function headingKey(line: string): string {
-  return cleanLine(line).replace(/:$/, "").toLowerCase();
+  const key = cleanLine(line).replace(/:$/, "").toLowerCase();
+  if (key in SECTION_HEADINGS) return key;
+  return COMPACT_SECTION_KEYS.get(key.replace(/[^a-z0-9]/g, "")) ?? key;
 }
 
 function looksLikeHeading(line: string): boolean {
@@ -139,7 +170,7 @@ export function extractResumeEvidence(
     const knownKind = SECTION_HEADINGS[key];
     if (knownKind) {
       currentKind = knownKind;
-      currentSection = cleanLine(rawLine).replace(/:$/, "");
+      currentSection = SECTION_LABELS[key] ?? cleanLine(rawLine).replace(/:$/, "");
       sawKnownSection = true;
       return;
     }
@@ -198,14 +229,39 @@ export function ensureResumeEvidence(
   db: Database.Database,
   resume: { id: number; text: string; skills_json: string }
 ): ResumeEvidenceRow[] {
-  const existing = db
+  let existing = db
     .prepare(
       `SELECT * FROM resume_evidence
        WHERE resume_id = ?
        ORDER BY source_start_line IS NULL, source_start_line, id`
     )
     .all(resume.id) as ResumeEvidenceRow[];
-  if (existing.length > 0) return existing;
+  if (existing.length > 0) {
+    const updateSection = db.prepare(
+      `UPDATE resume_evidence
+       SET evidence_kind = ?, section = ?, updated_at = datetime('now')
+       WHERE id = ?`
+    );
+    const normalizeExisting = db.transaction(() => {
+      for (const row of existing) {
+        const key = headingKey(row.section);
+        const kind = SECTION_HEADINGS[key];
+        const section = SECTION_LABELS[key];
+        if (kind && section && (row.evidence_kind !== kind || row.section !== section)) {
+          updateSection.run(kind, section, row.id);
+        }
+      }
+    });
+    normalizeExisting();
+    existing = db
+      .prepare(
+        `SELECT * FROM resume_evidence
+         WHERE resume_id = ?
+         ORDER BY source_start_line IS NULL, source_start_line, id`
+      )
+      .all(resume.id) as ResumeEvidenceRow[];
+    return existing;
+  }
 
   let skills: string[] = [];
   try {

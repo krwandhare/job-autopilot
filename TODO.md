@@ -28,6 +28,11 @@
 
 ## Completed
 
+- Restored full-resume tailoring for PDF text with letter-spaced headings by
+  normalizing section labels and safely reclassifying existing evidence.
+  Added one-confirmation verification of all pending resume content while
+  preserving rejected records; newly generated variants now include verified
+  experience, education, certifications, and other resume sections.
 - Added one-confirmation bulk verification for pending skill evidence while
   preserving rejected skills and keeping non-skill career claims under
   individual review. Disposable route coverage confirms the server-side

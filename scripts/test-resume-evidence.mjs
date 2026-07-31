@@ -59,6 +59,57 @@ assert.equal(
   "skill evidence should be deterministically deduplicated"
 );
 
+const letterSpacedSample = `Candidate Name
+candidate@example.test
+
+S U M M A R Y
+Platform engineer focused on reliable distributed systems.
+
+P R O F E S S I O N A L  E X P E R I E N C E
+Example Systems | Senior Engineer | 2022 - Present
+• Led migration of services to Kubernetes.
+
+CO R E S K I L LS
+TypeScript, Kubernetes
+
+E D U C AT I O N
+Example University
+
+C E RT I F I C AT I O N S
+Cloud Certification`;
+const letterSpacedEvidence = extractResumeEvidence(letterSpacedSample);
+assert.equal(
+  letterSpacedEvidence.some(
+    (item) =>
+      item.kind === "experience" &&
+      item.section === "Professional Experience" &&
+      item.normalizedText.includes("Example Systems")
+  ),
+  true,
+  "letter-spaced PDF headings must retain experience structure"
+);
+assert.equal(
+  letterSpacedEvidence.some(
+    (item) =>
+      item.kind === "skill" &&
+      item.section === "Core Skills" &&
+      item.normalizedText === "Kubernetes"
+  ),
+  true
+);
+assert.equal(
+  letterSpacedEvidence.some(
+    (item) => item.kind === "education" && item.section === "Education"
+  ),
+  true
+);
+assert.equal(
+  letterSpacedEvidence.some(
+    (item) => item.kind === "certification" && item.section === "Certifications"
+  ),
+  true
+);
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "job-autopilot-resume-evidence-"));
 const db = new Database(path.join(tempDir, "evidence.db"));
 
@@ -98,6 +149,18 @@ try {
     first.length
   );
   assert.equal(first.every((item) => item.verification_status === "extracted"), true);
+
+  db.prepare(
+    `UPDATE resume_evidence
+     SET evidence_kind = 'other', section = 'P R O F E S S I O N A L  E X P E R I E N C E'
+     WHERE id = ?`
+  ).run(first[0].id);
+  const normalizedExisting = ensureResumeEvidence(db, resume);
+  assert.equal(
+    normalizedExisting.find((item) => item.id === first[0].id)?.evidence_kind,
+    "experience",
+    "existing letter-spaced sections must be reclassified without rebuilding evidence"
+  );
   console.log("Resume evidence extraction and isolated persistence checks passed.");
 } finally {
   db.close();

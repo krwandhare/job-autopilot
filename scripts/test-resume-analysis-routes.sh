@@ -74,6 +74,25 @@ assert all(
 assert payload["updatedCount"] == len(skills) - 1
 '
 
+bulk_evidence="$(
+  curl -fsS -X PATCH "http://127.0.0.1:$PORT/api/resume/evidence" \
+    -H "Content-Type: application/json" \
+    -d "{\"action\":\"verify_all_evidence\",\"resumeId\":$resume_id}"
+)"
+printf '%s' "$bulk_evidence" | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+statuses = [item["verificationStatus"] for item in payload["evidence"]]
+assert payload["updatedCount"] > 0
+assert "extracted" not in statuses
+assert statuses.count("rejected") == 1
+assert all(
+    item["verificationStatus"] == "verified"
+    for item in payload["evidence"]
+    if item["normalizedText"] != "PostgreSQL"
+)
+'
+
 sqlite3 "$TEST_DATA/app.db" "
   UPDATE resume_evidence
   SET verification_status = 'verified'

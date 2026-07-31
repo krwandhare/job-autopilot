@@ -14,8 +14,13 @@ This document describes behavior present in the repository. “Implemented” me
 6. In Verified career evidence, “Verify all skills” marks every skill still
    awaiting review as verified in one confirmed action. It preserves rejected
    skills and does not bulk-approve experience, achievements, or other claims.
-7. Configure title include/exclude terms, preferred locations, remote-only, minimum salary, required skills, and excluded companies.
-8. Save filters through `PUT /api/filters`.
+7. If the user has already reviewed the entire uploaded master resume,
+   “Verify all resume content” can verify every remaining extracted item with
+   one explicit confirmation. Rejected items remain rejected. Letter-spaced
+   PDF headings are normalized so summary, skills, experience, education, and
+   certification content retain their resume section types.
+8. Configure title include/exclude terms, preferred locations, remote-only, minimum salary, required skills, and excluded companies.
+9. Save filters through `PUT /api/filters`.
 
 ### Incomplete or unverified
 
