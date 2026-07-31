@@ -100,6 +100,15 @@ const ACTION_STATUS_ORDER = [
   "watchlist",
 ];
 
+// A dropped connection makes fetch() itself reject, with browser-specific
+// wording ("Failed to fetch" on Chrome, "Load failed" on WebKit) -- always a
+// network-level failure, not a server error. Left uncaught, that's an
+// unhandled promise rejection instead of a recoverable in-app message.
+function friendlyNetworkError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return `Lost connection to the server (${message}). Check your network connection and try again.`;
+}
+
 function relativeTime(value: string): string {
   const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
   const timestamp = new Date(normalized).getTime();
@@ -144,22 +153,37 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showAll, setShowAll] = useState(false);
 
+  // Shared banner for actions without a dedicated error slot (source
+  // add/remove, seeding, quick-decision buttons, the jobs/sources lists
+  // themselves) -- one visible place instead of failing silently.
+  const [pageError, setPageError] = useState<string | null>(null);
+
   async function loadJobs(status: string, pageNum: number, includeNonMatches: boolean) {
     const params = new URLSearchParams({ page: String(pageNum) });
     if (status !== "all") params.set("status", status);
     if (includeNonMatches) params.set("showAll", "1");
-    const res = await fetch(`/api/jobs?${params.toString()}`);
-    const data = await res.json();
-    setJobs(data.jobs);
-    setMaxScore(data.maxScore ?? 0);
-    setTotal(data.total ?? 0);
-    setPageSize(data.pageSize ?? 50);
+    try {
+      const res = await fetch(`/api/jobs?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Could not load jobs (HTTP ${res.status}).`);
+      setJobs(data.jobs);
+      setMaxScore(data.maxScore ?? 0);
+      setTotal(data.total ?? 0);
+      setPageSize(data.pageSize ?? 50);
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    }
   }
 
   async function loadSources() {
-    const res = await fetch("/api/sources");
-    const data = await res.json();
-    setSources(data.sources);
+    try {
+      const res = await fetch("/api/sources");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Could not load sources (HTTP ${res.status}).`);
+      setSources(data.sources);
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    }
   }
 
   async function loadActions() {
@@ -186,51 +210,79 @@ export default function DashboardPage() {
   }, [statusFilter, page, showAll]);
 
   async function addSource(type: string, config: Record<string, unknown>) {
-    await fetch("/api/sources", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, config }),
-    });
-    loadSources();
+    try {
+      const res = await fetch("/api/sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, config }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        throw new Error(data.error ?? `Could not add that source (HTTP ${res.status}).`);
+      }
+      loadSources();
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    }
   }
 
   async function removeSource(id: number) {
-    await fetch("/api/sources", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    loadSources();
+    try {
+      const res = await fetch("/api/sources", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        throw new Error(data.error ?? `Could not remove that source (HTTP ${res.status}).`);
+      }
+      loadSources();
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    }
   }
 
   async function seedAllSources() {
     setSeeding(true);
-    const res = await fetch("/api/sources/seed", { method: "POST" });
-    const data = await res.json();
-    setSeeding(false);
-    setSyncMessage(
-      `Added ${data.added} new companies (${data.totalAvailable} available in the seed list). Click "Sync jobs" to fetch their listings.`
-    );
-    loadSources();
+    try {
+      const res = await fetch("/api/sources/seed", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Could not seed sources (HTTP ${res.status}).`);
+      setSyncMessage(
+        `Added ${data.added} new companies (${data.totalAvailable} available in the seed list). Click "Sync jobs" to fetch their listings.`
+      );
+      loadSources();
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } finally {
+      setSeeding(false);
+    }
   }
 
   async function runSync() {
     setSyncing(true);
     setSyncMessage(null);
-    const res = await fetch("/api/jobs/sync", { method: "POST" });
-    const data = await res.json();
-    setSyncing(false);
-    if (data.sourcesConfigured === 0) {
-      setSyncMessage(
-        "No sources configured yet — add a Greenhouse/Lever slug or Adzuna search above, then sync."
-      );
-    } else if (data.errors?.length) {
-      setSyncMessage(`Synced ${data.synced} jobs, with errors: ${data.errors.join("; ")}`);
-    } else {
-      setSyncMessage(`Synced ${data.synced} jobs from ${data.sourcesConfigured} source(s).`);
+    try {
+      const res = await fetch("/api/jobs/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Sync failed (HTTP ${res.status}).`);
+      if (data.sourcesConfigured === 0) {
+        setSyncMessage(
+          "No sources configured yet — add a Greenhouse/Lever slug or Adzuna search above, then sync."
+        );
+      } else if (data.errors?.length) {
+        setSyncMessage(`Synced ${data.synced} jobs, with errors: ${data.errors.join("; ")}`);
+      } else {
+        setSyncMessage(`Synced ${data.synced} jobs from ${data.sourcesConfigured} source(s).`);
+      }
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } finally {
+      setSyncing(false);
+      loadJobs(statusFilter, page, showAll);
+      loadActions();
     }
-    loadJobs(statusFilter, page, showAll);
-    loadActions();
   }
 
   const [gmailSyncing, setGmailSyncing] = useState(false);
@@ -263,33 +315,47 @@ export default function DashboardPage() {
 
   async function decideAction(jobId: number, status: string) {
     setDecidingJobId(jobId);
-    await fetch(`/api/jobs/${jobId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    setDecidingJobId(null);
-    loadActions();
-    loadJobs(statusFilter, page, showAll);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        throw new Error(data.error ?? `Could not update this job (HTTP ${res.status}).`);
+      }
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } finally {
+      setDecidingJobId(null);
+      loadActions();
+      loadJobs(statusFilter, page, showAll);
+    }
   }
 
   async function importLinkedin() {
     if (!linkedinUrl.trim()) return;
     setImporting(true);
     setImportError(null);
-    const res = await fetch("/api/jobs/import-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: linkedinUrl.trim() }),
-    });
-    const data = await res.json();
-    setImporting(false);
-    if (!res.ok) {
-      setImportError(data.error ?? "Import failed");
-    } else {
-      setLinkedinUrl("");
-      loadJobs(statusFilter, page, showAll);
-      loadActions();
+    try {
+      const res = await fetch("/api/jobs/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: linkedinUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImportError(data.error ?? "Import failed");
+      } else {
+        setLinkedinUrl("");
+        loadJobs(statusFilter, page, showAll);
+        loadActions();
+      }
+    } catch (err) {
+      setImportError(friendlyNetworkError(err));
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -324,6 +390,18 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+      {pageError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <span>{pageError}</span>
+          <button
+            type="button"
+            onClick={() => setPageError(null)}
+            className="shrink-0 font-medium text-red-700 hover:text-red-900"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {syncMessage && <p className="text-sm text-gray-600">{syncMessage}</p>}
       {gmailSyncMessage && <p className="text-sm text-gray-600">{gmailSyncMessage}</p>}
 

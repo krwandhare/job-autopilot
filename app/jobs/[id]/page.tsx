@@ -53,16 +53,25 @@ export default function JobDetailPage({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch(`/api/jobs/${id}`);
-    const data = await res.json();
-    if (res.ok) {
-      setJob(data.job);
-      setMaxScore(data.maxScore ?? 0);
-      setDraft(data.draft);
-    } else {
-      setError(data.error ?? "Job not found");
+    try {
+      const res = await fetch(`/api/jobs/${id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setJob(data.job);
+        setMaxScore(data.maxScore ?? 0);
+        setDraft(data.draft);
+      } else {
+        setError(data.error ?? "Job not found");
+      }
+    } catch (err) {
+      setError(
+        `Lost connection to the server (${
+          err instanceof Error ? err.message : String(err)
+        }). Check your network connection and try again.`
+      );
     }
   }
 
@@ -74,22 +83,47 @@ export default function JobDetailPage({
   }, [id]);
 
   async function updateStatus(status: string) {
-    await fetch(`/api/jobs/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    load();
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/jobs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        throw new Error(data.error ?? `Could not update status (HTTP ${res.status}).`);
+      }
+      load();
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : `Lost connection to the server (${String(err)}). Check your network connection and try again.`
+      );
+    }
   }
 
   async function generateDraft() {
     setGenerating(true);
-    const res = await fetch(`/api/draft/${id}`, { method: "POST" });
-    const data = await res.json();
-    setGenerating(false);
-    if (res.ok) {
-      setDraft(data.draft);
-      updateStatus("drafted");
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/draft/${id}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setDraft(data.draft);
+        updateStatus("drafted");
+      } else {
+        setActionError(data.error ?? `Could not generate a draft (HTTP ${res.status}).`);
+      }
+    } catch (err) {
+      setActionError(
+        `Lost connection to the server (${
+          err instanceof Error ? err.message : String(err)
+        }). Check your network connection and try again.`
+      );
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -123,6 +157,12 @@ export default function JobDetailPage({
           View original posting ↗
         </a>
       </div>
+
+      {actionError && (
+        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <span className="text-sm text-gray-500">Status:</span>

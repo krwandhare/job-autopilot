@@ -102,6 +102,12 @@ export default function AutofillPage() {
         : "/api/autofill/next";
       const res = await fetch(url);
       const data = await res.json();
+      if (!res.ok) {
+        setJob(null);
+        setReason(data.error ?? `Could not load the job (HTTP ${res.status}).`);
+        setPhase("error");
+        return;
+      }
       if (!data.job) {
         setJob(null);
         setPhase("queue_empty");
@@ -131,9 +137,16 @@ export default function AutofillPage() {
     setSubmitNote(null);
     setPhase("starting");
 
-    let data: { status: string; reason?: string; missingFields?: MissingField[]; manualFields?: MissingField[] };
+    let res: Response;
+    let data: {
+      status: string;
+      reason?: string;
+      error?: string;
+      missingFields?: MissingField[];
+      manualFields?: MissingField[];
+    };
     try {
-      const res = await fetch("/api/autofill/start", {
+      res = await fetch("/api/autofill/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId: job.id, mode }),
@@ -141,6 +154,12 @@ export default function AutofillPage() {
       data = await res.json();
     } catch (err) {
       setReason(friendlyNetworkError(err));
+      setPhase("error");
+      return;
+    }
+
+    if (!res.ok) {
+      setReason(data.error ?? `Could not start filling this job (HTTP ${res.status}).`);
       setPhase("error");
       return;
     }
@@ -214,9 +233,10 @@ export default function AutofillPage() {
     if (!job) return;
     setSaving(field.autofillId);
     setFieldErrors((e) => ({ ...e, [field.autofillId]: "" }));
-    let data: { ok?: boolean; filled?: boolean };
+    let res: Response;
+    let data: { ok?: boolean; filled?: boolean; error?: string };
     try {
-      const res = await fetch("/api/autofill/answer", {
+      res = await fetch("/api/autofill/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -238,6 +258,14 @@ export default function AutofillPage() {
       return;
     }
     setSaving(null);
+
+    if (!res.ok) {
+      setFieldErrors((e) => ({
+        ...e,
+        [field.autofillId]: data.error ?? `Could not save this answer (HTTP ${res.status}).`,
+      }));
+      return;
+    }
 
     if (answer !== SKIP_SENTINEL && data.filled === false) {
       setFieldErrors((e) => ({
@@ -269,14 +297,23 @@ export default function AutofillPage() {
     formData.append("key", field.key);
     formData.append("label", field.label);
     formData.append("kind", field.kind);
+    let res: Response;
     try {
-      await fetch("/api/autofill/upload-file", { method: "POST", body: formData });
+      res = await fetch("/api/autofill/upload-file", { method: "POST", body: formData });
     } catch (err) {
       setSaving(null);
       setFieldErrors((e) => ({ ...e, [field.autofillId]: friendlyNetworkError(err) }));
       return;
     }
     setSaving(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}) as { error?: string });
+      setFieldErrors((e) => ({
+        ...e,
+        [field.autofillId]: data.error ?? `Could not upload this file (HTTP ${res.status}).`,
+      }));
+      return;
+    }
     let reachedReview = false;
     setMissingFields((prev) => {
       const next = prev.filter((f) => f.autofillId !== field.autofillId);
@@ -390,19 +427,33 @@ export default function AutofillPage() {
 
   async function skipJob() {
     if (!job) return;
+    let statusRes: Response;
     try {
-      await fetch(`/api/jobs/${job.id}`, {
+      statusRes = await fetch(`/api/jobs/${job.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "skipped" }),
       });
+    } catch (err) {
+      setReason(friendlyNetworkError(err));
+      setPhase("error");
+      return;
+    }
+    if (!statusRes.ok) {
+      const data = await statusRes.json().catch(() => ({}) as { error?: string });
+      setReason(data.error ?? `Could not skip this job (HTTP ${statusRes.status}).`);
+      setPhase("error");
+      return;
+    }
+    try {
       await fetch("/api/autofill/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId: job.id }),
       });
     } catch {
-      // Best-effort -- see finishAndNext.
+      // Best-effort session cleanup -- see finishAndNext. The status change
+      // above already succeeded, so it's safe to move on regardless.
     }
     loadNextJob();
   }
@@ -414,19 +465,33 @@ export default function AutofillPage() {
   // dashboard, and can be moved back to New from the job detail page.
   async function saveForLaterAndNext() {
     if (!job) return;
+    let statusRes: Response;
     try {
-      await fetch(`/api/jobs/${job.id}`, {
+      statusRes = await fetch(`/api/jobs/${job.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "watchlist" }),
       });
+    } catch (err) {
+      setReason(friendlyNetworkError(err));
+      setPhase("error");
+      return;
+    }
+    if (!statusRes.ok) {
+      const data = await statusRes.json().catch(() => ({}) as { error?: string });
+      setReason(data.error ?? `Could not save this job for later (HTTP ${statusRes.status}).`);
+      setPhase("error");
+      return;
+    }
+    try {
       await fetch("/api/autofill/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId: job.id }),
       });
     } catch {
-      // Best-effort -- see finishAndNext.
+      // Best-effort session cleanup -- see finishAndNext. The status change
+      // above already succeeded, so it's safe to move on regardless.
     }
     loadNextJob();
   }
