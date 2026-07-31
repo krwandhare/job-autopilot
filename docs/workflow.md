@@ -48,6 +48,12 @@ reason rather than inventing an exact blocker. A caller can include structured
 action context in `PATCH /api/jobs/[id]`; route validation bounds reason and
 detail sizes. Moving to a non-actionable status resolves open action records.
 
+Autofill and the unattended queue runner populate this context automatically.
+They store a safe category and field labels for unanswered questions, manual
+fields/agreements, browser challenges, autofill failures, final review,
+verification codes, unconfirmed submission, and submission errors. They never
+persist field values, cookies, page HTML, credentials, or application payloads.
+
 ### Incomplete or unverified
 
 - There is no scheduler/background sync; synchronization is user-triggered.
@@ -179,6 +185,9 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 - Grouped radio/checkbox questions are presented once with their actual options. Policy acknowledgements, certifications, sensitive controls, and otherwise ambiguous fields remain manual.
 - Load failures and disconnected/closed browser sessions are converted to user-facing errors.
 - Email/SMS verification-code challenges are never filled automatically. A blocked submit can move the job to `needs_code` for later resumption.
+- When autofill stops for a human decision, the job is parked with a structured
+  Action Center reason and safe blocker labels. A later applied/skipped/rejected
+  transition resolves that open action.
 - Playwright actions for one job are serialized, and opening a new session closes any other tracked browser session.
 - Concurrent local servers coordinate through expiring SQLite job claims.
   Finishing a session releases only its owning runtime's claim; a crashed
@@ -200,6 +209,9 @@ Review mode never clicks an employer submit control. The separately selected opt
 - CAPTCHA, load-error, and generic completion paths can close a session but never set `applied`.
 - Skipping explicitly updates status to `skipped`, closes the session, and advances as before.
 - “Save for later” moves a job to `watchlist`. The optional local queue runner processes only `new` jobs and parks unresolved work as `needs_review` or `needs_code`.
+- Queue parking sends structured action context through the validated job-status
+  route. Missing/manual field labels are retained locally, while answer values
+  and page contents are excluded.
 - After an unconfirmed submit that requires manual completion, a read-only watcher can recognize a later success page, mark the local job `applied`, and close the session. It never types or clicks.
 
 ### Not implemented
@@ -233,6 +245,12 @@ directory. SQLite WAL mode and a busy timeout coordinate ordinary database
 access, while `job_claims` prevents both runtimes from reserving or starting
 the same autofill job. Resume uploads are also written beneath the shared
 runtime directory, keeping stored database paths valid in both worktrees.
+
+`npm run test:shared-runtime-routes` starts two production servers with
+different instance IDs against one disposable SQLite directory. Using only
+synthetic jobs, it verifies distinct queue claims, HTTP 409 for cross-owner
+resumption, owner-safe release/reclaim, structured action persistence through
+the real routes, and zero remaining claims after cleanup.
 
 Each agent creates focused checkpoint commits on its own feature branch without
 requiring a repeated user instruction: after a coherent validated unit,

@@ -2,6 +2,7 @@ import type { Frame, Page } from "playwright";
 import { getDb, type JobRow, type ResumeRow, type DraftRow, type ProfileAnswerRow } from "@/lib/db";
 import { generateDraft } from "@/lib/draft";
 import type { MatchResult } from "@/lib/matching";
+import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
 import {
   getOrCreateSession,
   getSession,
@@ -767,8 +768,19 @@ export async function submitApplication(jobId: number): Promise<SubmitResult> {
         // further along (e.g. don't touch anything already applied).
         if (result.needsVerificationCode) {
           const db = getDb();
-          db.prepare("UPDATE jobs SET status = 'needs_code' WHERE id = ? AND status = 'new'").run(
-            jobId
+          parkJobWithAction(
+            db,
+            jobId,
+            "needs_code",
+            {
+              actionType: "verification",
+              reasonCode: "verification_code_required",
+              reasonText:
+                "The employer requires a verification code that must be entered manually.",
+              details: [result.reason],
+              source: "autofill",
+            },
+            ["new", "needs_review", "needs_code"]
           );
         }
       }
@@ -919,7 +931,11 @@ function startSubmissionWatcher(): void {
 
         if (confirmed) {
           const db = getDb();
-          db.prepare("UPDATE jobs SET status = 'applied' WHERE id = ?").run(jobId);
+          const complete = db.transaction(() => {
+            db.prepare("UPDATE jobs SET status = 'applied' WHERE id = ?").run(jobId);
+            resolveJobActions(db, jobId);
+          });
+          complete();
           await closeSession(jobId);
         }
       } catch {

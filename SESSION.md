@@ -147,6 +147,38 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
   deterministic queue separation, conflict refusal, renewal, token/owner-safe
   release, one active job per runtime, expiry takeover, and shared path
   resolution. No live application data was inspected or changed.
+- The shared-runtime checkpoint (`ff26804`, policy correction `4b7ed4e`) passed
+  guarded lint, TypeScript, and production-build validation and integrated as
+  `2046d79`. The dashboard extension-attribute hydration fix (`0b9aada`) passed
+  the same gate and integrated as `792076e`.
+- Claude's committed Gmail-alert importer and LinkedIn company-name fix were
+  semantically merged with `792076e` in a disposable worktree. Targeted tests,
+  lint, TypeScript, and the production build passed; the Claude feature
+  worktree fast-forwarded to `dd6cb15` while its untracked watcher script was
+  deliberately left untouched.
+- Autofill start results now park safe structured reasons for unanswered
+  questions, manual fields/agreements, browser challenges, load/session
+  failures, and review-ready forms. Submit-time verification codes use
+  `needs_code`; queue-runner failures add unconfirmed/error context; confirmed
+  local completion resolves open actions. Only bounded labels and generic
+  reasons are stored, never answers, HTML, cookies, credentials, or payloads.
+- The live development database had been opened before the new schema module
+  loaded, so its cached connection lacked `job_actions` and `job_claims`. A
+  SQLite backup was created before applying only the two idempotent tables and
+  indexes already defined by the validated code. Status-only Action Center
+  fallbacks then had 129 actionable local rows available; no job content or
+  resume data was printed.
+- `npm run test:shared-runtime-routes` started two production servers with
+  distinct instance IDs against one disposable database. Synthetic route E2E
+  verified jobs 1 and 2 were claimed separately, cross-owner resumption
+  returned HTTP 409, owner cleanup made a job reclaimable, structured action
+  details round-tripped through `/api/jobs/[id]` and `/api/actions`, and all
+  claims were released. The temporary processes and database were removed.
+- Structured blocker outcomes were committed as `0f2c470`; the reusable
+  two-instance route E2E and final handoff updates were committed as
+  `606d5d4`. The guarded `action-outcomes` integration passed lint, strict
+  TypeScript, and the production build and atomically advanced
+  `integration/concurrent-work` to `0a061d2`.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -185,6 +217,6 @@ autofill safety boundaries.
 
 ## Exact next recommended task
 
-Integrate the shared-runtime checkpoint, update Claude's feature branch to that
-validated baseline, then connect autofill and queue-runner blocker outcomes to
-structured Action Center reasons.
+Live-run Claude's rate-limited Gmail-alert LinkedIn lead importer through the
+shared runtime and verify deduplication plus `external_lead` tagging without
+allowing imported alerts into the `new` autofill queue.

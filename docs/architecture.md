@@ -79,6 +79,15 @@ their local status produces a conservative fallback explanation. Changing a
 job to a non-actionable status resolves its open action records; callers may
 attach validated structured action context when patching an actionable status.
 
+Autofill start outcomes persist only safe local metadata: blocker category,
+generic explanation, and up to ten field labels. Missing answers, manual
+agreements, browser challenges, load/session failures, and review-ready forms
+are parked as `needs_review`. A submit-time verification-code challenge is
+parked as `needs_code`. The unattended queue runner can replace that context
+with a more specific queue outcome such as unconfirmed submission. Answer
+values, page HTML, cookies, credentials, and form payloads are never stored in
+`job_actions`. Confirmed local completion resolves open actions.
+
 Synchronization and URL import use upserts. They update normalized fields and scores without deleting stale jobs or overwriting the job's local status.
 
 `lib/jobClaims.ts` acquires leases inside SQLite `BEGIN IMMEDIATE`
