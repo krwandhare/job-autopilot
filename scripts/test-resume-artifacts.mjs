@@ -162,6 +162,68 @@ try {
     "unchanged",
     "[]"
   );
+  const additionalExperienceEvidence = [
+    [
+      6,
+      "LTIMindtree - formerly Larsen & Toubro Infotech Nov 2012 - Apr 2021 · Hunt Valley, MD",
+    ],
+    [7, "Senior Application Architect"],
+    [8, "Tech Mahindra Apr 2010 - Nov 2012 · Pune, India"],
+    [9, "Software Developer"],
+  ];
+  for (const [evidenceId, text] of additionalExperienceEvidence) {
+    db.prepare(
+      "INSERT INTO resume_evidence VALUES (?, ?, 'verified')"
+    ).run(evidenceId, text);
+  }
+  insertItem.run(
+    6,
+    6,
+    "experience",
+    "Professional Experience",
+    5,
+    additionalExperienceEvidence[0][1],
+    `${additionalExperienceEvidence[0][1]}.`,
+    "Verified employer.",
+    "reformatted",
+    "[]"
+  );
+  insertItem.run(
+    7,
+    7,
+    "experience",
+    "Professional Experience",
+    6,
+    additionalExperienceEvidence[1][1],
+    `${additionalExperienceEvidence[1][1]}.`,
+    "Verified role.",
+    "reformatted",
+    "[]"
+  );
+  insertItem.run(
+    8,
+    8,
+    "experience",
+    "Professional Experience",
+    7,
+    additionalExperienceEvidence[2][1],
+    `${additionalExperienceEvidence[2][1]}.`,
+    "Verified employer.",
+    "reformatted",
+    "[]"
+  );
+  insertItem.run(
+    9,
+    9,
+    "experience",
+    "Professional Experience",
+    8,
+    additionalExperienceEvidence[3][1],
+    `${additionalExperienceEvidence[3][1]}.`,
+    "Verified role.",
+    "reformatted",
+    "[]"
+  );
 
   const experienceItems = db
     .prepare(
@@ -174,8 +236,16 @@ try {
     experienceItems.map((_, index) =>
       experienceItemStyle(experienceItems, index)
     ),
-    ["employer", "role", "detail"],
-    "experience hierarchy should distinguish employer, role, and achievements"
+    [
+      "employer",
+      "role",
+      "detail",
+      "employer",
+      "role",
+      "employer",
+      "role",
+    ],
+    "experience hierarchy should handle Present and month-year range endings"
   );
 
   const sourceResume = `Jordan Example
@@ -232,6 +302,16 @@ Platform engineer.`;
     documentXml ?? "",
     /<w:b\/><w:i\/>.*Principal Platform Engineer/,
     "the role row should be bold italic in DOCX"
+  );
+  assert.match(
+    documentXml ?? "",
+    /<w:b\/>.*LTIMindtree - formerly Larsen &amp; Toubro Infotech/,
+    "a month-year employment range should be bold in DOCX"
+  );
+  assert.match(
+    documentXml ?? "",
+    /<w:b\/>.*Tech Mahindra Apr 2010 - Nov 2012/,
+    "a second month-year employment range should be bold in DOCX"
   );
   const summaries = getResumeArtifactSummaries(db, 1);
   assert.equal(summaries.length, 2);

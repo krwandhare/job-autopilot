@@ -460,3 +460,15 @@ Experience:
   lint, strict TypeScript, production build, and `git diff --check` passed.
 - Variant 10 was regenerated on the local shared server. Both formats passed
   round-trip validation with 87 expected items and zero missing.
+
+Follow-up review found that the first hierarchy rule recognized Oracle's
+`year - Present` range but not prior roles ending in `Month year`.
+
+- Employment-header recognition now accepts both endings. The regression
+  fixture covers one current and two prior employers, their role titles, and
+  an accomplishment row.
+- A read-only check of the live variant classified three employer rows, three
+  role rows, and eighteen detail rows. Variant 10 was regenerated again; DOCX
+  and PDF both passed with 87 expected items and zero missing.
+- The focused artifact suite, lint, strict TypeScript, production build, and
+  `git diff --check` passed.

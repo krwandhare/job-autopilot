@@ -84,7 +84,7 @@ function documentSections(items: ResumeVariantItemRow[]): DocumentSection[] {
 function looksLikeEmploymentHeader(item: ResumeVariantItemRow): boolean {
   return (
     item.section.toLowerCase().includes("experience") &&
-    /\b(?:19|20)\d{2}\s*[-–—]\s*(?:present|(?:19|20)\d{2})\b/i.test(
+    /\b(?:19|20)\d{2}\s*[-–—]\s*(?:present|(?:[a-z]{3,9}\s+)?(?:19|20)\d{2})\b/i.test(
       item.tailored_text
     )
   );
