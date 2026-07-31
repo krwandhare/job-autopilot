@@ -2,19 +2,45 @@
 
 ## Current project state
 
-Job Autopilot is an implemented local MVP on the `main` branch. The working application includes profile/resume setup, configurable job-source synchronization, one-off LinkedIn URL import, deterministic matching and ranking, deterministic draft generation, local status tracking, and visible-browser assisted form filling. There is no automated test suite, authentication layer, deployment configuration, or verified submission tracking.
+Job Autopilot is an implemented local MVP on `feature/codex-work`, currently
+25 commits ahead of its remote tracking branch. The working application
+includes profile/resume setup, configurable job-source synchronization,
+one-off LinkedIn and Gmail lead intake, deterministic matching and ranking,
+truthful job-specific resume tailoring, application tracking, guarded
+visible-browser assisted form filling, and a shared-runtime concurrent-agent
+workflow. There is no authentication layer, deployment configuration, or
+employer-verified submission tracking.
 
-The current working tree includes a completed batch of workflow improvements awaiting commit: explicit applied/close/watchlist actions; conservative skill comparison and posting-gap display; Remote-only location enforcement; opt-in guarded submission; grouped-field, autocomplete, CAPTCHA, and verification-code handling; serialized Playwright actions; resumable `needs_code` jobs; additional local workflow statuses; diagnostic inspect/snapshot routes; and an unattended queue runner that parks uncertain jobs rather than guessing. The local workspace also contains ignored runtime artifacts such as the SQLite database, resume uploads, environment configuration, dependencies, Next.js build output, and queue-runner logs/PIDs; they are sensitive or generated and must remain uncommitted.
+The current working tree contains only the shared Figma design-system rules and
+this associated handoff update. The rules are stored in `AGENTS.md`;
+`CLAUDE.md` imports that file, so Codex and Claude receive identical
+Figma-to-code component, token, accessibility, asset, responsive, safety, and
+validation conventions. The connected Figma server was verified, but its
+current toolset does not expose the legacy `create_design_system_rules` helper
+expected by the installed skill, so the skill's bundled foundational template
+was used as the documented fallback. Ignored local runtime artifacts remain
+sensitive/generated and must stay uncommitted.
 
 ## Latest completed milestone and Git commit
 
-The latest committed repository milestone is **GitHub Actions quality checks**, committed as:
+The latest committed repository milestone is Claude's final handoff merge:
 
-- `933c4bc1c34872f96b94ffc7d4ced4175c380bc0` (`933c4bc`)
-- Commit date: 2026-07-29
-- Subject: `ci: add GitHub Actions quality checks`
+- `4f2e728` (`merge: include Claude final handoff`)
 
-The preceding documentation milestone is `d314240` (`docs: add shared Claude and Codex project context`). The latest committed application milestone remains `3059f22` (`feat: add job search, profile, and autofill foundation`), preceded by the `70dc5b1` Create Next App scaffold.
+The preceding reconciliation merge is `d4ea4fa` (`merge: reconcile Claude
+applications with resume tailoring`). The Figma design-system rules described
+above are not yet committed.
+
+## Latest validation
+
+On 2026-07-31, after adding the shared Figma design-system rules:
+
+- The Figma MCP connection was verified.
+- `npm run lint` passed.
+- `npx tsc --noEmit` passed.
+- `npm run build` passed and generated all expected application and API routes.
+- No application source, database, resume, environment, or runtime artifact was
+  changed.
 
 ## Implemented features
 

@@ -39,6 +39,11 @@
 
 ## Completed
 
+- Added one shared set of Figma design-system and implementation rules for
+  Codex and Claude through `AGENTS.md` (which `CLAUDE.md` imports). The rules
+  cover required Figma context/screenshots, component placement, Tailwind 4
+  tokens, mobile-first responsive behavior, accessibility, architecture and
+  privacy boundaries, asset handling, and visual/browser validation.
 - Reconciled Claude's Gmail lead intake and application/response tracking with
   Codex's truthful resume-tailoring stack. Both schema families, job/profile/
   autofill UI behavior, and all test commands are preserved; focused model,
