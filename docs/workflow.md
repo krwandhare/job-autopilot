@@ -126,6 +126,48 @@ persist field values, cookies, page HTML, credentials, or application payloads.
 - Fetch timeout and response-size limits are not implemented in application code.
 - Parsed company, salary, location, remote status, and description are third-party data and are not independently verified.
 
+## Gmail alert lead synchronization
+
+### Implemented
+
+1. The user may configure Gmail OAuth values locally in `.env.local`; the app
+   does not receive or create them automatically.
+2. `POST /api/jobs/sync-gmail` searches at most ten unread threads using the
+   configured query, parses plaintext LinkedIn job-alert links, deduplicates
+   them by LinkedIn job ID, and imports at most the requested bounded rate.
+3. Newly imported leads are tagged `external_lead`, keeping them out of the
+   regular `new` autofill queue until the user decides what to do.
+4. A thread is marked read only after every lead selected from that thread was
+   attempted; a rate-limited partial thread remains unread for a later run.
+
+### Important limitations
+
+- Gmail synchronization requires local `gmail.modify` OAuth credentials and
+  makes external Gmail and LinkedIn requests. It has not been live-tested
+  against the user's mailbox in this integration session.
+- Parsed alerts and linked postings remain untrusted third-party data.
+
+## Application and response tracking
+
+### Implemented
+
+1. A transition to local status `applied` idempotently creates one application
+   record for that job. Autofill records whether review or submit mode was
+   selected; the record remains local and is not employer confirmation.
+2. `/applications` lists recorded submissions, total/response/weekly
+   statistics, no-response rows older than fourteen days, and the highest-fit
+   positive-score `new` jobs without an application record.
+3. The user can record an interview, offer, rejection, or ghosted outcome and
+   set a follow-up date through `PATCH /api/applications/[jobId]`.
+
+### Important limitations
+
+- Application and response values are user-managed local records. They do not
+  verify employer receipt, response authenticity, compensation, sponsorship,
+  or hiring status.
+- Company records deduplicate exact strings only and do not establish a
+  canonical employer identity.
+
 ## Matching and ranking
 
 ### Implemented

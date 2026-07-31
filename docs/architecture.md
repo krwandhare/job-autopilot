@@ -8,7 +8,7 @@ Job Autopilot is a local-first Next.js App Router application. Client components
 Browser UI
   -> Next.js route handlers
      -> SQLite (`data/app.db`) and local resume files
-     -> Greenhouse / Lever / Adzuna / one LinkedIn page
+     -> Greenhouse / Lever / Adzuna / Gmail API / one LinkedIn page
      -> visible Playwright Chromium -> employer or ATS application page
 ```
 
@@ -20,8 +20,9 @@ Browser UI
 | `/profile` | `app/profile/page.tsx` | Upload the latest resume, review/edit detected skills, and save matching filters. |
 | `/jobs/[id]` | `app/jobs/[id]/page.tsx` | Display normalized job data, local status, score/reasons, matched/missing skills, and the latest generated draft. |
 | `/autofill` | `app/autofill/page.tsx` | Work through the highest-ranked `new` job, launch filling, collect missing answers/files, show manual fields, and close/skip sessions. |
+| `/applications` | `app/applications/page.tsx` | Review locally recorded submissions, response status, follow-up dates, summary statistics, and top unsubmitted jobs by stored match score. |
 
-`app/layout.tsx` provides metadata, Google-hosted Geist fonts through `next/font`, and navigation. All four pages are client components except the root layout.
+`app/layout.tsx` provides metadata, Google-hosted Geist fonts through `next/font`, and navigation. All five pages are client components except the root layout.
 
 ## API routes
 
@@ -53,7 +54,10 @@ Browser UI
 | `POST /api/resume-variants/[id]/artifacts` | Generate DOCX/PDF for an approved variant and round-trip validate every included line. |
 | `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX or PDF artifact without exposing its internal path. |
 | `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
+| `POST /api/jobs/sync-gmail` | With explicitly configured local Gmail OAuth credentials, read bounded unread LinkedIn alert threads, import rate-limited external leads, and mark only fully attempted threads read. |
 | `POST /api/jobs/import-url` | Import, score, and upsert exactly one user-supplied LinkedIn URL. |
+| `GET /api/applications` | Return submitted-application rows, response statistics, overdue no-response rows, or top unsubmitted jobs by stored fit. |
+| `PATCH /api/applications/[jobId]` | Update bounded local notes, follow-up date, or response type/timestamp for one recorded application. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
 | `GET /api/autofill/next` | Return the highest-score, newest-fetched `new` job, or a specifically requested job for resumption, with match and extracted posting details. |
 | `POST /api/autofill/start` | Create/reuse a visible browser session and run the form scanner/filler. |
@@ -99,6 +103,11 @@ connection on `global.__db`, and initializes:
 - `resume_variant_artifacts`: per-format path, safe filename, checksum,
   pass/fail status, bounded validation metadata, and creation time for an
   approved variant.
+- `companies`: exact-name convenience records for application reporting; this
+  is not an authoritative employer identity system.
+- `applications`: one local submission record per job with source, applied
+  time, resume label, cover-letter flag, notes, follow-up date, and optional
+  response outcome.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
@@ -151,6 +160,9 @@ All adapters return `NormalizedJob` from `lib/sources/types.ts`.
 - `lever.ts` calls the public postings API and uses the hosted listing URL.
 - `adzuna.ts` calls the first US search page by default, uses environment credentials, and defaults to 20 results.
 - `linkedinUrl.ts` accepts a manually supplied hostname ending in `linkedin.com`, fetches only that page without login, and extracts JobPosting JSON-LD with Open Graph/title fallbacks.
+- `gmailLeads.ts` parses plaintext LinkedIn alert digests into deduplicated
+  public job URLs. `lib/gmail.ts` is an optional local Gmail REST client using
+  user-configured OAuth credentials; it is separate from agent Gmail access.
 - `html.ts` decodes a limited entity set and strips tags for normalized descriptions.
 - `seedCompanies.ts` is a static curated Greenhouse/Lever slug list; it is not a discovery crawler.
 

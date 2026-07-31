@@ -311,6 +311,23 @@ Final validation after the attachment selector refinement:
   artifact, download, and existing autofill route.
 - `git diff --check` passed.
 
+Later on `feature/claude-autofill`, a rate-limited Gmail-alert-to-lead import
+script was added (`scripts/import-gmail-leads.mjs`), with a small additive
+change to `POST /api/jobs/import-url` (out-of-scope-by-default under
+`shared-runtime.allow`, touched here with the user's explicit one-task
+exception) so the response includes the upserted row's `id` and `status`.
+The script imports LinkedIn job-alert URLs already extracted from Gmail
+(never scrapes LinkedIn itself), relies on the existing
+`(source, source_job_id)` upsert for dedup, caps imports per run at a
+configurable rate limit (default 5), and tags a freshly-created job
+`external_lead` so it never enters the `new` autofill queue -- unless the
+job already has a further-along status, which is left untouched. `node
+--check`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` passed.
+Not run live: this worktree's `data/` is empty (no resume/filters/jobs), and
+the original worktree currently has Codex's uncommitted shared-runtime work
+in progress against real data, so no execution against a live server was
+performed this session.
+
 ## Current objective
 
 Truthful per-job resume tailoring is implemented and validated through local
@@ -472,3 +489,22 @@ Follow-up review found that the first hierarchy rule recognized Oracle's
   and PDF both passed with 87 expected items and zero missing.
 - The focused artifact suite, lint, strict TypeScript, production build, and
   `git diff --check` passed.
+
+## 2026-07-31 concurrent feature reconciliation
+
+- Claude's Gmail-alert import, application tracking, response/follow-up UI,
+  top-fit application suggestions, and request-error handling were first
+  integrated through the guarded workflow into `integration/concurrent-work`.
+- That validated baseline was merged into `feature/codex-work`. Five textual
+  conflicts were resolved additively: both handoff histories, resume and
+  application job-detail state, upload evidence refresh plus network error
+  handling, both SQLite schema/type families, and every focused test command.
+- The shared autofill page merged textually; semantic review confirmed that
+  application-source/error handling wraps rather than weakens the existing
+  exact-resume selection and guarded submission behavior.
+- `npm run test:applications`, `test:gmail-leads`, `test:action-center`, all
+  five resume model/artifact suites, the disposable resume route E2E,
+  two-instance shared-runtime route E2E, queue-runner checks, and the five-case
+  integration automation suite passed. `npm run validate` then passed lint,
+  strict TypeScript, and a production build registering all 27 merged routes.
+- No live Gmail mailbox operation or real ATS submission was performed.
