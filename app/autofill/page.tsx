@@ -353,7 +353,10 @@ export default function AutofillPage() {
       statusRes = await fetch(`/api/jobs/${job.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "applied" }),
+        body: JSON.stringify({
+          status: "applied",
+          applicationSource: modeRef.current === "submit" ? "autofill_submit" : "autofill_review",
+        }),
       });
     } catch {
       setCompletionError(

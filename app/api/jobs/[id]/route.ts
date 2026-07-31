@@ -7,6 +7,14 @@ import {
   resolveJobActions,
   type JobActionInput,
 } from "@/lib/actions";
+import { createApplication, type ApplicationSource } from "@/lib/applications";
+
+const APPLICATION_SOURCES: ApplicationSource[] = [
+  "manual",
+  "autofill_review",
+  "autofill_submit",
+  "external_lead",
+];
 
 export async function GET(
   _req: NextRequest,
@@ -89,7 +97,18 @@ export async function PATCH(
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  const { status, action } = body as { status?: unknown; action?: unknown };
+  const { status, action, applicationSource } = body as {
+    status?: unknown;
+    action?: unknown;
+    applicationSource?: unknown;
+  };
+
+  if (
+    applicationSource !== undefined &&
+    !APPLICATION_SOURCES.includes(applicationSource as ApplicationSource)
+  ) {
+    return NextResponse.json({ error: "Invalid applicationSource" }, { status: 400 });
+  }
 
   const validStatuses = [
     "new",
@@ -109,8 +128,8 @@ export async function PATCH(
   const db = getDb();
   const jobId = Number(id);
   const job = db
-    .prepare("SELECT id, status FROM jobs WHERE id = ?")
-    .get(jobId) as { id: number; status: string } | undefined;
+    .prepare("SELECT id, status, company FROM jobs WHERE id = ?")
+    .get(jobId) as { id: number; status: string; company: string } | undefined;
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
@@ -151,6 +170,12 @@ export async function PATCH(
     };
   }
 
+  // A newly-latest resume's filename, if any -- recorded on the application
+  // as the "resume_version" used, best-effort (uploads aren't job-specific).
+  const latestResume = db
+    .prepare("SELECT filename FROM resumes ORDER BY uploaded_at DESC LIMIT 1")
+    .get() as { filename: string } | undefined;
+
   const update = db.transaction(() => {
     db.prepare("UPDATE jobs SET status = ? WHERE id = ?").run(status, jobId);
     if (ACTIONABLE_STATUSES.includes(status as (typeof ACTIONABLE_STATUSES)[number])) {
@@ -161,6 +186,17 @@ export async function PATCH(
       }
     } else {
       resolveJobActions(db, jobId);
+    }
+
+    if (status === "applied" && job.status !== "applied") {
+      createApplication(db, {
+        jobId,
+        companyName: job.company,
+        resumeVersion: latestResume?.filename ?? null,
+        source:
+          (applicationSource as ApplicationSource | undefined) ??
+          (job.status === "external_lead" ? "external_lead" : "manual"),
+      });
     }
   });
   update();
