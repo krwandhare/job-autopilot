@@ -1,5 +1,6 @@
 # Codex owns truthful, evidence-constrained per-job resume tailoring.
 config/agent-tasks/resume-tailoring.allow
+config/agent-tasks/claude-applications.allow
 app/api/resume/**
 app/api/jobs/\[id\]/**
 app/api/resume-variants/**

@@ -1,5 +1,42 @@
 # Session Handoff
 
+## Ship-feature shared integration and Claude availability
+
+On 2026-07-31, the cross-agent `ship-feature` workflow was isolated onto
+`feature/shared-ship-feature` with an explicit ownership manifest. The guarded
+integrator passed lint, strict TypeScript, and the production build and advanced
+`integration/concurrent-work` to `000545c`. The only source-preparation
+conflict was in `TODO.md`; it was resolved semantically by preserving the
+integration baseline and adding only the ship-feature milestone.
+
+Claude's `feature/claude-autofill` worktree still contains user/agent-owned
+uncommitted page changes, so it was deliberately not merged, stashed, or
+rewritten. For immediate discovery independent of branch state, the validated
+portable skill was also installed at `~/.claude/skills/ship-feature`. Claude
+Code 2.1.220 supports that location; an already-open session should run
+`/reload-skills`, then invoke `/ship-feature <requirement>` explicitly.
+
+## Latest workflow tooling update
+
+On 2026-07-31, a vendor-neutral feature-delivery workflow was added at
+`docs/workflows/ship-feature.md`. `AGENTS.md` recognizes the portable
+`SHIP-FEATURE:` trigger, while project adapters expose `/ship-feature` in
+Claude Code and Gemini CLI. A matching personal Codex skill was installed at
+`~/.codex/skills/ship-feature`; it prefers a repository workflow when present
+and otherwise uses its bundled generic reference. The workflow covers agent
+feedback, acceptance criteria, design, implementation, risk-based unit,
+integration, UI, E2E, and visual checks, ownership-safe concurrent work,
+guarded integration, documentation, and evidence-backed handoff.
+
+The installed skill was scaffolded with Codex's `skill-creator`, its YAML and
+file structure were validated, and the installed directory was compared
+byte-for-byte with the staged build. The official `quick_validate.py` could
+not run because both available Python runtimes lack PyYAML; no dependency was
+installed solely for validation. Codex discovery was subsequently confirmed by
+the skill appearing in the available-skills catalog. Use `/reload-skills` in an
+already-open Claude session and `/commands reload` in an already-open Gemini
+CLI session.
+
 ## Current project state
 
 Job Autopilot is an implemented local MVP on the `main` branch. The working application includes profile/resume setup, configurable job-source synchronization, one-off LinkedIn URL import, deterministic matching and ranking, deterministic draft generation, local status tracking, and visible-browser assisted form filling. There is no automated test suite, authentication layer, deployment configuration, or verified submission tracking.
@@ -348,6 +385,7 @@ this handoff:
    the worktree -- harmless, but the user hasn't said whether to delete it.
 5. Fit-scoring formula tuning was explicitly deferred pending the user's
    judgment on what should weigh more (skills vs. salary vs. location, etc).
+
 On 2026-07-30, the first truthful resume-tailoring checkpoint was completed on
 `feature/codex-work`:
 
@@ -474,27 +512,153 @@ Final validation after the attachment selector refinement:
   artifact, download, and existing autofill route.
 - `git diff --check` passed.
 
+Later on `feature/claude-autofill`, a rate-limited Gmail-alert-to-lead import
+script was added (`scripts/import-gmail-leads.mjs`), with a small additive
+change to `POST /api/jobs/import-url` (out-of-scope-by-default under
+`shared-runtime.allow`, touched here with the user's explicit one-task
+exception) so the response includes the upserted row's `id` and `status`.
+The script imports LinkedIn job-alert URLs already extracted from Gmail
+(never scrapes LinkedIn itself), relies on the existing
+`(source, source_job_id)` upsert for dedup, caps imports per run at a
+configurable rate limit (default 5), and tags a freshly-created job
+`external_lead` so it never enters the `new` autofill queue -- unless the
+job already has a further-along status, which is left untouched. `node
+--check`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` passed.
+Not run live: this worktree's `data/` is empty (no resume/filters/jobs), and
+the original worktree currently has Codex's uncommitted shared-runtime work
+in progress against real data, so no execution against a live server was
+performed this session.
+
+Later still on `feature/claude-autofill`, the Gmail-alert pipeline went from
+manual/session-bound to fully independent, and application tracking was
+added:
+
+- Fixed a live bug affecting every LinkedIn import: LinkedIn stopped serving
+  a JobPosting JSON-LD block or an `og:site_name` meta tag to unauthenticated
+  fetches, so `company` silently fell through to `"Unknown"` on 100% of
+  imports. `lib/sources/linkedinUrl.ts` now falls back to the page's
+  `a.topcard__org-name-link` element (`6b260fb`), verified against two live
+  LinkedIn pages before committing.
+- `4897a00` turned Action Center `external_lead` cards into an actual
+  decision UI: the primary action now opens the real posting URL directly
+  (was a redundant link to the same internal page as "Job details"), plus
+  one-click "I applied"/"Not interested" buttons that PATCH status inline.
+  `lib/actions.ts` gained the `url` field needed for this. E2e-verified via
+  Playwright screenshot against 22 real LinkedIn leads pulled from the
+  user's actual Gmail alerts (imported into an isolated test database, not
+  the live one, specifically to allow this testing without risk).
+- `0c6a709` gave the app its own Gmail access, independent of any agent
+  session: `lib/gmail.ts` (REST client using a stored OAuth refresh token),
+  `lib/sources/gmailLeads.ts` (parses LinkedIn alert digest emails into
+  individual leads -- these are multi-job digests, not single postings; an
+  earlier manual pass had only taken the first link per email and silently
+  dropped the rest), `lib/jobs/importLead.ts` (upsert/tag helper shared with
+  the manual URL importer), `app/api/jobs/sync-gmail` (searches unread
+  alert-label threads, imports+tags up to a rate limit, only marks a thread
+  read once every lead in it has been attempted so a rate-limited cutoff
+  never loses jobs), a "Sync Gmail leads" dashboard button,
+  `scripts/gmail-sync-runner.sh` for scheduled runs, and
+  `scripts/gmail-oauth-setup.mjs` -- a one-time local OAuth consent flow
+  helper so the user never hand-crafts a refresh token. The user completed
+  that real OAuth flow (Google Cloud project + Desktop-app OAuth client);
+  `GMAIL_CLIENT_ID`/`GMAIL_CLIENT_SECRET`/`GMAIL_REFRESH_TOKEN` are live in
+  this worktree's untracked `.env.local`. The first real sync (button-
+  triggered, not curl) imported 5 real leads with zero errors, confirmed via
+  the live Action Center count.
+- `3128abf`: while investigating a live bug the user hit (clicking "Resume
+  verification" on a `needs_code` job showed "No jobs with status New left"
+  instead of the real problem), found the root cause -- a stale job-claim
+  lease from an earlier session on a different job was blocking the new
+  claim with a 409, but `app/autofill/page.tsx`'s `loadNextJob()` never
+  checked `res.ok`, so the error body's missing `job` key was
+  misinterpreted as an empty queue. That same missing-`res.ok`-check pattern
+  turned out to be widespread across all four client pages, including two
+  actually dangerous instances: `answerField`/`answerFileField` in autofill
+  treated a failed save as successful and silently advanced the form past
+  an answer that was never recorded, and `profile/page.tsx`'s `saveSkills`
+  optimistically committed UI state before the PATCH with no rollback on
+  failure. Fixed all of them with a consistent pattern (check status,
+  surface the real error, never advance past an unpersisted change).
+  Live-reproduced the exact triggering scenario via Playwright after the
+  fix and confirmed it now shows "This job is currently being handled by
+  another local worker." with a Retry button instead of the misleading
+  message (screenshot-verified).
+- Ran a full live e2e pass afterward: Gmail sync via the real dashboard
+  button, the "I applied" quick-action on a real newly-synced lead, and the
+  claim-conflict fix, all against the real shared database, with claims
+  cleaned up afterward so nothing was left locked.
+- Application tracking (a separate `companies`/`applications` schema, per
+  explicit direction, rather than folding into `jobs.status`) shipped in
+  three slices:
+  - `51e1677`: `companies`/`applications` tables (one application per job;
+    `jobs` already covers postings, so this only models the apply event
+    itself -- when, with which resume, from which path, whether/how the
+    employer responded), `lib/applications.ts` service layer, and a hook
+    into `PATCH /api/jobs/[id]` -- the single place all three "mark applied"
+    paths (autofill, job-detail dropdown, Action Center quick-action)
+    already funnel through, so no separate instrumentation was needed per
+    call site. Found and fixed a real tie-breaking bug during testing:
+    `listApplications` ordered by `applied_at DESC` alone, non-deterministic
+    for same-second timestamps (routine with a fast auto-import); added
+    `, id DESC` as a secondary sort.
+  - `1963b4e`: `PATCH /api/applications/[jobId]` and a new `/applications`
+    dashboard page -- stats strip, response-type buttons
+    (interview/offer/rejected/ghosted, toggle on/off), a follow-up date
+    picker, and a "no response in 14+ days" filter.
+  - `96b4599`: a "Top jobs to apply next" panel using the first slice's
+    `getTopJobsByFit`. Found and fixed a real bug live: that function had no
+    `match_score > 0` filter, and on the real dataset every `new`-status job
+    turned out to be score 0 (the session's earlier queue-runner activity
+    had already worked through everything with a real score, leaving only
+    the hard-excluded remainder). `match_score = 0` is a deliberate
+    exclusion in `lib/matching.ts`, not "low fit" -- the rest of the app
+    already hides it by default. Fixed the query to match that convention.
+  - All three slices were e2e-tested live via Playwright against real (or
+    temporary, cleaned-up-afterward) data: real job status transitions
+    correctly create/dedupe application rows with the right company/resume
+    version/source, response logging and follow-up dates persist and update
+    the stats strip immediately, and the top-fit panel correctly shows
+    nothing rather than misleadingly listing non-matches.
+- Ran the full existing test suite (`test:shared-runtime`,
+  `test:shared-runtime-routes`, `test:queue-runner`,
+  `test:integration-automation` -- all Codex's -- plus this session's own
+  `test:gmail-leads`, `test:action-center`, `test:applications`) after all
+  of the above; all six passed, confirming no regressions from touching
+  shared files (`lib/db.ts`, both `app/api/jobs/**` routes).
+- `feature/claude-autofill` was pushed to `origin` at the user's request
+  (new remote branch, upstream tracking set); no PR opened.
+
+No automated application unit, route-integration, or browser end-to-end tests
+exist. Live source synchronization, resume parsing across all supported
+formats, and real ATS autofill behavior were not re-run during this
+implementation session.
+
 ## Current objective
 
-Truthful per-job resume tailoring is implemented and validated through local
-model, route, artifact, and visual PDF checks. The next product priority is
-separate from this completed feature.
+Continue the application-tracking/Gmail-automation line of work, or address
+the open items below, per user direction.
 
 ## Blockers
 
-- There is no unified test framework or `npm test` command; focused standalone
-  test scripts exist for several modules, including resume evidence.
-- Real ATS forms and external source responses are unstable third-party dependencies; their current end-to-end behavior is unverified in this session.
-- “Applied” remains a user-confirmed local status. The app has no verified employer receipt or submission evidence.
-- No ATS or resume-tailoring feature can guarantee ranking, an interview, or
-  human review because employer screening rules are undisclosed.
+- There is no unified `npm test` command, although focused standalone suites
+  now cover application tracking, Gmail parsing, resume tailoring, shared
+  runtime behavior, queue outcomes, and integration automation.
+- A production build can fail in a network-restricted environment because
+  `next/font` fetches Google-hosted Geist assets.
+- Real ATS forms and external source responses are unstable third-party
+  dependencies; current compatibility is limited to the live and synthetic
+  evidence recorded below.
+- “Applied” and response outcomes remain local tracking data. The app has no
+  verified employer receipt or response evidence.
+- No fit score or resume-tailoring feature can guarantee ranking, an
+  interview, or human review.
 
 ## Exact next recommended task
 
-Perform a user review of the new Profile evidence and job-detail tailoring
-workflow with the real local resume, then create one approved variant for a
-non-destructive test job and inspect both downloaded formats before relying on
-tailored attachments in a real application.
+Prioritize one of the remaining independent items: start the scheduled Gmail
+runner, extend error handling into API/Playwright internals, clarify the
+rate-limited Gmail summary wording, decide the retained watcher file, or tune
+the fit-scoring formula.
 
 ## 2026-07-30 bulk skill verification checkpoint
 
@@ -635,3 +799,22 @@ Follow-up review found that the first hierarchy rule recognized Oracle's
   and PDF both passed with 87 expected items and zero missing.
 - The focused artifact suite, lint, strict TypeScript, production build, and
   `git diff --check` passed.
+
+## 2026-07-31 concurrent feature reconciliation
+
+- Claude's Gmail-alert import, application tracking, response/follow-up UI,
+  top-fit application suggestions, and request-error handling were first
+  integrated through the guarded workflow into `integration/concurrent-work`.
+- That validated baseline was merged into `feature/codex-work`. Five textual
+  conflicts were resolved additively: both handoff histories, resume and
+  application job-detail state, upload evidence refresh plus network error
+  handling, both SQLite schema/type families, and every focused test command.
+- The shared autofill page merged textually; semantic review confirmed that
+  application-source/error handling wraps rather than weakens the existing
+  exact-resume selection and guarded submission behavior.
+- `npm run test:applications`, `test:gmail-leads`, `test:action-center`, all
+  five resume model/artifact suites, the disposable resume route E2E,
+  two-instance shared-runtime route E2E, queue-runner checks, and the five-case
+  integration automation suite passed. `npm run validate` then passed lint,
+  strict TypeScript, and a production build registering all 27 merged routes.
+- No live Gmail mailbox operation or real ATS submission was performed.

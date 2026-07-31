@@ -4,7 +4,8 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 
 ## Implemented capabilities
 
-- Local Next.js dashboard, profile, job detail, and auto-fill pages.
+- Local Next.js dashboard, profile, job detail, auto-fill, and application
+  tracking pages.
 - SQLite persistence for resumes, filters, normalized jobs, drafts, source configurations, remembered profile answers, match metadata, and local statuses.
 - PDF, DOCX, and TXT resume extraction with editable curated skill detection.
 - Immutable master-resume evidence extraction with explicit user
@@ -24,6 +25,10 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Optional Adzuna keyword/location search with local environment credentials.
 - Static curated Greenhouse/Lever source seeding.
 - One-off public LinkedIn URL import without login or bulk crawling.
+- Optional rate-limited Gmail LinkedIn-alert intake using explicitly
+  configured local OAuth credentials and the `external_lead` review boundary.
+- Local application, response, follow-up, response-rate, weekly-volume, and
+  top-unsubmitted-fit tracking without claiming employer verification.
 - Deterministic filters, hard exclusions, skill-overlap scoring, match explanations, ranking, status filtering, zero-score visibility, and pagination.
 - Remote-only matching also enforces configured preferred locations, preventing geographically restricted remote roles from qualifying solely because they contain “remote.”
 - Deterministic cover-letter and screening-answer generation.

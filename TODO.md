@@ -67,6 +67,19 @@
   after all of the above landed; confirmed no regressions from touching
   shared files.
 - Pushed `feature/claude-autofill` to `origin` at the user's request.
+- Added the vendor-neutral `ship-feature` requirement-to-handoff workflow,
+  project adapters for Claude Code and Gemini CLI, the universal
+  `SHIP-FEATURE:` trigger, and a personal Codex `$ship-feature` skill with a
+  bundled fallback for repositories that do not define their own workflow.
+  The ownership-scoped workflow passed guarded integration into
+  `integration/concurrent-work`, and the portable skill is also installed in
+  the personal Claude skills directory for branch-independent discovery.
+
+- Reconciled Claude's Gmail lead intake and application/response tracking with
+  Codex's truthful resume-tailoring stack. Both schema families, job/profile/
+  autofill UI behavior, and all test commands are preserved; focused model,
+  artifact, route, shared-runtime, queue, integration-automation, lint,
+  TypeScript, and production-build checks passed.
 - Added consistent experience hierarchy to generated DOCX and PDF resumes:
   employer/date/location rows are bold, role titles are bold italic, and
   accomplishment text remains normal. Both `year - Present` and

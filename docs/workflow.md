@@ -2,6 +2,24 @@
 
 This document describes behavior present in the repository. “Implemented” means there is a code path; it does not mean every external service or ATS variant has been tested in this documentation session. Incomplete and proposed behavior is labeled explicitly.
 
+## Agent-assisted feature delivery
+
+Use `SHIP-FEATURE: <requirement>` with any coding agent that reads
+`AGENTS.md`. Native project adapters also support `/ship-feature <requirement>`
+in Claude Code and Gemini CLI, while the personal Codex skill uses
+`$ship-feature <requirement>`. The canonical, vendor-neutral procedure is
+`docs/workflows/ship-feature.md`; adapters delegate to it instead of copying
+its rules.
+
+The workflow reviews requirements and suggestions, defines acceptance criteria
+and UI states, implements a complete vertical slice, selects unit, integration,
+UI, E2E, browser, and visual checks according to risk, and finishes with
+documentation and an evidence-backed handoff. Concurrent agents receive
+explicit branch, worktree, baseline, ownership, dependency, and validation
+assignments before delegation. Existing ownership manifests and
+`scripts/integrate-branch.sh` remain the enforcement mechanism for guarded
+integration.
+
 ## Profile and resume setup
 
 ### Implemented
@@ -125,6 +143,48 @@ persist field values, cookies, page HTML, credentials, or application payloads.
 - LinkedIn can block or change public markup; import success is not guaranteed.
 - Fetch timeout and response-size limits are not implemented in application code.
 - Parsed company, salary, location, remote status, and description are third-party data and are not independently verified.
+
+## Gmail alert lead synchronization
+
+### Implemented
+
+1. The user may configure Gmail OAuth values locally in `.env.local`; the app
+   does not receive or create them automatically.
+2. `POST /api/jobs/sync-gmail` searches at most ten unread threads using the
+   configured query, parses plaintext LinkedIn job-alert links, deduplicates
+   them by LinkedIn job ID, and imports at most the requested bounded rate.
+3. Newly imported leads are tagged `external_lead`, keeping them out of the
+   regular `new` autofill queue until the user decides what to do.
+4. A thread is marked read only after every lead selected from that thread was
+   attempted; a rate-limited partial thread remains unread for a later run.
+
+### Important limitations
+
+- Gmail synchronization requires local `gmail.modify` OAuth credentials and
+  makes external Gmail and LinkedIn requests. It has not been live-tested
+  against the user's mailbox in this integration session.
+- Parsed alerts and linked postings remain untrusted third-party data.
+
+## Application and response tracking
+
+### Implemented
+
+1. A transition to local status `applied` idempotently creates one application
+   record for that job. Autofill records whether review or submit mode was
+   selected; the record remains local and is not employer confirmation.
+2. `/applications` lists recorded submissions, total/response/weekly
+   statistics, no-response rows older than fourteen days, and the highest-fit
+   positive-score `new` jobs without an application record.
+3. The user can record an interview, offer, rejection, or ghosted outcome and
+   set a follow-up date through `PATCH /api/applications/[jobId]`.
+
+### Important limitations
+
+- Application and response values are user-managed local records. They do not
+  verify employer receipt, response authenticity, compensation, sponsorship,
+  or hiring status.
+- Company records deduplicate exact strings only and do not establish a
+  canonical employer identity.
 
 ## Matching and ranking
 
