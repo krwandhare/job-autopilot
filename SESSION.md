@@ -222,6 +222,170 @@ exist. Live source synchronization, resume parsing across all supported
 formats, and real ATS autofill behavior were not re-run during this
 implementation session.
 
+Later on `feature/claude-autofill`, a rate-limited Gmail-alert-to-lead import
+script was added (`scripts/import-gmail-leads.mjs`), with a small additive
+change to `POST /api/jobs/import-url` (out-of-scope-by-default under
+`shared-runtime.allow`, touched here with the user's explicit one-task
+exception) so the response includes the upserted row's `id` and `status`.
+The script imports LinkedIn job-alert URLs already extracted from Gmail
+(never scrapes LinkedIn itself), relies on the existing
+`(source, source_job_id)` upsert for dedup, caps imports per run at a
+configurable rate limit (default 5), and tags a freshly-created job
+`external_lead` so it never enters the `new` autofill queue -- unless the
+job already has a further-along status, which is left untouched. `node
+--check`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` passed.
+Not run live: this worktree's `data/` is empty (no resume/filters/jobs), and
+the original worktree currently has Codex's uncommitted shared-runtime work
+in progress against real data, so no execution against a live server was
+performed this session.
+
+Later still on `feature/claude-autofill`, the Gmail-alert pipeline went from
+manual/session-bound to fully independent, and application tracking was
+added:
+
+- Fixed a live bug affecting every LinkedIn import: LinkedIn stopped serving
+  a JobPosting JSON-LD block or an `og:site_name` meta tag to unauthenticated
+  fetches, so `company` silently fell through to `"Unknown"` on 100% of
+  imports. `lib/sources/linkedinUrl.ts` now falls back to the page's
+  `a.topcard__org-name-link` element (`6b260fb`), verified against two live
+  LinkedIn pages before committing.
+- `4897a00` turned Action Center `external_lead` cards into an actual
+  decision UI: the primary action now opens the real posting URL directly
+  (was a redundant link to the same internal page as "Job details"), plus
+  one-click "I applied"/"Not interested" buttons that PATCH status inline.
+  `lib/actions.ts` gained the `url` field needed for this. E2e-verified via
+  Playwright screenshot against 22 real LinkedIn leads pulled from the
+  user's actual Gmail alerts (imported into an isolated test database, not
+  the live one, specifically to allow this testing without risk).
+- `0c6a709` gave the app its own Gmail access, independent of any agent
+  session: `lib/gmail.ts` (REST client using a stored OAuth refresh token),
+  `lib/sources/gmailLeads.ts` (parses LinkedIn alert digest emails into
+  individual leads -- these are multi-job digests, not single postings; an
+  earlier manual pass had only taken the first link per email and silently
+  dropped the rest), `lib/jobs/importLead.ts` (upsert/tag helper shared with
+  the manual URL importer), `app/api/jobs/sync-gmail` (searches unread
+  alert-label threads, imports+tags up to a rate limit, only marks a thread
+  read once every lead in it has been attempted so a rate-limited cutoff
+  never loses jobs), a "Sync Gmail leads" dashboard button,
+  `scripts/gmail-sync-runner.sh` for scheduled runs, and
+  `scripts/gmail-oauth-setup.mjs` -- a one-time local OAuth consent flow
+  helper so the user never hand-crafts a refresh token. The user completed
+  that real OAuth flow (Google Cloud project + Desktop-app OAuth client);
+  `GMAIL_CLIENT_ID`/`GMAIL_CLIENT_SECRET`/`GMAIL_REFRESH_TOKEN` are live in
+  this worktree's untracked `.env.local`. The first real sync (button-
+  triggered, not curl) imported 5 real leads with zero errors, confirmed via
+  the live Action Center count.
+- `3128abf`: while investigating a live bug the user hit (clicking "Resume
+  verification" on a `needs_code` job showed "No jobs with status New left"
+  instead of the real problem), found the root cause -- a stale job-claim
+  lease from an earlier session on a different job was blocking the new
+  claim with a 409, but `app/autofill/page.tsx`'s `loadNextJob()` never
+  checked `res.ok`, so the error body's missing `job` key was
+  misinterpreted as an empty queue. That same missing-`res.ok`-check pattern
+  turned out to be widespread across all four client pages, including two
+  actually dangerous instances: `answerField`/`answerFileField` in autofill
+  treated a failed save as successful and silently advanced the form past
+  an answer that was never recorded, and `profile/page.tsx`'s `saveSkills`
+  optimistically committed UI state before the PATCH with no rollback on
+  failure. Fixed all of them with a consistent pattern (check status,
+  surface the real error, never advance past an unpersisted change).
+  Live-reproduced the exact triggering scenario via Playwright after the
+  fix and confirmed it now shows "This job is currently being handled by
+  another local worker." with a Retry button instead of the misleading
+  message (screenshot-verified).
+- Ran a full live e2e pass afterward: Gmail sync via the real dashboard
+  button, the "I applied" quick-action on a real newly-synced lead, and the
+  claim-conflict fix, all against the real shared database, with claims
+  cleaned up afterward so nothing was left locked.
+- Application tracking (a separate `companies`/`applications` schema, per
+  explicit direction, rather than folding into `jobs.status`) shipped in
+  three slices:
+  - `51e1677`: `companies`/`applications` tables (one application per job;
+    `jobs` already covers postings, so this only models the apply event
+    itself -- when, with which resume, from which path, whether/how the
+    employer responded), `lib/applications.ts` service layer, and a hook
+    into `PATCH /api/jobs/[id]` -- the single place all three "mark applied"
+    paths (autofill, job-detail dropdown, Action Center quick-action)
+    already funnel through, so no separate instrumentation was needed per
+    call site. Found and fixed a real tie-breaking bug during testing:
+    `listApplications` ordered by `applied_at DESC` alone, non-deterministic
+    for same-second timestamps (routine with a fast auto-import); added
+    `, id DESC` as a secondary sort.
+  - `1963b4e`: `PATCH /api/applications/[jobId]` and a new `/applications`
+    dashboard page -- stats strip, response-type buttons
+    (interview/offer/rejected/ghosted, toggle on/off), a follow-up date
+    picker, and a "no response in 14+ days" filter.
+  - `96b4599`: a "Top jobs to apply next" panel using the first slice's
+    `getTopJobsByFit`. Found and fixed a real bug live: that function had no
+    `match_score > 0` filter, and on the real dataset every `new`-status job
+    turned out to be score 0 (the session's earlier queue-runner activity
+    had already worked through everything with a real score, leaving only
+    the hard-excluded remainder). `match_score = 0` is a deliberate
+    exclusion in `lib/matching.ts`, not "low fit" -- the rest of the app
+    already hides it by default. Fixed the query to match that convention.
+  - All three slices were e2e-tested live via Playwright against real (or
+    temporary, cleaned-up-afterward) data: real job status transitions
+    correctly create/dedupe application rows with the right company/resume
+    version/source, response logging and follow-up dates persist and update
+    the stats strip immediately, and the top-fit panel correctly shows
+    nothing rather than misleadingly listing non-matches.
+- Ran the full existing test suite (`test:shared-runtime`,
+  `test:shared-runtime-routes`, `test:queue-runner`,
+  `test:integration-automation` -- all Codex's -- plus this session's own
+  `test:gmail-leads`, `test:action-center`, `test:applications`) after all
+  of the above; all six passed, confirming no regressions from touching
+  shared files (`lib/db.ts`, both `app/api/jobs/**` routes).
+- `feature/claude-autofill` was pushed to `origin` at the user's request
+  (new remote branch, upstream tracking set); no PR opened.
+
+No automated application unit, route-integration, or browser end-to-end tests
+exist. Live source synchronization, resume parsing across all supported
+formats, and real ATS autofill behavior were not re-run during this
+implementation session.
+
+## Current objective
+
+Continue the application-tracking/Gmail-automation line of work, or address
+the open items below, per user direction.
+
+## Blockers
+
+- There is no test framework, fixtures, or `npm test` command (Codex has
+  since added several standalone `test:*` scripts outside that gap, but
+  there is still no single `npm test` entry point).
+- A production build can fail in a network-restricted environment because
+  `next/font` fetches Google-hosted Geist assets; not an issue in this
+  session's environment.
+- Real ATS forms and external source responses are unstable third-party
+  dependencies; their current end-to-end behavior is unverified beyond what
+  this session's live tests covered.
+- "Applied" remains a user-confirmed/system-inferred local status; the app
+  has no verified employer receipt or submission evidence.
+- The fit-scoring formula itself (skills/title/location overlap in
+  `lib/matching.ts`) was not touched this session -- only where its output
+  (`match_score`) is filtered/displayed.
+
+## Exact next recommended task
+
+Several independent threads are open, not yet prioritized by the user as of
+this handoff:
+
+1. `scripts/gmail-sync-runner.sh` (scheduled Gmail sync) was built but never
+   started -- only the on-demand button has actually run. The user asked
+   for both.
+2. The error-handling audit covered the four client pages only; API route
+   handlers and `lib/autofill/filler.ts`'s Playwright internals are
+   unaudited.
+3. A cosmetic wording issue in the Gmail-sync summary message ("Imported 5
+   lead(s) from 0 alert email(s)" when a digest email exceeds the rate limit
+   mid-thread) was flagged but never fixed or explicitly deferred.
+4. An untracked scratch file, `data/watch-and-integrate.sh` (an abandoned
+   background-merge-watcher from earlier in the session, never used since
+   `git merge` got blocked by the auto-mode classifier), is still sitting in
+   the worktree -- harmless, but the user hasn't said whether to delete it.
+5. Fit-scoring formula tuning was explicitly deferred pending the user's
+   judgment on what should weigh more (skills vs. salary vs. location, etc).
+
 On 2026-07-30, the first truthful resume-tailoring checkpoint was completed on
 `feature/codex-work`:
 

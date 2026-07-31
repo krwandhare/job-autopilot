@@ -130,6 +130,7 @@ export default function JobDetailPage({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -139,7 +140,6 @@ export default function JobDetailPage({
   const [savingVariantItem, setSavingVariantItem] = useState<number | null>(null);
   const [resumeArtifacts, setResumeArtifacts] = useState<ResumeArtifact[]>([]);
   const [artifactLoading, setArtifactLoading] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   async function load() {
     try {

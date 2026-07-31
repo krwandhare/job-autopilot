@@ -39,6 +39,34 @@
 
 ## Completed
 
+- Gave the app independent Gmail access (no agent session required):
+  `lib/gmail.ts` REST client, digest-email parser, shared import/tag helper,
+  `POST /api/jobs/sync-gmail`, an on-demand dashboard button, a scheduled-run
+  script, and a one-time OAuth setup helper (`0c6a709`). User completed the
+  real OAuth flow; a real live sync (button-triggered) imported 5 real leads
+  with zero errors.
+- Fixed the LinkedIn company-name extraction bug (100% of imports showed
+  "Unknown" after LinkedIn stopped serving JSON-LD/og:site_name to
+  unauthenticated fetches) via a `topcard__org-name-link` fallback,
+  verified against two live pages (`6b260fb`).
+- Turned Action Center `external_lead` cards into a real decision UI: direct
+  link to the posting, one-click "I applied"/"Not interested" (`4897a00`).
+- Audited and fixed missing `res.ok` checks across all four client pages
+  (`3128abf`), including two silent-false-success bugs in autofill's answer-
+  saving and profile's skill-saving, found via a live bug the user hit
+  (misleading "queue empty" message that was actually a stale-claim 409).
+  Live-reproduced and confirmed fixed via Playwright.
+- Built application tracking as a separate `companies`/`applications`
+  schema (three slices: schema+service layer+apply-flow hook `51e1677`,
+  response/follow-up UI `1963b4e`, top-fit panel `96b4599`), hooked into all
+  three existing "mark applied" paths without per-site instrumentation.
+  Found and fixed two real bugs along the way (a non-deterministic sort tie-
+  break, and a missing `match_score > 0` filter that was surfacing hard-
+  excluded jobs as "top picks"). All three slices e2e-tested live.
+- Ran Codex's full test suite alongside this session's new ones (6 total)
+  after all of the above landed; confirmed no regressions from touching
+  shared files.
+- Pushed `feature/claude-autofill` to `origin` at the user's request.
 - Added the vendor-neutral `ship-feature` requirement-to-handoff workflow,
   project adapters for Claude Code and Gemini CLI, the universal
   `SHIP-FEATURE:` trigger, and a personal Codex `$ship-feature` skill with a
@@ -113,34 +141,6 @@
   missing/stale/mutated artifacts fall back to the master resume, another job
   can never receive the variant, and a failed Playwright attachment is surfaced
   for manual handling.
-- Gave the app independent Gmail access (no agent session required):
-  `lib/gmail.ts` REST client, digest-email parser, shared import/tag helper,
-  `POST /api/jobs/sync-gmail`, an on-demand dashboard button, a scheduled-run
-  script, and a one-time OAuth setup helper (`0c6a709`). User completed the
-  real OAuth flow; a real live sync (button-triggered) imported 5 real leads
-  with zero errors.
-- Fixed the LinkedIn company-name extraction bug (100% of imports showed
-  "Unknown" after LinkedIn stopped serving JSON-LD/og:site_name to
-  unauthenticated fetches) via a `topcard__org-name-link` fallback,
-  verified against two live pages (`6b260fb`).
-- Turned Action Center `external_lead` cards into a real decision UI: direct
-  link to the posting, one-click "I applied"/"Not interested" (`4897a00`).
-- Audited and fixed missing `res.ok` checks across all four client pages
-  (`3128abf`), including two silent-false-success bugs in autofill's answer-
-  saving and profile's skill-saving, found via a live bug the user hit
-  (misleading "queue empty" message that was actually a stale-claim 409).
-  Live-reproduced and confirmed fixed via Playwright.
-- Built application tracking as a separate `companies`/`applications`
-  schema (three slices: schema+service layer+apply-flow hook `51e1677`,
-  response/follow-up UI `1963b4e`, top-fit panel `96b4599`), hooked into all
-  three existing "mark applied" paths without per-site instrumentation.
-  Found and fixed two real bugs along the way (a non-deterministic sort tie-
-  break, and a missing `match_score > 0` filter that was surfacing hard-
-  excluded jobs as "top picks"). All three slices e2e-tested live.
-- Ran Codex's full test suite alongside this session's new ones (6 total)
-  after all of the above landed; confirmed no regressions from touching
-  shared files.
-- Pushed `feature/claude-autofill` to `origin` at the user's request.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.

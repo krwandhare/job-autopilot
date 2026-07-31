@@ -1,0 +1,11 @@
+# Sync feature/claude-autofill's remaining commits (run-job-autopilot/verify
+# skills, standing-branch AGENTS.md guidance) into integration/concurrent-work.
+config/agent-tasks/claude-sync.allow
+.claude/skills/run-job-autopilot/**
+.claude/skills/verify/**
+AGENTS.md
+SESSION.md
+TODO.md
+app/jobs/\[id\]/page.tsx
+lib/db.ts
+package.json
