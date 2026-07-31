@@ -25,6 +25,8 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Concurrent worktrees can share one explicit runtime directory; expiring
   SQLite leases atomically keep separate local servers from opening the same
   autofill job.
+- Autofill and queue-runner stop conditions feed structured, privacy-bounded
+  reasons and field labels into the dashboard Action Center.
 - Skill comparison uses conservative canonical aliases and labels results as mentioned/not mentioned in the posting; draft generation does not claim the user lacks an unmentioned target skill.
 
 ## Stabilization work
