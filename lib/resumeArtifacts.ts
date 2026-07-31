@@ -219,6 +219,30 @@ function normalizeExtractedText(value: string): string {
     .toLowerCase();
 }
 
+function normalizeValidationWords(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+export function artifactTextContainsExpected(
+  parsedText: string,
+  expectedLine: string
+): boolean {
+  const normalizedParsed = normalizeExtractedText(parsedText);
+  const normalizedExpected = normalizeExtractedText(expectedLine);
+  if (normalizedParsed.includes(normalizedExpected)) return true;
+
+  const expectedWords = normalizeValidationWords(expectedLine);
+  const wordCount = expectedWords ? expectedWords.split(" ").length : 0;
+  if (wordCount < 3) return false;
+  return normalizeValidationWords(parsedText).includes(expectedWords);
+}
+
 async function validateArtifact(
   buffer: Buffer,
   format: ResumeArtifactFormat,
@@ -228,9 +252,8 @@ async function validateArtifact(
     buffer,
     `tailored-resume.${format}`
   );
-  const normalizedParsed = normalizeExtractedText(parsed);
   const missing = expectedLines.filter(
-    (line) => !normalizedParsed.includes(normalizeExtractedText(line))
+    (line) => !artifactTextContainsExpected(parsed, line)
   );
   return {
     passed: missing.length === 0,

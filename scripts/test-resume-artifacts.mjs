@@ -4,10 +4,25 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import {
+  artifactTextContainsExpected,
   generateResumeArtifacts,
   getResumeArtifactSummaries,
   selectResumeAttachmentForJob,
 } from "../lib/resumeArtifacts.ts";
+
+assert.equal(
+  artifactTextContainsExpected(
+    "Architected high availability systems for regulated workloads.",
+    "Architected high-availability systems for regulated workloads."
+  ),
+  true,
+  "long lines should tolerate punctuation glyph normalization"
+);
+assert.equal(
+  artifactTextContainsExpected("C", "C++"),
+  false,
+  "short skills must not pass through relaxed punctuation matching"
+);
 import { extractResumeText } from "../lib/resume.ts";
 import { postingFingerprint } from "../lib/jobRequirements.ts";
 

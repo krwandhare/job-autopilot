@@ -40,6 +40,12 @@ positioned source fragments; applying it to Job Autopilot's already
 single-column PDF would create false missing-item failures even when the
 generated file contains every expected line.
 
+Round-trip validation first requires exact normalized text. For narrative
+lines of at least three words, it also permits a punctuation-insensitive match
+because PDF text extraction can normalize hyphens, dashes, or similar glyphs.
+Short skills and values remain strict so `C`, `C++`, and other compact tokens
+cannot be treated as interchangeable.
+
 ### Incomplete or unverified
 
 - Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.

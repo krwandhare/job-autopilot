@@ -28,6 +28,10 @@
 
 ## Completed
 
+- Made generated-PDF validation robust to punctuation-glyph normalization for
+  multi-word narrative lines while preserving strict matching for short skills
+  and values. This removes false missing-line failures without weakening
+  content-presence checks into loose keyword matching.
 - Separated source-PDF layout reconstruction from generated-artifact
   round-trip extraction, eliminating false PDF validation failures after the
   coordinate-aware parser was introduced.

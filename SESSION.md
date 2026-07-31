@@ -417,3 +417,16 @@ Follow-up validation found two distinct states in the user's next variant:
   PDFs alone use coordinate-aware reconstruction.
 - The disposable artifact suite passed for both DOCX and PDF after the
   separation. Lint and strict TypeScript also passed.
+
+On 2026-07-31, job-detail testing exposed one remaining generated-PDF
+round-trip edge case:
+
+- The current approved variant contained all expected content in DOCX. PDF
+  extraction differed only in one long experience paragraph due to punctuation
+  glyph normalization, reporting one false missing item.
+- Validation now retains exact normalized matching first, then permits
+  punctuation-insensitive matching only for narrative lines with at least
+  three words. Compact values such as `C` and `C++` remain distinct.
+- Focused assertions cover both the allowed long-line normalization and the
+  strict short-token boundary. The full disposable DOCX/PDF artifact suite,
+  lint, strict TypeScript, and `git diff --check` passed.
