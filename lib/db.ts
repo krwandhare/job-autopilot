@@ -134,6 +134,104 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_applications_no_response
       ON applications(response_received_at, applied_at);
+
+    CREATE TABLE IF NOT EXISTS resume_evidence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+      evidence_kind TEXT NOT NULL,
+      section TEXT NOT NULL,
+      source_text TEXT NOT NULL,
+      normalized_text TEXT NOT NULL,
+      source_start_line INTEGER,
+      source_end_line INTEGER,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      verification_status TEXT NOT NULL DEFAULT 'extracted',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (verification_status IN ('extracted', 'verified', 'rejected'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_evidence_resume
+      ON resume_evidence(resume_id, source_start_line, id);
+
+    CREATE TABLE IF NOT EXISTS job_requirement_analyses (
+      job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      description_fingerprint TEXT NOT NULL,
+      analyzed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS job_requirements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      requirement_kind TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      requirement_text TEXT NOT NULL,
+      terms_json TEXT NOT NULL DEFAULT '[]',
+      source_text TEXT NOT NULL,
+      source_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (priority IN ('required', 'preferred', 'context'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_job_requirements_job
+      ON job_requirements(job_id, source_order, id);
+
+    CREATE TABLE IF NOT EXISTS resume_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'draft',
+      job_fingerprint TEXT NOT NULL,
+      preferred_format TEXT NOT NULL DEFAULT 'docx',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      approved_at TEXT,
+      CHECK (status IN ('draft', 'approved', 'superseded', 'rejected')),
+      CHECK (preferred_format IN ('docx', 'pdf'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_resume_variants_approved_job
+      ON resume_variants(job_id) WHERE status = 'approved';
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variants_job
+      ON resume_variants(job_id, created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS resume_variant_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      variant_id INTEGER NOT NULL REFERENCES resume_variants(id) ON DELETE CASCADE,
+      evidence_id INTEGER NOT NULL REFERENCES resume_evidence(id),
+      evidence_kind TEXT NOT NULL,
+      section TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      original_text TEXT NOT NULL,
+      tailored_text TEXT NOT NULL,
+      rationale TEXT NOT NULL,
+      change_type TEXT NOT NULL,
+      matched_terms_json TEXT NOT NULL DEFAULT '[]',
+      included INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variant_items_variant
+      ON resume_variant_items(variant_id, position, id);
+
+    CREATE TABLE IF NOT EXISTS resume_variant_artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      variant_id INTEGER NOT NULL REFERENCES resume_variants(id) ON DELETE CASCADE,
+      format TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      validation_status TEXT NOT NULL,
+      validation_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(variant_id, format),
+      CHECK (format IN ('docx', 'pdf')),
+      CHECK (validation_status IN ('passed', 'failed'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variant_artifacts_variant
+      ON resume_variant_artifacts(variant_id, format);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -147,6 +245,24 @@ function init(db: Database.Database) {
   const resumeCols = db.prepare("PRAGMA table_info(resumes)").all() as { name: string }[];
   if (!resumeCols.some((c) => c.name === "file_path")) {
     db.exec("ALTER TABLE resumes ADD COLUMN file_path TEXT");
+  }
+
+  const variantItemCols = db.prepare("PRAGMA table_info(resume_variant_items)").all() as {
+    name: string;
+  }[];
+  if (!variantItemCols.some((column) => column.name === "evidence_kind")) {
+    db.exec(
+      "ALTER TABLE resume_variant_items ADD COLUMN evidence_kind TEXT NOT NULL DEFAULT 'other'"
+    );
+  }
+
+  const variantCols = db.prepare("PRAGMA table_info(resume_variants)").all() as {
+    name: string;
+  }[];
+  if (!variantCols.some((column) => column.name === "preferred_format")) {
+    db.exec(
+      "ALTER TABLE resume_variants ADD COLUMN preferred_format TEXT NOT NULL DEFAULT 'docx'"
+    );
   }
 }
 
@@ -265,4 +381,71 @@ export type ApplicationRow = {
   response_type: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ResumeEvidenceRow = {
+  id: number;
+  resume_id: number;
+  evidence_kind: string;
+  section: string;
+  source_text: string;
+  normalized_text: string;
+  source_start_line: number | null;
+  source_end_line: number | null;
+  metadata_json: string;
+  verification_status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobRequirementRow = {
+  id: number;
+  job_id: number;
+  requirement_kind: string;
+  priority: string;
+  requirement_text: string;
+  terms_json: string;
+  source_text: string;
+  source_order: number;
+  created_at: string;
+};
+
+export type ResumeVariantRow = {
+  id: number;
+  job_id: number;
+  resume_id: number;
+  status: "draft" | "approved" | "superseded" | "rejected";
+  job_fingerprint: string;
+  preferred_format: "docx" | "pdf";
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+};
+
+export type ResumeVariantItemRow = {
+  id: number;
+  variant_id: number;
+  evidence_id: number;
+  evidence_kind: string;
+  section: string;
+  position: number;
+  original_text: string;
+  tailored_text: string;
+  rationale: string;
+  change_type: string;
+  matched_terms_json: string;
+  included: number;
+  created_at: string;
+};
+
+export type ResumeVariantArtifactRow = {
+  id: number;
+  variant_id: number;
+  format: "docx" | "pdf";
+  file_path: string;
+  filename: string;
+  sha256: string;
+  validation_status: "passed" | "failed";
+  validation_json: string;
+  created_at: string;
 };

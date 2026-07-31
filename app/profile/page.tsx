@@ -9,6 +9,17 @@ type Resume = {
   skills_json: string;
 };
 
+type ResumeEvidence = {
+  id: number;
+  resumeId: number;
+  kind: string;
+  section: string;
+  sourceText: string;
+  normalizedText: string;
+  sourceStartLine: number | null;
+  verificationStatus: "extracted" | "verified" | "rejected";
+};
+
 type Filter = {
   id: number;
   titleInclude: string;
@@ -25,7 +36,15 @@ export default function ProfilePage() {
   const [skills, setSkills] = useState<string[]>([]);
   const [newSkill, setNewSkill] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [reprocessingResume, setReprocessingResume] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<ResumeEvidence[]>([]);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [savingEvidenceId, setSavingEvidenceId] = useState<number | null>(null);
+  const [verifyingSkills, setVerifyingSkills] = useState(false);
+  const [verifyingAllEvidence, setVerifyingAllEvidence] = useState(false);
+  const [evidenceMessage, setEvidenceMessage] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<Filter>({
     id: 0,
@@ -44,6 +63,25 @@ export default function ProfilePage() {
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  async function loadEvidence(resumeId: number) {
+    setEvidenceLoading(true);
+    setEvidenceError(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resumeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not build evidence profile");
+      setEvidence(data.evidence ?? []);
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "Could not build evidence profile");
+    } finally {
+      setEvidenceLoading(false);
+    }
+  }
+
   useEffect(() => {
     fetch("/api/resume")
       .then((r) => r.json())
@@ -51,6 +89,7 @@ export default function ProfilePage() {
         if (d.resume) {
           setResume(d.resume);
           setSkills(JSON.parse(d.resume.skills_json));
+          loadEvidence(d.resume.id);
         }
       })
       .catch((err) => setLoadError(`Could not load your resume: ${err instanceof Error ? err.message : String(err)}`));
@@ -90,6 +129,7 @@ export default function ProfilePage() {
           skills_json: JSON.stringify(data.skills),
         });
         setSkills(data.skills);
+        await loadEvidence(data.id);
       }
     } catch (err) {
       setUploadError(
@@ -99,6 +139,45 @@ export default function ProfilePage() {
       );
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function reprocessPdfResume() {
+    if (!resume || !resume.filename.toLowerCase().endsWith(".pdf")) return;
+    if (
+      !window.confirm(
+        "Repair PDF columns and wrapped lines? This creates a new local resume revision, preserves the original file and old variants, and requires a new tailored draft."
+      )
+    ) {
+      return;
+    }
+
+    setReprocessingResume(true);
+    setUploadError(null);
+    setEvidenceError(null);
+    setEvidenceMessage(null);
+    try {
+      const res = await fetch("/api/resume/reprocess", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resumeId: resume.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not repair PDF layout");
+      setResume(data.resume);
+      setSkills(JSON.parse(data.resume.skills_json));
+      setEvidence(data.evidence ?? []);
+      setEvidenceMessage(
+        data.verificationCarriedForward
+          ? "PDF layout repaired and existing verification carried forward. Create a new tailored draft for the job."
+          : "PDF layout repaired. Review or verify the reconstructed evidence before creating a new tailored draft."
+      );
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "Could not repair PDF layout"
+      );
+    } finally {
+      setReprocessingResume(false);
     }
   }
 
@@ -136,6 +215,117 @@ export default function ProfilePage() {
 
   function removeSkill(skill: string) {
     saveSkills(skills.filter((s) => s !== skill));
+  }
+
+  function updateEvidence(id: number, change: Partial<ResumeEvidence>) {
+    setEvidence((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...change } : item))
+    );
+  }
+
+  async function saveEvidence(item: ResumeEvidence) {
+    setSavingEvidenceId(item.id);
+    setEvidenceError(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          normalizedText: item.normalizedText,
+          verificationStatus: item.verificationStatus,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not save evidence");
+      if (data.evidence) {
+        updateEvidence(item.id, data.evidence);
+      }
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "Could not save evidence");
+    } finally {
+      setSavingEvidenceId(null);
+    }
+  }
+
+  async function verifyAllPendingSkills() {
+    if (!resume) return;
+    const pendingSkills = evidence.filter(
+      (item) => item.kind === "skill" && item.verificationStatus === "extracted"
+    );
+    if (pendingSkills.length === 0) return;
+    if (
+      !window.confirm(
+        `Verify all ${pendingSkills.length} skills awaiting review? Rejected skills will stay rejected.`
+      )
+    ) {
+      return;
+    }
+
+    setVerifyingSkills(true);
+    setEvidenceError(null);
+    setEvidenceMessage(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify_all_skills",
+          resumeId: resume.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not verify skills");
+      setEvidence(data.evidence ?? []);
+      setEvidenceMessage(
+        `${data.updatedCount ?? pendingSkills.length} skills verified. Refresh existing job analyses or tailored drafts to use them.`
+      );
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "Could not verify skills");
+    } finally {
+      setVerifyingSkills(false);
+    }
+  }
+
+  async function verifyAllPendingEvidence() {
+    if (!resume) return;
+    const pendingEvidence = evidence.filter(
+      (item) => item.verificationStatus === "extracted"
+    );
+    if (pendingEvidence.length === 0) return;
+    if (
+      !window.confirm(
+        `Verify all ${pendingEvidence.length} remaining resume items? This treats the unreviewed content in your uploaded resume as accurate. Rejected items will stay rejected.`
+      )
+    ) {
+      return;
+    }
+
+    setVerifyingAllEvidence(true);
+    setEvidenceError(null);
+    setEvidenceMessage(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify_all_evidence",
+          resumeId: resume.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not verify resume content");
+      setEvidence(data.evidence ?? []);
+      setEvidenceMessage(
+        `${data.updatedCount ?? pendingEvidence.length} resume items verified. Create a new tailored draft to include them.`
+      );
+    } catch (error) {
+      setEvidenceError(
+        error instanceof Error ? error.message : "Could not verify resume content"
+      );
+    } finally {
+      setVerifyingAllEvidence(false);
+    }
   }
 
   async function saveFilters() {
@@ -198,7 +388,21 @@ export default function ProfilePage() {
 
         {resume && (
           <div className="border rounded-lg p-4 space-y-3">
-            <p className="text-sm font-medium">{resume.filename}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium">{resume.filename}</p>
+              {resume.filename.toLowerCase().endsWith(".pdf") && (
+                <button
+                  type="button"
+                  onClick={reprocessPdfResume}
+                  disabled={reprocessingResume || uploading}
+                  className="rounded border border-blue-700 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {reprocessingResume
+                    ? "Repairing PDF layout…"
+                    : "Repair PDF line breaks"}
+                </button>
+              )}
+            </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">
                 Detected skills (edit as needed — these drive job matching):
@@ -238,6 +442,140 @@ export default function ProfilePage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {resume && (
+          <div className="border rounded-lg p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Verified career evidence</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Tailored resumes will use only facts you mark verified. Edit unclear extraction,
+                reject incorrect items, and keep the uploaded master resume unchanged.
+              </p>
+            </div>
+
+            {evidenceLoading && (
+              <p className="text-sm text-gray-500">Building evidence profile…</p>
+            )}
+            {evidenceError && <p className="text-sm text-red-600">{evidenceError}</p>}
+            {evidenceMessage && <p className="text-sm text-green-700">{evidenceMessage}</p>}
+            {!evidenceLoading && evidence.length === 0 && !evidenceError && (
+              <p className="text-sm text-gray-500">
+                No evidence was extracted. The master resume remains available.
+              </p>
+            )}
+
+            {evidence.length > 0 && (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="text-green-700">
+                      {evidence.filter((item) => item.verificationStatus === "verified").length}{" "}
+                      verified
+                    </span>
+                    <span className="text-amber-700">
+                      {evidence.filter((item) => item.verificationStatus === "extracted").length}{" "}
+                      awaiting review
+                    </span>
+                    <span className="text-gray-500">
+                      {evidence.filter((item) => item.verificationStatus === "rejected").length}{" "}
+                      rejected
+                    </span>
+                  </div>
+                  {evidence.some(
+                    (item) =>
+                      item.kind === "skill" && item.verificationStatus === "extracted"
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={verifyAllPendingSkills}
+                      disabled={verifyingSkills || savingEvidenceId !== null}
+                      className="rounded border border-green-700 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
+                    >
+                      {verifyingSkills ? "Verifying skills…" : "Verify all skills"}
+                    </button>
+                  )}
+                </div>
+
+                {evidence.some((item) => item.verificationStatus === "extracted") && (
+                  <div className="rounded border border-blue-200 bg-blue-50 p-3">
+                    <p className="text-xs text-blue-900">
+                      Trust all remaining content in this uploaded resume? This is faster, but you
+                      remain responsible for every claim.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={verifyAllPendingEvidence}
+                      disabled={
+                        verifyingAllEvidence ||
+                        verifyingSkills ||
+                        savingEvidenceId !== null
+                      }
+                      className="mt-2 rounded bg-blue-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {verifyingAllEvidence
+                        ? "Verifying resume content…"
+                        : "Verify all resume content"}
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {evidence.map((item) => (
+                    <article key={item.id} className="rounded border p-3 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-gray-500">
+                          <span className="font-medium text-gray-700">{item.section}</span>
+                          {" · "}
+                          {item.kind}
+                          {item.sourceStartLine ? ` · source line ${item.sourceStartLine}` : ""}
+                        </div>
+                        <select
+                          value={item.verificationStatus}
+                          onChange={(event) =>
+                            updateEvidence(item.id, {
+                              verificationStatus: event.target
+                                .value as ResumeEvidence["verificationStatus"],
+                            })
+                          }
+                          className="border rounded px-2 py-1 text-xs"
+                          suppressHydrationWarning
+                        >
+                          <option value="extracted">Needs review</option>
+                          <option value="verified">Verified</option>
+                          <option value="rejected">Reject</option>
+                        </select>
+                      </div>
+                      <textarea
+                        value={item.normalizedText}
+                        onChange={(event) =>
+                          updateEvidence(item.id, { normalizedText: event.target.value })
+                        }
+                        rows={2}
+                        className="w-full rounded border px-2 py-1 text-sm"
+                        suppressHydrationWarning
+                      />
+                      {item.sourceText !== item.normalizedText && (
+                        <p className="text-xs text-gray-400">
+                          Extracted source: {item.sourceText}
+                        </p>
+                      )}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => saveEvidence(item)}
+                          disabled={savingEvidenceId === item.id || !item.normalizedText.trim()}
+                          className="rounded bg-gray-900 px-3 py-1 text-xs text-white disabled:opacity-50"
+                        >
+                          {savingEvidenceId === item.id ? "Saving…" : "Save evidence"}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </section>

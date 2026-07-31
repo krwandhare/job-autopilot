@@ -67,6 +67,67 @@
   after all of the above landed; confirmed no regressions from touching
   shared files.
 - Pushed `feature/claude-autofill` to `origin` at the user's request.
+- Added consistent experience hierarchy to generated DOCX and PDF resumes:
+  employer/date/location rows are bold, role titles are bold italic, and
+  accomplishment text remains normal. Both `year - Present` and
+  `year - Month year` ranges are covered. Synthetic visual QA and current-job
+  round-trip validation passed without changing resume content.
+- Made job-specific resume download controls resilient to restored/mobile tab
+  state. Artifact reads bypass caches, visible/restored job tabs refresh their
+  file summaries, and downloads open separately from the job-detail page.
+- Made generated-PDF validation robust to punctuation-glyph normalization for
+  multi-word narrative lines while preserving strict matching for short skills
+  and values. This removes false missing-line failures without weakening
+  content-presence checks into loose keyword matching.
+- Separated source-PDF layout reconstruction from generated-artifact
+  round-trip extraction, eliminating false PDF validation failures after the
+  coordinate-aware parser was introduced.
+- Replaced source-order PDF text extraction with coordinate-aware resume
+  reconstruction. Wrapped experience bullets are joined, line-break hyphens
+  are preserved correctly, side-by-side impact metrics remain separate, and
+  parallel education/certification columns keep distinct sections. Added a
+  safe Profile repair action that creates a new resume revision instead of
+  rewriting prior evidence or approved variants.
+- Restored full-resume tailoring for PDF text with letter-spaced headings by
+  normalizing section labels and safely reclassifying existing evidence.
+  Added one-confirmation verification of all pending resume content while
+  preserving rejected records; newly generated variants now include verified
+  experience, education, certifications, and other resume sections.
+- Added one-confirmation bulk verification for pending skill evidence while
+  preserving rejected skills and keeping non-skill career claims under
+  individual review. Disposable route coverage confirms the server-side
+  boundary.
+- Completed truthful per-job resume tailoring across five validated commits:
+  verified evidence (`051632b`), deterministic requirement coverage
+  (`ddd3a2e`), reviewable approved variants (`b9bd33e`), round-trip-validated
+  DOCX/PDF export (`bdb81ac`), and exact-job autofill attachment with master
+  fallback (`62fee11`).
+- Added the resume-tailoring evidence foundation: immutable master-resume
+  source records, deterministic line/skill evidence extraction, explicit
+  verify/reject/edit controls, an idempotent API, and isolated model coverage.
+  A disposable browser E2E verified synthetic upload, persisted verification,
+  zero console errors, and a 390px layout without horizontal overflow.
+- Added deterministic job-requirement extraction and stored analysis with
+  required/preferred/context classification, evidence-backed coverage, posting
+  fingerprint invalidation, a job-detail review surface, isolated model tests,
+  and a disposable production-route E2E. Unverified evidence never counts,
+  experience duration is not inferred from dates, and the UI does not claim a
+  universal ATS score or review probability.
+- Added evidence-constrained resume variants with relevance ordering, safe
+  punctuation-only normalization, per-item source/after/rationale review,
+  include/exclude controls, explicit job-specific approval, stale
+  job/resume/evidence rejection, superseded draft history, and approved
+  immutability. Isolated model and disposable route E2E checks passed.
+- Added ATS-safe single-column DOCX and text-based PDF generation for approved
+  variants, conventional headings, preserved contact header, round-trip
+  extraction checks for every included item, validated-only downloads, and
+  route E2E coverage. Visual PDF QA caught and fixed a transparent-page
+  background before acceptance.
+- Integrated exact-job resume selection into autofill. The queue previews the
+  filename and source, DOCX is preferred unless PDF is explicitly selected,
+  missing/stale/mutated artifacts fall back to the master resume, another job
+  can never receive the variant, and a failed Playwright attachment is surfaced
+  for manual handling.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.

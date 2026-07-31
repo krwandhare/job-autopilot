@@ -348,3 +348,290 @@ this handoff:
    the worktree -- harmless, but the user hasn't said whether to delete it.
 5. Fit-scoring formula tuning was explicitly deferred pending the user's
    judgment on what should weigh more (skills vs. salary vs. location, etc).
+On 2026-07-30, the first truthful resume-tailoring checkpoint was completed on
+`feature/codex-work`:
+
+- Added the implementation and validation plan in
+  `docs/resume-tailoring-plan.md` and a guarded ownership manifest in
+  `config/agent-tasks/resume-tailoring.allow`.
+- Added idempotent `resume_evidence` persistence. Extracted evidence retains
+  the immutable source text and line references, while a separate normalized
+  value can be marked `extracted`, `verified`, or `rejected`.
+- Added `GET`, `POST`, and `PATCH /api/resume/evidence` and a Profile review
+  surface. Future tailoring is explicitly limited to items the user marks
+  verified.
+- `npm run test:resume-evidence`, `npm run lint`, `npx tsc --noEmit`,
+  `npm run build`, and `git diff --check` passed.
+- A production server using a disposable runtime directory accepted a
+  synthetic TXT resume, extracted ten evidence items, persisted a summary as
+  verified across reload, and emitted no browser console errors. At a 390px
+  viewport, the evidence UI had no horizontal overflow. The temporary browser,
+  server, and database were removed; live resume data was not read or changed.
+
+The second resume-tailoring checkpoint was then completed:
+
+- Added `job_requirement_analyses` and `job_requirements`. The stored
+  description fingerprint causes stale requirements to be replaced whenever
+  the posting text changes.
+- `lib/jobRequirements.ts` deterministically classifies required, preferred,
+  and contextual skills, experience, education, certifications,
+  responsibilities, and qualifications.
+- Coverage uses only evidence marked verified. Exact known terms and
+  conservative text similarity can surface supporting evidence, while
+  unevidenced experience duration remains a visible gap rather than being
+  inferred from employment dates.
+- Added `GET` and `POST /api/jobs/[id]/resume-analysis` and a job-detail
+  coverage section. The UI labels evidence, partial matches, gaps, and
+  user-review needs separately and explicitly disclaims an employer ATS score
+  or guaranteed review.
+- `npm run test:resume-requirements`, `npm run test:resume-analysis-routes`,
+  `npm run lint`, `npx tsc --noEmit`, `npm run build`, and
+  `git diff --check` passed. The route E2E used a temporary production server,
+  synthetic resume/job data, and a disposable SQLite database, then removed
+  them.
+
+The third resume-tailoring checkpoint was then completed:
+
+- Added `resume_variants` and `resume_variant_items`, including an audit record
+  for source evidence, tailored text, rationale, matched terms, ordering, and
+  inclusion.
+- Variant composition uses only verified evidence. It prioritizes evidence
+  supporting required, then preferred, then contextual expectations within
+  conventional resume sections. The only automatic text change is whitespace,
+  capitalization, and terminal punctuation; it does not create claims.
+- The job-detail page presents verified source and tailored text side by side,
+  lets the user include/exclude items while the variant is a draft, and
+  requires a separate approval action.
+- Approval rejects stale master resumes, changed job descriptions, modified or
+  unverified evidence, and empty variants. Approved variants are immutable;
+  creating a new draft does not silently replace an approved version.
+- `npm run test:resume-variants`, lint, strict TypeScript, the production
+  build, and the expanded `npm run test:resume-analysis-routes` passed. The
+  route E2E verified draft creation, item exclusion, approval, and immutable
+  approved state using only temporary synthetic data.
+
+The fourth resume-tailoring checkpoint was then completed:
+
+- Added `resume_variant_artifacts` and approved-only generation/download
+  routes. Failed round-trip validation records diagnostics but provides no
+  download path.
+- DOCX output is a simple single-column Open XML document using Arial, body
+  paragraphs, conventional headings, and no tables, graphics, columns,
+  headers, or footers. PDF output is a text-based Letter document with the
+  same content and no external font/network dependency.
+- The untouched contact block is preserved from the master resume header.
+  Export refuses a master resume without a recognizable contact detail.
+- Skills may be relevance-ordered, but experience, education, projects, and
+  other narrative evidence preserve source order so bullets cannot become
+  detached from their employer or context.
+- Both formats are reparsed using the app's PDF/DOCX extractors. Every header
+  and included variant item must survive normalized text comparison before a
+  download is exposed.
+- `npm run test:resume-artifacts` generated and reparsed both formats using
+  synthetic data. The expanded route E2E generated, validated, and downloaded
+  both signatures/content types. Visual rendering initially exposed a
+  transparent PDF page displayed as black; an explicit white background fixed
+  it, and the rerender showed readable typography, margins, section rules, and
+  no clipping or overlap. Temporary QA artifacts were deleted.
+
+The fifth and final resume-tailoring checkpoint was then completed:
+
+- Added one saved preferred format per active variant. DOCX is the default;
+  the job-detail UI can explicitly select PDF after artifacts exist.
+- `selectResumeAttachmentForJob()` is the single selector used by both the
+  Auto-fill queue preview and the actual Playwright filler. It requires the
+  exact job ID, current posting fingerprint, latest master resume ID, approved
+  status, passed artifact validation, unchanged verified evidence, and an
+  existing local artifact file.
+- The selector tries the preferred artifact, then the other validated format,
+  and finally the master resume. A different job, changed posting, newer
+  resume, changed/rejected evidence, failed validation, or missing artifact
+  always falls back safely.
+- The Auto-fill card identifies the exact filename and whether it is approved
+  for this job or the master fallback. The filler no longer swallows file
+  attachment failures; it returns a manual attachment field.
+- Model coverage and the disposable production-route E2E verified DOCX
+  default, explicit PDF preference, missing-file format fallback, exact-job
+  isolation, and master fallback for a second job. No employer form or live
+  application was opened or submitted.
+
+The verified resume-tailoring application baseline is `62fee11`
+(`feat: attach exact-job tailored resumes`). Its preceding checkpoints are
+`bdb81ac` (validated DOCX/PDF export), `b9bd33e` (reviewable variants),
+`ddd3a2e` (job requirement analysis), and `051632b` (verified evidence).
+
+Final validation after the attachment selector refinement:
+
+- `npm run test:resume-evidence` passed.
+- `npm run test:resume-requirements` passed.
+- `npm run test:resume-variants` passed.
+- `npm run test:resume-artifacts` passed with installed headless Chromium.
+- `npm run test:resume-analysis-routes` passed against a disposable production
+  server and SQLite runtime.
+- `npm run lint` passed with no warnings.
+- `npx tsc --noEmit` passed.
+- `npm run build` passed and registered every resume analysis, variant,
+  artifact, download, and existing autofill route.
+- `git diff --check` passed.
+
+## Current objective
+
+Truthful per-job resume tailoring is implemented and validated through local
+model, route, artifact, and visual PDF checks. The next product priority is
+separate from this completed feature.
+
+## Blockers
+
+- There is no unified test framework or `npm test` command; focused standalone
+  test scripts exist for several modules, including resume evidence.
+- Real ATS forms and external source responses are unstable third-party dependencies; their current end-to-end behavior is unverified in this session.
+- “Applied” remains a user-confirmed local status. The app has no verified employer receipt or submission evidence.
+- No ATS or resume-tailoring feature can guarantee ranking, an interview, or
+  human review because employer screening rules are undisclosed.
+
+## Exact next recommended task
+
+Perform a user review of the new Profile evidence and job-detail tailoring
+workflow with the real local resume, then create one approved variant for a
+non-destructive test job and inspect both downloaded formats before relying on
+tailored attachments in a real application.
+
+## 2026-07-30 bulk skill verification checkpoint
+
+- The Profile evidence surface now offers “Verify all skills” whenever pending
+  skill records exist. One confirmation verifies those pending skills without
+  overwriting rejected skills or changing non-skill evidence.
+- `PATCH /api/resume/evidence` supports the narrowly scoped
+  `verify_all_skills` action for one validated resume ID and returns the
+  refreshed evidence collection.
+- The disposable resume-analysis route E2E now proves that pending skills are
+  bulk-verified while a deliberately rejected skill remains rejected. The live
+  resume and database were not changed during validation.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `git diff --check`
+  passed.
+- Next action: the user can open `/profile`, click “Verify all skills,” confirm
+  once, and refresh any existing job analysis or tailored draft that should
+  use the newly verified skills.
+
+## 2026-07-30 full-resume inclusion correction
+
+- Real-data metadata inspection showed why the generated PDF contained only a
+  header, summary, skills, and duplicated additional-information content:
+  53 non-skill records were still awaiting review, and letter-spaced PDF
+  headings had classified the resume body as `other`. The master resume itself
+  remained intact.
+- Evidence extraction now recognizes compact/letter-spaced forms of Summary,
+  Selected Impact, Core Skills, Professional Experience, Education, and
+  Certifications. Existing evidence is reclassified in place without changing
+  text or verification decisions.
+- The Profile page now offers “Verify all resume content” with an explicit
+  confirmation. It verifies only pending records and preserves rejected items.
+- Existing approved variants and artifacts are immutable snapshots. After
+  verifying the remaining content, the user must create, approve, and generate
+  a new tailored variant to receive the complete resume body.
+- Focused extraction/persistence tests, lint, strict TypeScript, production
+  build, and the disposable resume analysis/variant/artifact route E2E passed.
+  The E2E proved the full-content bulk boundary while preserving a rejected
+  skill; it did not access or change live resume content.
+- Next action: reload `/profile`, confirm “Verify all resume content,” then
+  create and approve a new tailored draft for the job and generate fresh files.
+
+## 2026-07-31 coordinate-aware PDF reconstruction
+
+- A real generated variant exposed a second PDF-specific issue: visual line
+  wraps had become separate evidence rows, while three side-by-side impact
+  metrics on one baseline had been combined. The exporter was accurately
+  reproducing already-broken evidence.
+- PDF resume extraction now uses PDF.js text coordinates. It groups baselines,
+  joins wrapped summary and experience lines, keeps line-break hyphenation,
+  separates metric columns using their numeric anchors, keeps role/date
+  headers intact, and assigns simultaneous education/certification columns to
+  their correct sections.
+- `POST /api/resume/reprocess` and the Profile “Repair PDF line breaks” action
+  create a new resume revision from the unchanged stored master PDF. Previous
+  evidence and variants remain immutable history. All-verified evidence state
+  can carry forward; mixed verification requires review again.
+- A synthetic coordinate-layout test covers summaries, three impact columns,
+  wrapped experience bullets, role/date lines, and parallel final sections.
+  Read-only structural validation against the stored PDF confirmed that the
+  user-reported high-scale example is rejoined, the 40% and 60% metrics are
+  separated, no experience row ends in a dangling hyphen, and experience
+  fragments decrease from 33 to 24 without printing resume text.
+- `npm run test:resume-layout`, `npm run test:resume-evidence`, lint, strict
+  TypeScript, `git diff --check`, and the production build passed.
+- After a recoverable SQLite backup, the live master PDF was reprocessed into
+  a new local resume revision at the user's request. The prior resume,
+  evidence, approved variants, and files remain unchanged. Because every prior
+  evidence row was verified, verification carried forward to the reconstructed
+  evidence. A fresh job-specific draft was created but deliberately left
+  unapproved; the user must review and approve it before file generation.
+- Next action: reload the job page, review the current draft, approve it, and
+  generate new DOCX/PDF files. Do not reuse variant 6 or earlier artifacts.
+
+Follow-up validation found two distinct states in the user's next variant:
+
+- Variant 6 still referenced the pre-repair resume revision and therefore
+  retained the original fragmented evidence. No repaired resume revision had
+  been created yet.
+- Its generated PDF contained the expected content, but round-trip validation
+  incorrectly passed that single-column artifact through the new source-PDF
+  layout reconstructor, producing 17 false missing-item results. Generated
+  artifact validation now uses plain text extraction, while uploaded source
+  PDFs alone use coordinate-aware reconstruction.
+- The disposable artifact suite passed for both DOCX and PDF after the
+  separation. Lint and strict TypeScript also passed.
+
+On 2026-07-31, job-detail testing exposed one remaining generated-PDF
+round-trip edge case:
+
+- The current approved variant contained all expected content in DOCX. PDF
+  extraction differed only in one long experience paragraph due to punctuation
+  glyph normalization, reporting one false missing item.
+- Validation now retains exact normalized matching first, then permits
+  punctuation-insensitive matching only for narrative lines with at least
+  three words. Compact values such as `C` and `C++` remain distinct.
+- Focused assertions cover both the allowed long-line normalization and the
+  strict short-token boundary. The full disposable DOCX/PDF artifact suite,
+  lint, strict TypeScript, and `git diff --check` passed.
+
+The next real job-detail review exposed a client-state issue rather than an
+artifact-generation failure:
+
+- Job 15442's approved variant and both validated artifacts existed, and a
+  fresh page rendered both download links, while an already-open/restored tab
+  could retain an older empty artifact state.
+- Artifact GET responses now use `Cache-Control: no-store`; client artifact and
+  variant reads bypass caches; restored or newly visible job tabs refresh the
+  current files; and download links open separately so the job page remains
+  available.
+- Live browser verification on the local shared server confirmed visible DOCX
+  and PDF links for variant 10, both targeting a separate tab. Lint, strict
+  TypeScript, production build, and `git diff --check` passed.
+
+The same variant review then identified insufficient visual hierarchy inside
+Experience:
+
+- DOCX and PDF now classify deterministic employment date-range rows as
+  employer/date/location headers and render them bold. A short verified row
+  immediately after a header renders as the bold italic role title;
+  accomplishment rows stay normal.
+- The classifier changes presentation only and preserves every evidence-backed
+  line. A synthetic fixture verifies employer, role, and detail classification
+  plus DOCX run formatting.
+- Synthetic DOCX and PDF page images were visually inspected and showed the
+  intended hierarchy without overlap or clipping. The focused artifact suite,
+  lint, strict TypeScript, production build, and `git diff --check` passed.
+- Variant 10 was regenerated on the local shared server. Both formats passed
+  round-trip validation with 87 expected items and zero missing.
+
+Follow-up review found that the first hierarchy rule recognized Oracle's
+`year - Present` range but not prior roles ending in `Month year`.
+
+- Employment-header recognition now accepts both endings. The regression
+  fixture covers one current and two prior employers, their role titles, and
+  an accomplishment row.
+- A read-only check of the live variant classified three employer rows, three
+  role rows, and eighteen detail rows. Variant 10 was regenerated again; DOCX
+  and PDF both passed with 87 expected items and zero missing.
+- The focused artifact suite, lint, strict TypeScript, production build, and
+  `git diff --check` passed.

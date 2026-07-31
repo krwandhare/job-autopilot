@@ -19,6 +19,12 @@ type QueueJob = {
   responsibilities: string | null;
   qualifications: string | null;
   status?: string;
+  resumeAttachment: {
+    source: "tailored" | "master";
+    filename: string;
+    format: "docx" | "pdf" | "txt" | null;
+    variantId: number | null;
+  } | null;
 };
 
 type FieldKind = "text" | "textarea" | "select" | "file" | "checkbox" | "radio";
@@ -557,6 +563,29 @@ export default function AutofillPage() {
               <p>
                 <span className="font-medium">Salary range:</span>{" "}
                 {job.salaryText ?? "Not listed"}
+              </p>
+              <p>
+                <span className="font-medium">Resume attachment:</span>{" "}
+                {job.resumeAttachment ? (
+                  <>
+                    {job.resumeAttachment.filename}{" "}
+                    <span
+                      className={
+                        job.resumeAttachment.source === "tailored"
+                          ? "text-green-700"
+                          : "text-gray-500"
+                      }
+                    >
+                      (
+                      {job.resumeAttachment.source === "tailored"
+                        ? `approved for this job · ${job.resumeAttachment.format?.toUpperCase()}`
+                        : "master resume fallback"}
+                      )
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-red-700">No attachable resume file</span>
+                )}
               </p>
               <p>
                 <span className="font-medium">Your skills mentioned in posting:</span>{" "}
