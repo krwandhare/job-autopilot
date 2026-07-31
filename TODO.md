@@ -39,6 +39,13 @@
 
 ## Completed
 
+- Redesigned the dashboard around manual work: explicit action reasons and
+  urgency, one primary next step, five category counters, eight expanded
+  highest-priority items, a clearer job pipeline, and expandable secondary
+  source/import controls. Verified on the shared real-data server at desktop
+  and 390×844 mobile widths with no overflow or browser-console errors
+  (`bdb1b72`).
+
 - Added one shared set of Figma design-system and implementation rules for
   Codex and Claude through `AGENTS.md` (which `CLAUDE.md` imports). The rules
   cover required Figma context/screenshots, component placement, Tailwind 4

@@ -84,8 +84,12 @@ Before the job pipeline, the dashboard Action Center groups work that requires
 the user: verification codes, manual application review, external leads,
 drafts, and watchlist decisions. Each item states why the user is needed,
 shows up to three exact persisted details when available, and exposes one
-status-specific primary action plus job details. Summary cards show counts and
-filter the pipeline to the selected status.
+status-specific primary action plus job details. The eight highest-priority
+items are expanded so a large queue does not bury the pipeline; the complete
+counts remain visible, and summary cards filter the pipeline to the selected
+status. Source configuration and one-off LinkedIn import remain available in
+the expandable “Manage job discovery” workspace after the primary action and
+pipeline views.
 
 Action reasons are persisted separately from local job status. If older code
 sets only an actionable status, the dashboard uses a conservative fallback

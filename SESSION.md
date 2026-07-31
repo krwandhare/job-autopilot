@@ -3,7 +3,7 @@
 ## Current project state
 
 Job Autopilot is an implemented local MVP on `feature/codex-work`, currently
-25 commits ahead of its remote tracking branch. The working application
+28 commits ahead of its remote tracking branch. The working application
 includes profile/resume setup, configurable job-source synchronization,
 one-off LinkedIn and Gmail lead intake, deterministic matching and ranking,
 truthful job-specific resume tailoring, application tracking, guarded
@@ -11,36 +11,40 @@ visible-browser assisted form filling, and a shared-runtime concurrent-agent
 workflow. There is no authentication layer, deployment configuration, or
 employer-verified submission tracking.
 
-The latest documentation checkpoint adds shared Figma design-system rules in
-`AGENTS.md`;
-`CLAUDE.md` imports that file, so Codex and Claude receive identical
-Figma-to-code component, token, accessibility, asset, responsive, safety, and
-validation conventions. The connected Figma server was verified, but its
-current toolset does not expose the legacy `create_design_system_rules` helper
-expected by the installed skill, so the skill's bundled foundational template
-was used as the documented fallback. Ignored local runtime artifacts remain
-sensitive/generated and stayed uncommitted.
+The latest feature checkpoint redesigns the dashboard around prioritized
+manual actions. The first screen now explains why each application needs the
+user, presents one clear next step, limits expanded work to the eight
+highest-priority items, keeps the complete category counts and pipeline, and
+moves source/import configuration into an expandable secondary workspace.
+Navigation, controls, focus treatment, and pipeline rows were also made
+touch-friendly and responsive. Existing APIs, SQLite records, status
+transitions, and autofill safeguards are unchanged. Ignored local runtime
+artifacts remain sensitive/generated and stayed uncommitted.
 
 ## Latest completed milestone and Git commit
 
-The latest completed repository milestone is the shared Figma rules checkpoint:
+The latest completed repository milestone is the action-first dashboard redesign:
 
-- `2572326` (`docs: add shared Figma design rules`)
+- `bdb1b72` (`feat: redesign dashboard around manual actions`)
 
-The preceding merge commit is `4f2e728` (`merge: include Claude final
-handoff`), preceded by `d4ea4fa` (`merge: reconcile Claude applications with
-resume tailoring`).
+The preceding checkpoint is `003c98d` (`docs: record Figma rules checkpoint`),
+preceded by `2572326` (`docs: add shared Figma design rules`).
 
 ## Latest validation
 
-On 2026-07-31, after adding the shared Figma design-system rules:
+On 2026-07-31, after the action-first dashboard redesign:
 
-- The Figma MCP connection was verified.
 - `npm run lint` passed.
 - `npx tsc --noEmit` passed.
 - `npm run build` passed and generated all expected application and API routes.
-- No application source, database, resume, environment, or runtime artifact was
-  changed.
+- A read-only Playwright run against the shared real-data server on port 3002
+  verified desktop structure, a 390×844 phone viewport with no horizontal
+  overflow, eight expanded priority actions with visible reasons, overflow
+  guidance for remaining actions, and labeled discovery controls after
+  expansion.
+- The browser console contained no errors or hydration warnings. No sync,
+  import, status, autofill, employer, database, or resume mutation was
+  triggered during E2E validation.
 
 ## Implemented features
 
