@@ -43,6 +43,9 @@
   project adapters for Claude Code and Gemini CLI, the universal
   `SHIP-FEATURE:` trigger, and a personal Codex `$ship-feature` skill with a
   bundled fallback for repositories that do not define their own workflow.
+  The ownership-scoped workflow passed guarded integration into
+  `integration/concurrent-work`, and the portable skill is also installed in
+  the personal Claude skills directory for branch-independent discovery.
 
 - Reconciled Claude's Gmail lead intake and application/response tracking with
   Codex's truthful resume-tailoring stack. Both schema families, job/profile/
