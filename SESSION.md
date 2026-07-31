@@ -3,7 +3,7 @@
 ## Current project state
 
 Job Autopilot is an implemented local MVP on `feature/codex-work`, currently
-28 commits ahead of its remote tracking branch. The working application
+34 commits ahead of its remote tracking branch. The working application
 includes profile/resume setup, configurable job-source synchronization,
 one-off LinkedIn and Gmail lead intake, deterministic matching and ranking,
 truthful job-specific resume tailoring, application tracking, guarded
@@ -11,40 +11,34 @@ visible-browser assisted form filling, and a shared-runtime concurrent-agent
 workflow. There is no authentication layer, deployment configuration, or
 employer-verified submission tracking.
 
-The latest feature checkpoint redesigns the dashboard around prioritized
-manual actions. The first screen now explains why each application needs the
-user, presents one clear next step, limits expanded work to the eight
-highest-priority items, keeps the complete category counts and pipeline, and
-moves source/import configuration into an expandable secondary workspace.
-Navigation, controls, focus treatment, and pipeline rows were also made
-touch-friendly and responsive. Existing APIs, SQLite records, status
-transitions, and autofill safeguards are unchanged. Ignored local runtime
-artifacts remain sensitive/generated and stayed uncommitted.
+The latest checkpoint adds an isolated, headless Playwright integration for
+the complete tailored-resume generator workflow. It uses disposable runtime
+data and covers upload rejection and acceptance, evidence verification,
+truthful tailoring, approval, validated artifact generation, and DOCX/PDF
+download actions. Existing APIs, SQLite records, status transitions, and
+autofill safeguards are unchanged. Ignored local runtime artifacts remain
+sensitive/generated and stayed uncommitted.
 
 ## Latest completed milestone and Git commit
 
-The latest completed repository milestone is the action-first dashboard redesign:
+The latest completed repository milestone is tailored-resume browser integration:
 
-- `bdb1b72` (`feat: redesign dashboard around manual actions`)
+- `fe19aef` (`test: cover tailored resume generator flow`)
 
-The preceding checkpoint is `003c98d` (`docs: record Figma rules checkpoint`),
-preceded by `2572326` (`docs: add shared Figma design rules`).
+The preceding checkpoint is `da5a9a5` (`feat(ui): add expert error handling to
+.cursorrules`), preceded by `4c6d5a8` (`feat(ui): add expert error handling to
+app/profile/page.tsx`).
 
 ## Latest validation
 
-On 2026-07-31, after the action-first dashboard redesign:
+On 2026-07-31, after the tailored-resume browser integration:
 
 - `npm run lint` passed.
 - `npx tsc --noEmit` passed.
 - `npm run build` passed and generated all expected application and API routes.
-- A read-only Playwright run against the shared real-data server on port 3002
-  verified desktop structure, a 390×844 phone viewport with no horizontal
-  overflow, eight expanded priority actions with visible reasons, overflow
-  guidance for remaining actions, and labeled discovery controls after
-  expansion.
-- The browser console contained no errors or hydration warnings. No sync,
-  import, status, autofill, employer, database, or resume mutation was
-  triggered during E2E validation.
+- `npm run test:tailored-resume-generator` passed against disposable runtime
+  data and verified both generated downloads. No live database, resume,
+  employer page, or application submission was accessed.
 
 ## Implemented features
 
