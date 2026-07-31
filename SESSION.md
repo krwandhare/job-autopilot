@@ -372,3 +372,30 @@ tailored attachments in a real application.
   skill; it did not access or change live resume content.
 - Next action: reload `/profile`, confirm “Verify all resume content,” then
   create and approve a new tailored draft for the job and generate fresh files.
+
+## 2026-07-31 coordinate-aware PDF reconstruction
+
+- A real generated variant exposed a second PDF-specific issue: visual line
+  wraps had become separate evidence rows, while three side-by-side impact
+  metrics on one baseline had been combined. The exporter was accurately
+  reproducing already-broken evidence.
+- PDF resume extraction now uses PDF.js text coordinates. It groups baselines,
+  joins wrapped summary and experience lines, keeps line-break hyphenation,
+  separates metric columns using their numeric anchors, keeps role/date
+  headers intact, and assigns simultaneous education/certification columns to
+  their correct sections.
+- `POST /api/resume/reprocess` and the Profile “Repair PDF line breaks” action
+  create a new resume revision from the unchanged stored master PDF. Previous
+  evidence and variants remain immutable history. All-verified evidence state
+  can carry forward; mixed verification requires review again.
+- A synthetic coordinate-layout test covers summaries, three impact columns,
+  wrapped experience bullets, role/date lines, and parallel final sections.
+  Read-only structural validation against the stored PDF confirmed that the
+  user-reported high-scale example is rejoined, the 40% and 60% metrics are
+  separated, no experience row ends in a dangling hyphen, and experience
+  fragments decrease from 33 to 24 without printing resume text.
+- `npm run test:resume-layout`, `npm run test:resume-evidence`, lint, strict
+  TypeScript, `git diff --check`, and the production build passed.
+- The live resume has not been reprocessed automatically. Next action: use the
+  Profile repair action, then create, approve, and export a new job-specific
+  variant.

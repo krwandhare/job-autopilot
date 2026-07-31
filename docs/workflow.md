@@ -9,7 +9,11 @@ This document describes behavior present in the repository. “Implemented” me
 1. Open `/profile`.
 2. The page loads the latest resume and current filter row.
 3. Upload one PDF, DOCX, or TXT file.
-4. `POST /api/resume` reads it into memory, extracts text, detects curated skills, inserts a resume row, stores the original bytes under a per-resume local directory, and records that path.
+4. `POST /api/resume` reads it into memory, extracts text, detects curated
+   skills, inserts a resume row, stores the original bytes under a per-resume
+   local directory, and records that path. PDF extraction uses text
+   coordinates to reconstruct wrapped lines and separate side-by-side content
+   rather than trusting the PDF object's internal source order.
 5. Review the detected skills. Adding/removing a skill calls `PATCH /api/resume`.
 6. In Verified career evidence, “Verify all skills” marks every skill still
    awaiting review as verified in one confirmed action. It preserves rejected
@@ -21,6 +25,14 @@ This document describes behavior present in the repository. “Implemented” me
    certification content retain their resume section types.
 8. Configure title include/exclude terms, preferred locations, remote-only, minimum salary, required skills, and excluded companies.
 9. Save filters through `PUT /api/filters`.
+
+For a PDF uploaded before coordinate-aware extraction existed, “Repair PDF
+line breaks” calls `POST /api/resume/reprocess`. It creates a new local resume
+revision that shares the unchanged original file, preserving the older resume,
+evidence, and variants for audit. When every old evidence row was verified,
+verification carries forward because the repair only reconstructs the same
+source text; otherwise the reconstructed evidence remains pending. A new
+tailored draft is always required after repair.
 
 ### Incomplete or unverified
 

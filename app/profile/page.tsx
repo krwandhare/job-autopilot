@@ -36,6 +36,7 @@ export default function ProfilePage() {
   const [skills, setSkills] = useState<string[]>([]);
   const [newSkill, setNewSkill] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [reprocessingResume, setReprocessingResume] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<ResumeEvidence[]>([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
@@ -125,6 +126,45 @@ export default function ProfilePage() {
       await loadEvidence(data.id);
     }
     setUploading(false);
+  }
+
+  async function reprocessPdfResume() {
+    if (!resume || !resume.filename.toLowerCase().endsWith(".pdf")) return;
+    if (
+      !window.confirm(
+        "Repair PDF columns and wrapped lines? This creates a new local resume revision, preserves the original file and old variants, and requires a new tailored draft."
+      )
+    ) {
+      return;
+    }
+
+    setReprocessingResume(true);
+    setUploadError(null);
+    setEvidenceError(null);
+    setEvidenceMessage(null);
+    try {
+      const res = await fetch("/api/resume/reprocess", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resumeId: resume.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not repair PDF layout");
+      setResume(data.resume);
+      setSkills(JSON.parse(data.resume.skills_json));
+      setEvidence(data.evidence ?? []);
+      setEvidenceMessage(
+        data.verificationCarriedForward
+          ? "PDF layout repaired and existing verification carried forward. Create a new tailored draft for the job."
+          : "PDF layout repaired. Review or verify the reconstructed evidence before creating a new tailored draft."
+      );
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "Could not repair PDF layout"
+      );
+    } finally {
+      setReprocessingResume(false);
+    }
   }
 
   async function saveSkills(updated: string[]) {
@@ -304,7 +344,21 @@ export default function ProfilePage() {
 
         {resume && (
           <div className="border rounded-lg p-4 space-y-3">
-            <p className="text-sm font-medium">{resume.filename}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium">{resume.filename}</p>
+              {resume.filename.toLowerCase().endsWith(".pdf") && (
+                <button
+                  type="button"
+                  onClick={reprocessPdfResume}
+                  disabled={reprocessingResume || uploading}
+                  className="rounded border border-blue-700 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {reprocessingResume
+                    ? "Repairing PDF layout…"
+                    : "Repair PDF line breaks"}
+                </button>
+              )}
+            </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">
                 Detected skills (edit as needed — these drive job matching):

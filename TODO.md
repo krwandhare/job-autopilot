@@ -28,6 +28,12 @@
 
 ## Completed
 
+- Replaced source-order PDF text extraction with coordinate-aware resume
+  reconstruction. Wrapped experience bullets are joined, line-break hyphens
+  are preserved correctly, side-by-side impact metrics remain separate, and
+  parallel education/certification columns keep distinct sections. Added a
+  safe Profile repair action that creates a new resume revision instead of
+  rewriting prior evidence or approved variants.
 - Restored full-resume tailoring for PDF text with letter-spaced headings by
   normalizing section labels and safely reclassifying existing evidence.
   Added one-confirmation verification of all pending resume content while
