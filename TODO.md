@@ -2,9 +2,9 @@
 
 ## In Progress
 
-- Implement truthful per-job resume tailoring. Next checkpoint: deterministic
-  job-requirement extraction and evidence-backed coverage on the job detail
-  page. Later checkpoints add reviewed variants, ATS-safe export, and exact-job
+- Implement truthful per-job resume tailoring. Next checkpoint: compose
+  evidence-constrained job-specific drafts with a side-by-side review and
+  explicit approval. Later checkpoints add ATS-safe export and exact-job
   autofill selection; see `docs/resume-tailoring-plan.md`.
 - Live-run and verify Claude's Gmail-alert LinkedIn lead importer through the
   shared runtime, using its existing rate limit and `external_lead` boundary.
@@ -37,6 +37,12 @@
   verify/reject/edit controls, an idempotent API, and isolated model coverage.
   A disposable browser E2E verified synthetic upload, persisted verification,
   zero console errors, and a 390px layout without horizontal overflow.
+- Added deterministic job-requirement extraction and stored analysis with
+  required/preferred/context classification, evidence-backed coverage, posting
+  fingerprint invalidation, a job-detail review surface, isolated model tests,
+  and a disposable production-route E2E. Unverified evidence never counts,
+  experience duration is not inferred from dates, and the UI does not claim a
+  universal ATS score or review probability.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.

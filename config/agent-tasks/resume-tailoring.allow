@@ -13,8 +13,10 @@ lib/resumeTailoring.ts
 lib/resumeVariants.ts
 lib/autofill/filler.ts
 scripts/test-resume-*.mjs
+scripts/test-resume-*.sh
 package.json
 package-lock.json
+tsconfig.json
 SESSION.md
 TODO.md
 docs/**

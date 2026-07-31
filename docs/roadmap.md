@@ -9,6 +9,8 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - PDF, DOCX, and TXT resume extraction with editable curated skill detection.
 - Immutable master-resume evidence extraction with explicit user
   verify/reject/edit controls for future truthful tailoring.
+- Deterministic per-job requirement extraction and verified-evidence coverage,
+  including required/preferred separation and transparent unevidenced gaps.
 - Greenhouse and Lever public-board synchronization.
 - Optional Adzuna keyword/location search with local environment credentials.
 - Static curated Greenhouse/Lever source seeding.

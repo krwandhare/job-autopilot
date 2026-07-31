@@ -205,6 +205,28 @@ On 2026-07-30, the first truthful resume-tailoring checkpoint was completed on
   viewport, the evidence UI had no horizontal overflow. The temporary browser,
   server, and database were removed; live resume data was not read or changed.
 
+The second resume-tailoring checkpoint was then completed:
+
+- Added `job_requirement_analyses` and `job_requirements`. The stored
+  description fingerprint causes stale requirements to be replaced whenever
+  the posting text changes.
+- `lib/jobRequirements.ts` deterministically classifies required, preferred,
+  and contextual skills, experience, education, certifications,
+  responsibilities, and qualifications.
+- Coverage uses only evidence marked verified. Exact known terms and
+  conservative text similarity can surface supporting evidence, while
+  unevidenced experience duration remains a visible gap rather than being
+  inferred from employment dates.
+- Added `GET` and `POST /api/jobs/[id]/resume-analysis` and a job-detail
+  coverage section. The UI labels evidence, partial matches, gaps, and
+  user-review needs separately and explicitly disclaims an employer ATS score
+  or guaranteed review.
+- `npm run test:resume-requirements`, `npm run test:resume-analysis-routes`,
+  `npm run lint`, `npx tsc --noEmit`, `npm run build`, and
+  `git diff --check` passed. The route E2E used a temporary production server,
+  synthetic resume/job data, and a disposable SQLite database, then removed
+  them.
+
 ## Current objective
 
 Build and validate truthful per-job resume tailoring that improves ATS
@@ -222,6 +244,6 @@ automatically using an unapproved variant.
 
 ## Exact next recommended task
 
-Implement deterministic required/preferred job-requirement extraction and
-evidence-backed coverage, expose it on `/jobs/[id]`, and validate it using
-synthetic postings plus an isolated route/browser test.
+Implement evidence-constrained job-specific resume drafts, record every
+included evidence item and rationale, present a side-by-side review, and
+require explicit approval before a variant can become eligible for export.

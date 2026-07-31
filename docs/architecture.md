@@ -42,6 +42,8 @@ Browser UI
 | `GET /api/jobs` | Query jobs by optional status and zero-score visibility, sorted by score/fetch time, with 50-row pagination. |
 | `GET /api/jobs/[id]` | Return one job, its latest draft, match details, and the current maximum possible score. |
 | `PATCH /api/jobs/[id]` | Set a validated local status: `new`, `drafted`, `applied`, `rejected`, `skipped`, `watchlist`, `needs_code`, `needs_review`, or `external_lead`. |
+| `GET /api/jobs/[id]/resume-analysis` | Return a stored requirement analysis and recomputed coverage against the latest verified resume evidence. |
+| `POST /api/jobs/[id]/resume-analysis` | Deterministically extract or refresh posting requirements and return evidence-backed coverage. |
 | `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
 | `POST /api/jobs/import-url` | Import, score, and upsert exactly one user-supplied LinkedIn URL. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
@@ -76,6 +78,11 @@ connection on `global.__db`, and initializes:
 - `resume_evidence`: line-addressable facts derived from one immutable master
   resume, retaining source text separately from the editable normalized value
   and an explicit extracted/verified/rejected status.
+- `job_requirement_analyses`: one posting-description fingerprint and analysis
+  timestamp per job.
+- `job_requirements`: ordered required, preferred, or contextual posting
+  expectations with conservative normalized terms and the original source
+  line.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
@@ -148,6 +155,22 @@ Target skills are `requiredSkills` when configured, otherwise the latest resume'
 
 Scores are computed on source synchronization or LinkedIn import. Saving new filters or resume skills does not itself rescore existing rows; another sync/import is required.
 
+## Resume requirement analysis
+
+`lib/jobRequirements.ts` splits a posting into ordered expectations and
+classifies known skills, experience, education, certification,
+responsibility, and general qualification text. Explicit cues and section
+headings distinguish required, preferred, and contextual items. A SHA-256
+fingerprint reuses unchanged analysis and invalidates stored rows when the
+posting description changes.
+
+Coverage is separate from the job match score. It considers only
+`resume_evidence` rows the user marked verified. Known terms use conservative
+boundary/alias matching; text-only requirements need substantial token overlap
+with one verified evidence item. Experience duration is not calculated from
+resume dates. Results are evidence found, partial, not evidenced, or needs
+review and are not represented as an employer ATS probability.
+
 ## Draft generation
 
 `lib/draft.ts` is deterministic. It takes the first two sentence-like segments of the resume, incorporates up to six matched skills, and produces:
@@ -189,6 +212,7 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 | `lib/jobClaims.ts` | Atomic claim, renewal, expiry, and owner-safe release primitives. |
 | `lib/resume.ts` | File-format-specific text extraction. |
 | `lib/resumeEvidence.ts` | Deterministic evidence extraction, idempotent persistence, and API serialization. |
+| `lib/jobRequirements.ts` | Posting requirement extraction, fingerprinted persistence, and verified-evidence coverage. |
 | `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
 | `lib/draft.ts` | Template-based cover letters and screening answers. |
@@ -203,6 +227,7 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 ```text
 Resume upload -> extract text -> detect/edit skills -> SQLite + local file
                               -> evidence extraction -> user verification
+Job description -> requirement extraction -> verified-evidence coverage
 Filters ----------------------------------------------------------+
 Source config -> external source -> NormalizedJob -> scoreJob -----+-> jobs table
 LinkedIn URL -> one public page -> NormalizedJob -> scoreJob ------+

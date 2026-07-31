@@ -120,6 +120,28 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_resume_evidence_resume
       ON resume_evidence(resume_id, source_start_line, id);
+
+    CREATE TABLE IF NOT EXISTS job_requirement_analyses (
+      job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      description_fingerprint TEXT NOT NULL,
+      analyzed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS job_requirements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      requirement_kind TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      requirement_text TEXT NOT NULL,
+      terms_json TEXT NOT NULL DEFAULT '[]',
+      source_text TEXT NOT NULL,
+      source_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (priority IN ('required', 'preferred', 'context'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_job_requirements_job
+      ON job_requirements(job_id, source_order, id);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -242,4 +264,16 @@ export type ResumeEvidenceRow = {
   verification_status: string;
   created_at: string;
   updated_at: string;
+};
+
+export type JobRequirementRow = {
+  id: number;
+  job_id: number;
+  requirement_kind: string;
+  priority: string;
+  requirement_text: string;
+  terms_json: string;
+  source_text: string;
+  source_order: number;
+  created_at: string;
 };

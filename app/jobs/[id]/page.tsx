@@ -30,6 +30,46 @@ type Draft = {
   generatedAt: string;
 };
 
+type ResumeAnalysis = {
+  analyzedAt: string;
+  counts: {
+    required: number;
+    preferred: number;
+    context: number;
+    supported: number;
+    partial: number;
+    notEvidenced: number;
+    needsReview: number;
+  };
+  coverage: Array<{
+    requirement: {
+      id: number;
+      kind: string;
+      priority: "required" | "preferred" | "context";
+      text: string;
+      terms: string[];
+    };
+    status: "supported" | "partial" | "not_evidenced" | "needs_review";
+    matchedTerms: string[];
+    missingTerms: string[];
+    evidence: Array<{ id: number; text: string; kind: string }>;
+  }>;
+};
+
+const COVERAGE_LABELS = {
+  supported: "Evidence found",
+  partial: "Partial evidence",
+  not_evidenced: "Not evidenced",
+  needs_review: "Needs your review",
+};
+
+const COVERAGE_STYLES = {
+  supported: "bg-green-50 text-green-800",
+  partial: "bg-amber-50 text-amber-800",
+  not_evidenced: "bg-red-50 text-red-800",
+  needs_review: "bg-blue-50 text-blue-800",
+};
+
 const STATUS_OPTIONS = [
   "new",
   "drafted",
@@ -53,6 +93,9 @@ export default function JobDetailPage({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch(`/api/jobs/${id}`);
@@ -66,10 +109,22 @@ export default function JobDetailPage({
     }
   }
 
+  async function loadResumeAnalysis() {
+    const res = await fetch(`/api/jobs/${id}/resume-analysis`);
+    const data = await res.json();
+    if (res.ok) {
+      setResumeAnalysis(data.analysis);
+      setAnalysisError(null);
+    } else {
+      setAnalysisError(data.error ?? "Could not load resume analysis");
+    }
+  }
+
   useEffect(() => {
     // Data load on mount/id change, not synchronous render-derived state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+    loadResumeAnalysis();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -90,6 +145,25 @@ export default function JobDetailPage({
     if (res.ok) {
       setDraft(data.draft);
       updateStatus("drafted");
+    }
+  }
+
+  async function analyzeResume() {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const res = await fetch(`/api/jobs/${id}/resume-analysis`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not analyze this job");
+      setResumeAnalysis(data.analysis);
+    } catch (analysisFailure) {
+      setAnalysisError(
+        analysisFailure instanceof Error
+          ? analysisFailure.message
+          : "Could not analyze this job"
+      );
+    } finally {
+      setAnalysisLoading(false);
     }
   }
 
@@ -166,6 +240,115 @@ export default function JobDetailPage({
           </p>
         </div>
       )}
+
+      <section className="border rounded-lg p-4 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-medium">Resume requirement coverage</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Compares the posting with evidence you verified on your Profile. This is not an
+              employer ATS score or a guarantee of review.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={analyzeResume}
+            disabled={analysisLoading || !job.description}
+            className="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {analysisLoading
+              ? "Analyzing…"
+              : resumeAnalysis
+                ? "Refresh analysis"
+                : "Analyze requirements"}
+          </button>
+        </div>
+
+        {analysisError && (
+          <div className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+            {analysisError}{" "}
+            {analysisError.toLowerCase().includes("evidence") && (
+              <Link href="/profile" className="underline">
+                Review evidence
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!resumeAnalysis && !analysisError && (
+          <p className="text-sm text-gray-500">
+            Analyze this posting to separate required, preferred, and contextual expectations.
+          </p>
+        )}
+
+        {resumeAnalysis && (
+          <>
+            <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+              <div className="rounded bg-gray-50 p-2">
+                <span className="block text-xs text-gray-500">Required</span>
+                <span className="font-semibold">{resumeAnalysis.counts.required}</span>
+              </div>
+              <div className="rounded bg-gray-50 p-2">
+                <span className="block text-xs text-gray-500">Preferred</span>
+                <span className="font-semibold">{resumeAnalysis.counts.preferred}</span>
+              </div>
+              <div className="rounded bg-green-50 p-2">
+                <span className="block text-xs text-green-700">Evidence found</span>
+                <span className="font-semibold text-green-900">
+                  {resumeAnalysis.counts.supported}
+                </span>
+              </div>
+              <div className="rounded bg-red-50 p-2">
+                <span className="block text-xs text-red-700">Not evidenced</span>
+                <span className="font-semibold text-red-900">
+                  {resumeAnalysis.counts.notEvidenced}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {resumeAnalysis.coverage.map((item) => (
+                <article key={item.requirement.id} className="rounded border p-3 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded bg-gray-100 px-2 py-1 capitalize text-gray-700">
+                      {item.requirement.priority}
+                    </span>
+                    <span className="rounded bg-gray-100 px-2 py-1 capitalize text-gray-700">
+                      {item.requirement.kind}
+                    </span>
+                    <span
+                      className={`rounded px-2 py-1 ${COVERAGE_STYLES[item.status]}`}
+                    >
+                      {COVERAGE_LABELS[item.status]}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-800">{item.requirement.text}</p>
+                  {item.matchedTerms.length > 0 && (
+                    <p className="text-xs text-green-700">
+                      Matched verified terms: {item.matchedTerms.join(", ")}
+                    </p>
+                  )}
+                  {item.missingTerms.length > 0 && (
+                    <p className="text-xs text-red-700">
+                      Terms not found in verified evidence: {item.missingTerms.join(", ")}
+                    </p>
+                  )}
+                  {item.evidence.length > 0 && (
+                    <div className="rounded bg-gray-50 p-2">
+                      <p className="text-xs font-medium text-gray-600">Related verified evidence</p>
+                      <ul className="mt-1 list-disc pl-4 text-xs text-gray-600">
+                        {item.evidence.map((evidenceItem) => (
+                          <li key={evidenceItem.id}>{evidenceItem.text}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
 
       {job.description && (
         <div>
