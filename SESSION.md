@@ -1,5 +1,26 @@
 # Session Handoff
 
+## Latest workflow tooling update
+
+On 2026-07-31, a vendor-neutral feature-delivery workflow was added at
+`docs/workflows/ship-feature.md`. `AGENTS.md` recognizes the portable
+`SHIP-FEATURE:` trigger, while project adapters expose `/ship-feature` in
+Claude Code and Gemini CLI. A matching personal Codex skill was installed at
+`~/.codex/skills/ship-feature`; it prefers a repository workflow when present
+and otherwise uses its bundled generic reference. The workflow covers agent
+feedback, acceptance criteria, design, implementation, risk-based unit,
+integration, UI, E2E, and visual checks, ownership-safe concurrent work,
+guarded integration, documentation, and evidence-backed handoff.
+
+The installed skill was scaffolded with Codex's `skill-creator`, its YAML and
+file structure were validated, and the installed directory was compared
+byte-for-byte with the staged build. The official `quick_validate.py` could
+not run because both available Python runtimes lack PyYAML; no dependency was
+installed solely for validation. Codex discovery was subsequently confirmed by
+the skill appearing in the available-skills catalog. Use `/reload-skills` in an
+already-open Claude session and `/commands reload` in an already-open Gemini
+CLI session.
+
 ## Current project state
 
 Job Autopilot is an implemented local MVP on `feature/codex-work`, currently

@@ -39,6 +39,11 @@
 
 ## Completed
 
+- Added the vendor-neutral `ship-feature` requirement-to-handoff workflow,
+  project adapters for Claude Code and Gemini CLI, the universal
+  `SHIP-FEATURE:` trigger, and a personal Codex `$ship-feature` skill with a
+  bundled fallback for repositories that do not define their own workflow.
+
 - Added a headless, isolated Playwright integration script for the complete
   tailored-resume generator workflow. It covers rejected and accepted upload
   inputs, bulk evidence verification, supported versus unevidenced tailoring,

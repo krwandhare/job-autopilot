@@ -2,6 +2,24 @@
 
 This document describes behavior present in the repository. “Implemented” means there is a code path; it does not mean every external service or ATS variant has been tested in this documentation session. Incomplete and proposed behavior is labeled explicitly.
 
+## Agent-assisted feature delivery
+
+Use `SHIP-FEATURE: <requirement>` with any coding agent that reads
+`AGENTS.md`. Native project adapters also support `/ship-feature <requirement>`
+in Claude Code and Gemini CLI, while the personal Codex skill uses
+`$ship-feature <requirement>`. The canonical, vendor-neutral procedure is
+`docs/workflows/ship-feature.md`; adapters delegate to it instead of copying
+its rules.
+
+The workflow reviews requirements and suggestions, defines acceptance criteria
+and UI states, implements a complete vertical slice, selects unit, integration,
+UI, E2E, browser, and visual checks according to risk, and finishes with
+documentation and an evidence-backed handoff. Concurrent agents receive
+explicit branch, worktree, baseline, ownership, dependency, and validation
+assignments before delegation. Existing ownership manifests and
+`scripts/integrate-branch.sh` remain the enforcement mechanism for guarded
+integration.
+
 ## Profile and resume setup
 
 ### Implemented
