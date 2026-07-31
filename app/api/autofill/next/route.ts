@@ -2,23 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, type JobRow } from "@/lib/db";
 import type { MatchResult } from "@/lib/matching";
 import { extractJobSections } from "@/lib/jobSections";
+import { claimJob, claimNextJob, QUEUE_RESERVATION_LEASE_MS } from "@/lib/jobClaims";
+import { getRuntimeInstanceId } from "@/lib/runtimePaths";
 
 export async function GET(req: NextRequest) {
   const db = getDb();
+  const ownerId = getRuntimeInstanceId();
   // An explicit jobId resumes that specific job regardless of status (e.g.
   // one sitting in "needs_code", waiting for the user to enter a
   // verification code later at their Mac) instead of always pulling
   // whatever's next in the "new" queue.
   const requestedId = req.nextUrl.searchParams.get("jobId");
-  const job = requestedId
-    ? (db.prepare("SELECT * FROM jobs WHERE id = ?").get(Number(requestedId)) as
+  const requestedJobId = requestedId ? Number(requestedId) : null;
+  if (requestedId && (!Number.isSafeInteger(requestedJobId) || Number(requestedJobId) <= 0)) {
+    return NextResponse.json({ error: "jobId must be a positive integer" }, { status: 400 });
+  }
+
+  const claim = requestedJobId
+    ? claimJob(db, requestedJobId, { ownerId, leaseMs: QUEUE_RESERVATION_LEASE_MS })
+    : claimNextJob(db, { ownerId, leaseMs: QUEUE_RESERVATION_LEASE_MS });
+  if (!claim) {
+    if (requestedJobId) {
+      const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?").get(requestedJobId);
+      return NextResponse.json(
+        exists
+          ? { error: "This job is currently being handled by another local worker." }
+          : { error: "Job not found" },
+        { status: exists ? 409 : 404 }
+      );
+    }
+    return NextResponse.json({ job: null });
+  }
+
+  const job = requestedJobId
+    ? (db.prepare("SELECT * FROM jobs WHERE id = ?").get(requestedJobId) as
         | JobRow
         | undefined)
-    : (db
-        .prepare(
-          "SELECT * FROM jobs WHERE status = 'new' ORDER BY match_score DESC, fetched_at DESC LIMIT 1"
-        )
-        .get() as JobRow | undefined);
+    : (db.prepare("SELECT * FROM jobs WHERE id = ?").get(claim.jobId) as JobRow | undefined);
 
   if (!job) {
     return NextResponse.json({ job: null });

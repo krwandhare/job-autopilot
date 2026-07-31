@@ -35,6 +35,19 @@ This document describes behavior present in the repository. “Implemented” me
 
 The dashboard shows 50 jobs per page, hides score-zero jobs by default, supports local status filtering, and can show non-matches.
 
+Before the job pipeline, the dashboard Action Center groups work that requires
+the user: verification codes, manual application review, external leads,
+drafts, and watchlist decisions. Each item states why the user is needed,
+shows up to three exact persisted details when available, and exposes one
+status-specific primary action plus job details. Summary cards show counts and
+filter the pipeline to the selected status.
+
+Action reasons are persisted separately from local job status. If older code
+sets only an actionable status, the dashboard uses a conservative fallback
+reason rather than inventing an exact blocker. A caller can include structured
+action context in `PATCH /api/jobs/[id]`; route validation bounds reason and
+detail sizes. Moving to a non-actionable status resolves open action records.
+
 ### Incomplete or unverified
 
 - There is no scheduler/background sync; synchronization is user-triggered.
@@ -114,9 +127,17 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 ### Implemented
 
 1. Open `/autofill`.
-2. `GET /api/autofill/next` selects the highest-score, newest-fetched job with local status `new`. A `jobId` query parameter can resume a parked job directly. The Auto-fill card displays salary, extracted responsibilities/qualifications, skills mentioned in the posting, and known posting skills absent from the resume.
+2. `GET /api/autofill/next` atomically reserves the highest-score,
+   newest-fetched unclaimed job with local status `new` for the current runtime
+   instance. A `jobId` query parameter can reserve and resume a parked job
+   directly. A job leased by another local runtime returns a conflict instead
+   of opening twice. The Auto-fill card displays salary, extracted
+   responsibilities/qualifications, skills mentioned in the posting, and known
+   posting skills absent from the resume.
 3. Click “Start filling.”
-4. The server launches a non-headless Chromium window and opens the stored job URL.
+4. The server verifies or acquires the current runtime's claim, extends it from
+   a five-minute queue reservation to a two-hour browser-session lease, then
+   launches a non-headless Chromium window and opens the stored job URL.
 5. Direct Lever listing URLs are changed to `/apply`.
 6. The filler checks page failures and visible CAPTCHA/bot-block signals.
 7. It resolves the page itself or a lazy Greenhouse/Lever iframe, scans fields, and tags them with ephemeral IDs.
@@ -159,6 +180,9 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 - Load failures and disconnected/closed browser sessions are converted to user-facing errors.
 - Email/SMS verification-code challenges are never filled automatically. A blocked submit can move the job to `needs_code` for later resumption.
 - Playwright actions for one job are serialized, and opening a new session closes any other tracked browser session.
+- Concurrent local servers coordinate through expiring SQLite job claims.
+  Finishing a session releases only its owning runtime's claim; a crashed
+  process leaves a lease that becomes reclaimable after expiry.
 
 ### Required human behavior
 
@@ -195,6 +219,20 @@ allowlists under `config/agent-tasks/` constrain the files each feature is
 expected to change. `scripts/integrate-branch.sh` compares the source branch
 with the integration target, rejects out-of-scope paths, performs the merge in
 a disposable detached worktree, and runs `npm run validate`.
+
+For simultaneous application testing, each worktree starts with a distinct
+runtime identity and port:
+
+```bash
+npm run dev:shared -- codex 3002
+npm run dev:shared -- claude 3003
+```
+
+The launcher points both processes at the primary worktree's ignored `data/`
+directory. SQLite WAL mode and a busy timeout coordinate ordinary database
+access, while `job_claims` prevents both runtimes from reserving or starting
+the same autofill job. Resume uploads are also written beneath the shared
+runtime directory, keeping stored database paths valid in both worktrees.
 
 Each agent creates focused checkpoint commits on its own feature branch without
 requiring a repeated user instruction: after a coherent validated unit,
