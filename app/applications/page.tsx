@@ -27,6 +27,14 @@ type Stats = {
   perWeek: { weekStart: string; count: number }[];
 };
 
+type TopFitJob = {
+  id: number;
+  title: string;
+  company: string;
+  matchScore: number | null;
+  url: string;
+};
+
 const RESPONSE_TYPES = [
   { value: "interview", label: "Interview" },
   { value: "offer", label: "Offer" },
@@ -54,6 +62,7 @@ function formatDate(value: string | null): string {
 export default function ApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [topJobs, setTopJobs] = useState<TopFitJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [noResponseOnly, setNoResponseOnly] = useState(false);
@@ -65,16 +74,20 @@ export default function ApplicationsPage() {
     setError(null);
     try {
       const params = noResponseOnly ? "?noResponseDays=14" : "";
-      const [appsRes, statsRes] = await Promise.all([
+      const [appsRes, statsRes, topFitRes] = await Promise.all([
         fetch(`/api/applications${params}`),
         fetch("/api/applications?stats=1"),
+        fetch("/api/applications?topFit=10"),
       ]);
       const appsData = await appsRes.json();
       const statsData = await statsRes.json();
+      const topFitData = await topFitRes.json();
       if (!appsRes.ok) throw new Error(appsData.error ?? `Could not load applications (HTTP ${appsRes.status}).`);
       if (!statsRes.ok) throw new Error(statsData.error ?? `Could not load stats (HTTP ${statsRes.status}).`);
+      if (!topFitRes.ok) throw new Error(topFitData.error ?? `Could not load top jobs (HTTP ${topFitRes.status}).`);
       setApplications(appsData.applications);
       setStats(statsData.stats);
+      setTopJobs(topFitData.jobs);
     } catch (err) {
       setError(err instanceof Error ? err.message : friendlyNetworkError(err));
     } finally {
@@ -168,6 +181,31 @@ export default function ApplicationsPage() {
         </div>
       )}
 
+      {topJobs.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-gray-700">Top jobs to apply next</h2>
+          <div className="divide-y rounded-lg border">
+            {topJobs.map((job) => (
+              <div key={job.id} className="flex items-center justify-between gap-4 p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{job.title}</p>
+                  <p className="text-xs text-gray-500">
+                    {job.company}
+                    {job.matchScore != null && ` · Match ${Math.round(job.matchScore)}`}
+                  </p>
+                </div>
+                <Link
+                  href={`/jobs/${job.id}`}
+                  className="shrink-0 text-sm text-blue-600 hover:underline"
+                >
+                  Job details
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input
           type="checkbox"
@@ -183,6 +221,12 @@ export default function ApplicationsPage() {
         <div className="rounded-lg border p-6 text-sm text-gray-500">
           {noResponseOnly ? "Nothing overdue for a follow-up." : "No applications tracked yet."}
         </div>
+      )}
+
+      {!loading && applications.length > 0 && (
+        <h2 className="text-sm font-semibold text-gray-700">
+          {noResponseOnly ? "Overdue for a follow-up" : "Submitted applications"}
+        </h2>
       )}
 
       <div className="space-y-3">

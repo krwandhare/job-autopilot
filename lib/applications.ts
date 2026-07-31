@@ -226,7 +226,7 @@ export function getTopJobsByFit(
       `SELECT j.id, j.title, j.company, j.match_score, j.url
        FROM jobs j
        LEFT JOIN applications a ON a.job_id = j.id
-       WHERE j.status = 'new' AND a.id IS NULL
+       WHERE j.status = 'new' AND a.id IS NULL AND j.match_score > 0
        ORDER BY j.match_score DESC, j.fetched_at DESC
        LIMIT ?`
     )

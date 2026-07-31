@@ -64,6 +64,9 @@ try {
   insertJob.run(2, "new", "Backend Engineer", "Widgets Inc", 60, "2026-07-30 11:00:00", "https://example.com/2");
   insertJob.run(3, "applied", "Staff Engineer", "Acme Corp", 90, "2026-07-30 12:00:00", "https://example.com/3");
   insertJob.run(4, "external_lead", "Principal Engineer", "Beta LLC", 70, "2026-07-30 13:00:00", "https://example.com/4");
+  // A hard-excluded match (title/location disallow -> forced to 0 by
+  // lib/matching.ts) must never surface as a "top fit" recommendation.
+  insertJob.run(5, "new", "Unrelated Role", "Gamma Inc", 0, "2026-07-30 14:00:00", "https://example.com/5");
 
   db.prepare("INSERT INTO resumes (id, filename, uploaded_at) VALUES (1, 'resume_v2.pdf', '2026-07-30 09:00:00')").run();
 
@@ -120,13 +123,16 @@ try {
   assert.equal(stats.withResponse, 1);
   assert.equal(stats.responseRate, 0.5);
 
-  // getTopJobsByFit: only status='new' jobs with no application yet, best match first.
+  // getTopJobsByFit: only status='new' jobs with no application yet and a
+  // real (nonzero) score, best match first. Job 5 (score 0, a hard
+  // exclusion) must be excluded even though it's otherwise eligible.
   const topFit = getTopJobsByFit(db, 10);
   assert.deepEqual(
     topFit.map((j) => j.id),
     [1, 2]
   );
   assert.equal(topFit[0].matchScore, 80);
+  assert.ok(!topFit.some((j) => j.id === 5));
 
   console.log("Applications data-model checks passed.");
 } finally {
