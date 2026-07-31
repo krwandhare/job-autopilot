@@ -2,8 +2,19 @@
 
 ## In Progress
 
-- Live-run and verify Claude's Gmail-alert LinkedIn lead importer through the
-  shared runtime, using its existing rate limit and `external_lead` boundary.
+- Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
+  asked for both on-demand (done, live) and scheduled; only the on-demand
+  button has actually been run so far.
+- Extend the error-handling audit (`3128abf` covered the four client pages)
+  to API route handlers and `lib/autofill/filler.ts`'s Playwright internals.
+- Decide on the Gmail-sync summary message wording when a digest email's
+  leads exceed the rate limit mid-thread (currently reads "Imported 5
+  lead(s) from 0 alert email(s)", accurate but confusing).
+- Decide whether to delete the untracked `data/watch-and-integrate.sh`
+  scratch file (abandoned background-merge-watcher, never used).
+- Tune the fit-scoring formula in `lib/matching.ts` per user judgment on
+  what should weigh more (skills vs. salary vs. location, etc) -- explicitly
+  deferred, not started.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
 - Manually verify the new opt-in "Auto-fill & submit" mode against a real, user-authorized test application before relying on it for real submissions -- static checks and a production build passed, but no live ATS run has confirmed the submit-control detection or confirmation logic yet.
 - Retest Twilio's location autocomplete, grouped referral-source question, the narrowly allowlisted submit-mode policy acknowledgements, and exact manual-blocker messaging in a visible browser; static checks pass, but the live form has not been rerun after the latest fixes.
@@ -94,6 +105,34 @@
   missing/stale/mutated artifacts fall back to the master resume, another job
   can never receive the variant, and a failed Playwright attachment is surfaced
   for manual handling.
+- Gave the app independent Gmail access (no agent session required):
+  `lib/gmail.ts` REST client, digest-email parser, shared import/tag helper,
+  `POST /api/jobs/sync-gmail`, an on-demand dashboard button, a scheduled-run
+  script, and a one-time OAuth setup helper (`0c6a709`). User completed the
+  real OAuth flow; a real live sync (button-triggered) imported 5 real leads
+  with zero errors.
+- Fixed the LinkedIn company-name extraction bug (100% of imports showed
+  "Unknown" after LinkedIn stopped serving JSON-LD/og:site_name to
+  unauthenticated fetches) via a `topcard__org-name-link` fallback,
+  verified against two live pages (`6b260fb`).
+- Turned Action Center `external_lead` cards into a real decision UI: direct
+  link to the posting, one-click "I applied"/"Not interested" (`4897a00`).
+- Audited and fixed missing `res.ok` checks across all four client pages
+  (`3128abf`), including two silent-false-success bugs in autofill's answer-
+  saving and profile's skill-saving, found via a live bug the user hit
+  (misleading "queue empty" message that was actually a stale-claim 409).
+  Live-reproduced and confirmed fixed via Playwright.
+- Built application tracking as a separate `companies`/`applications`
+  schema (three slices: schema+service layer+apply-flow hook `51e1677`,
+  response/follow-up UI `1963b4e`, top-fit panel `96b4599`), hooked into all
+  three existing "mark applied" paths without per-site instrumentation.
+  Found and fixed two real bugs along the way (a non-deterministic sort tie-
+  break, and a missing `match_score > 0` filter that was surfacing hard-
+  excluded jobs as "top picks"). All three slices e2e-tested live.
+- Ran Codex's full test suite alongside this session's new ones (6 total)
+  after all of the above landed; confirmed no regressions from touching
+  shared files.
+- Pushed `feature/claude-autofill` to `origin` at the user's request.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.
