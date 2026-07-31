@@ -52,6 +52,12 @@ visible again, preventing an old empty artifact state from hiding validated
 downloads. Download links open separately so reviewing a file does not replace
 the job-detail workflow.
 
+Within Experience, deterministic date-range rows render as bold
+employer/date/location headers. A short verified row immediately following
+that header renders as a bold italic role title, while accomplishment evidence
+retains normal body styling. DOCX and PDF apply the same hierarchy without
+changing any verified text.
+
 ### Incomplete or unverified
 
 - Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.

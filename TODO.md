@@ -28,6 +28,10 @@
 
 ## Completed
 
+- Added consistent experience hierarchy to generated DOCX and PDF resumes:
+  employer/date/location rows are bold, role titles are bold italic, and
+  accomplishment text remains normal. Synthetic visual QA and current-job
+  round-trip validation passed without changing resume content.
 - Made job-specific resume download controls resilient to restored/mobile tab
   state. Artifact reads bypass caches, visible/restored job tabs refresh their
   file summaries, and downloads open separately from the job-detail page.

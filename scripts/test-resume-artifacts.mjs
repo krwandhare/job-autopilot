@@ -3,8 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
+import JSZip from "jszip";
 import {
   artifactTextContainsExpected,
+  experienceItemStyle,
   generateResumeArtifacts,
   getResumeArtifactSummaries,
   selectResumeAttachmentForJob,
@@ -105,7 +107,7 @@ try {
   ).run(2, "TypeScript");
   db.prepare(
     "INSERT INTO resume_evidence VALUES (?, ?, 'verified')"
-  ).run(3, "Built reliable platform services.");
+  ).run(3, "Synthetic Company Jan 2020 - Present · New York, NY");
   insertItem.run(
     2,
     2,
@@ -122,13 +124,58 @@ try {
     3,
     3,
     "experience",
-    "Experience",
+    "Professional Experience",
     2,
+    "Synthetic Company Jan 2020 - Present · New York, NY",
+    "Synthetic Company Jan 2020 - Present · New York, NY.",
+    "Supports a required expectation.",
+    "unchanged",
+    "[]"
+  );
+  db.prepare(
+    "INSERT INTO resume_evidence VALUES (?, ?, 'verified')"
+  ).run(4, "Principal Platform Engineer");
+  db.prepare(
+    "INSERT INTO resume_evidence VALUES (?, ?, 'verified')"
+  ).run(5, "Built reliable platform services.");
+  insertItem.run(
+    4,
+    4,
+    "experience",
+    "Professional Experience",
+    3,
+    "Principal Platform Engineer",
+    "Principal Platform Engineer.",
+    "Verified role.",
+    "reformatted",
+    "[]"
+  );
+  insertItem.run(
+    5,
+    5,
+    "experience",
+    "Professional Experience",
+    4,
     "Built reliable platform services.",
     "Built reliable platform services.",
     "Supports a required expectation.",
     "unchanged",
     "[]"
+  );
+
+  const experienceItems = db
+    .prepare(
+      `SELECT * FROM resume_variant_items
+       WHERE evidence_kind = 'experience'
+       ORDER BY position`
+    )
+    .all();
+  assert.deepEqual(
+    experienceItems.map((_, index) =>
+      experienceItemStyle(experienceItems, index)
+    ),
+    ["employer", "role", "detail"],
+    "experience hierarchy should distinguish employer, role, and achievements"
   );
 
   const sourceResume = `Jordan Example
@@ -168,8 +215,24 @@ Platform engineer.`;
     const extracted = await extractResumeText(fs.readFileSync(row.file_path), `resume.${row.format}`);
     assert.equal(extracted.includes("Jordan Example"), true);
     assert.equal(extracted.includes("TypeScript"), true);
+    assert.equal(extracted.includes("Synthetic Company"), true);
+    assert.equal(extracted.includes("Principal Platform Engineer"), true);
     assert.equal(extracted.includes("Built reliable platform services."), true);
   }
+  const docxRow = rows.find((row) => row.format === "docx");
+  assert.ok(docxRow);
+  const docxZip = await JSZip.loadAsync(fs.readFileSync(docxRow.file_path));
+  const documentXml = await docxZip.file("word/document.xml")?.async("string");
+  assert.match(
+    documentXml ?? "",
+    /<w:b\/>.*Synthetic Company Jan 2020 - Present/,
+    "the employer/date/location row should be bold in DOCX"
+  );
+  assert.match(
+    documentXml ?? "",
+    /<w:b\/><w:i\/>.*Principal Platform Engineer/,
+    "the role row should be bold italic in DOCX"
+  );
   const summaries = getResumeArtifactSummaries(db, 1);
   assert.equal(summaries.length, 2);
   assert.equal(summaries.every((artifact) => artifact.downloadUrl), true);

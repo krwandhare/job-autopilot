@@ -33,6 +33,8 @@ type DocumentSection = {
   items: ResumeVariantItemRow[];
 };
 
+type ExperienceItemStyle = "employer" | "role" | "detail";
+
 const SECTION_ORDER = [
   ["summary", "Professional Summary"],
   ["skill", "Skills"],
@@ -79,19 +81,61 @@ function documentSections(items: ResumeVariantItemRow[]): DocumentSection[] {
   });
 }
 
+function looksLikeEmploymentHeader(item: ResumeVariantItemRow): boolean {
+  return (
+    item.section.toLowerCase().includes("experience") &&
+    /\b(?:19|20)\d{2}\s*[-–—]\s*(?:present|(?:19|20)\d{2})\b/i.test(
+      item.tailored_text
+    )
+  );
+}
+
+export function experienceItemStyle(
+  items: ResumeVariantItemRow[],
+  index: number
+): ExperienceItemStyle {
+  const item = items[index];
+  if (!item || !item.section.toLowerCase().includes("experience")) {
+    return "detail";
+  }
+  if (looksLikeEmploymentHeader(item)) return "employer";
+
+  const previous = items[index - 1];
+  const words = item.tailored_text.trim().split(/\s+/).filter(Boolean);
+  if (
+    previous &&
+    looksLikeEmploymentHeader(previous) &&
+    words.length <= 12 &&
+    item.tailored_text.length <= 100
+  ) {
+    return "role";
+  }
+  return "detail";
+}
+
 function docxParagraph(
   text: string,
-  options: { bold?: boolean; size?: number; center?: boolean; spacingAfter?: number } = {}
+  options: {
+    bold?: boolean;
+    italic?: boolean;
+    size?: number;
+    center?: boolean;
+    spacingBefore?: number;
+    spacingAfter?: number;
+    keepNext?: boolean;
+  } = {}
 ): string {
   const runProperties = [
     "<w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>",
     `<w:sz w:val="${options.size ?? 21}"/>`,
     `<w:szCs w:val="${options.size ?? 21}"/>`,
     options.bold ? "<w:b/>" : "",
+    options.italic ? "<w:i/>" : "",
   ].join("");
   const paragraphProperties = [
     options.center ? '<w:jc w:val="center"/>' : "",
-    `<w:spacing w:after="${options.spacingAfter ?? 80}" w:line="240" w:lineRule="auto"/>`,
+    options.keepNext ? "<w:keepNext/>" : "",
+    `<w:spacing w:before="${options.spacingBefore ?? 0}" w:after="${options.spacingAfter ?? 80}" w:line="240" w:lineRule="auto"/>`,
   ].join("");
   return `<w:p><w:pPr>${paragraphProperties}</w:pPr><w:r><w:rPr>${runProperties}</w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
 }
@@ -113,8 +157,29 @@ async function renderDocx(header: string[], sections: DocumentSection[]): Promis
     if (section.kind === "skill") {
       body.push(docxParagraph(section.items.map((item) => item.tailored_text).join(", ")));
     } else {
-      for (const item of section.items) {
-        body.push(docxParagraph(item.tailored_text));
+      for (const [index, item] of section.items.entries()) {
+        const experienceStyle =
+          section.kind === "experience"
+            ? experienceItemStyle(section.items, index)
+            : "detail";
+        body.push(
+          docxParagraph(item.tailored_text, {
+            bold:
+              experienceStyle === "employer" ||
+              experienceStyle === "role",
+            italic: experienceStyle === "role",
+            spacingBefore: experienceStyle === "employer" ? 100 : 0,
+            spacingAfter:
+              experienceStyle === "employer"
+                ? 20
+                : experienceStyle === "role"
+                  ? 40
+                  : 80,
+            keepNext:
+              experienceStyle === "employer" ||
+              experienceStyle === "role",
+          })
+        );
       }
     }
   }
@@ -171,7 +236,17 @@ async function renderPdf(header: string[], sections: DocumentSection[]): Promise
         section.kind === "skill"
           ? `<p>${section.items.map((item) => htmlEscape(item.tailored_text)).join(", ")}</p>`
           : section.items
-              .map((item) => `<p>${htmlEscape(item.tailored_text)}</p>`)
+              .map((item, index) => {
+                const experienceStyle =
+                  section.kind === "experience"
+                    ? experienceItemStyle(section.items, index)
+                    : "detail";
+                const className =
+                  experienceStyle === "detail"
+                    ? ""
+                    : ` class="experience-${experienceStyle}"`;
+                return `<p${className}>${htmlEscape(item.tailored_text)}</p>`;
+              })
               .join("");
       return `<section><h2>${htmlEscape(section.heading)}</h2>${content}</section>`;
     })
@@ -188,6 +263,8 @@ async function renderPdf(header: string[], sections: DocumentSection[]): Promise
   section { break-inside: auto; margin-top: 10pt; }
   h2 { margin: 0 0 4pt; padding-bottom: 2pt; border-bottom: 0.6pt solid #333; font-size: 11pt; letter-spacing: 0.3pt; text-transform: uppercase; }
   p { margin: 0 0 4pt; orphans: 2; widows: 2; }
+  .experience-employer { margin-top: 6pt; margin-bottom: 1pt; font-weight: 700; break-after: avoid; }
+  .experience-role { margin-bottom: 2pt; font-weight: 700; font-style: italic; break-after: avoid; }
 </style></head><body>
 <header><h1>${htmlEscape(header[0] ?? "")}</h1>${header
     .slice(1)

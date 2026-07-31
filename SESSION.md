@@ -444,3 +444,19 @@ artifact-generation failure:
 - Live browser verification on the local shared server confirmed visible DOCX
   and PDF links for variant 10, both targeting a separate tab. Lint, strict
   TypeScript, production build, and `git diff --check` passed.
+
+The same variant review then identified insufficient visual hierarchy inside
+Experience:
+
+- DOCX and PDF now classify deterministic employment date-range rows as
+  employer/date/location headers and render them bold. A short verified row
+  immediately after a header renders as the bold italic role title;
+  accomplishment rows stay normal.
+- The classifier changes presentation only and preserves every evidence-backed
+  line. A synthetic fixture verifies employer, role, and detail classification
+  plus DOCX run formatting.
+- Synthetic DOCX and PDF page images were visually inspected and showed the
+  intended hierarchy without overlap or clipping. The focused artifact suite,
+  lint, strict TypeScript, production build, and `git diff --check` passed.
+- Variant 10 was regenerated on the local shared server. Both formats passed
+  round-trip validation with 87 expected items and zero missing.
