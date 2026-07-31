@@ -49,11 +49,6 @@ const SOURCE_LABELS: Record<string, string> = {
   external_lead: "External lead",
 };
 
-function friendlyNetworkError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  return `Lost connection to the server (${message}). Check your network connection and try again.`;
-}
-
 function formatDate(value: string | null): string {
   if (!value) return "";
   return value.slice(0, 10);
@@ -67,6 +62,7 @@ export default function ApplicationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [noResponseOnly, setNoResponseOnly] = useState(false);
   const [savingJobId, setSavingJobId] = useState<number | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<number, string>>({});
 
   async function load() {
@@ -82,14 +78,14 @@ export default function ApplicationsPage() {
       const appsData = await appsRes.json();
       const statsData = await statsRes.json();
       const topFitData = await topFitRes.json();
-      if (!appsRes.ok) throw new Error(appsData.error ?? `Could not load applications (HTTP ${appsRes.status}).`);
-      if (!statsRes.ok) throw new Error(statsData.error ?? `Could not load stats (HTTP ${statsRes.status}).`);
-      if (!topFitRes.ok) throw new Error(topFitData.error ?? `Could not load top jobs (HTTP ${topFitRes.status}).`);
+      if (!appsRes.ok || !statsRes.ok || !topFitRes.ok) {
+        throw new Error("Your application activity could not be loaded.");
+      }
       setApplications(appsData.applications);
       setStats(statsData.stats);
       setTopJobs(topFitData.jobs);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } catch {
+      setError("Your application activity could not be loaded.");
     } finally {
       setLoading(false);
     }
@@ -104,6 +100,8 @@ export default function ApplicationsPage() {
 
   async function saveResponse(jobId: number, responseType: string | null) {
     setSavingJobId(jobId);
+    setError(null);
+    setSavedMessage(null);
     try {
       const res = await fetch(`/api/applications/${jobId}`, {
         method: "PATCH",
@@ -115,11 +113,12 @@ export default function ApplicationsPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not save response (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "The response update could not be saved.");
       }
+      setSavedMessage("Response saved.");
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } catch {
+      setError("The response update could not be saved. Check your selection and try again.");
     } finally {
       setSavingJobId(null);
     }
@@ -128,6 +127,8 @@ export default function ApplicationsPage() {
   async function saveFollowUp(jobId: number) {
     const draft = followUpDrafts[jobId];
     setSavingJobId(jobId);
+    setError(null);
+    setSavedMessage(null);
     try {
       const res = await fetch(`/api/applications/${jobId}`, {
         method: "PATCH",
@@ -136,11 +137,12 @@ export default function ApplicationsPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not save follow-up date (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "The follow-up date could not be saved.");
       }
+      setSavedMessage("Follow-up date saved.");
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } catch {
+      setError("The follow-up date could not be saved. Choose a valid date and try again.");
     } finally {
       setSavingJobId(null);
     }
@@ -173,11 +175,18 @@ export default function ApplicationsPage() {
       )}
 
       {error && (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="shrink-0 font-medium hover:text-red-900">
-            Dismiss
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">Applications need your attention</p>
+          <p className="mt-1">{error}</p>
+          <button type="button" onClick={() => void load()} className="mt-3 rounded-md bg-red-700 px-3 py-2 font-medium text-white">
+            Retry
           </button>
+        </div>
+      )}
+
+      {savedMessage && (
+        <div role="status" className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          {savedMessage}
         </div>
       )}
 
@@ -215,7 +224,7 @@ export default function ApplicationsPage() {
         No response in 14+ days
       </label>
 
-      {loading && <p className="text-sm text-gray-500">Loading…</p>}
+      {loading && <p role="status" aria-live="polite" className="text-sm text-gray-500">Loading application activity…</p>}
 
       {!loading && applications.length === 0 && (
         <div className="rounded-lg border p-6 text-sm text-gray-500">
