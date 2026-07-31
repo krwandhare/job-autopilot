@@ -671,3 +671,17 @@ Follow-up runner compatibility fix:
 - The retest also replaced the fixed default port with a per-process port and
   waits for the child server to exit before deleting its runtime directory,
   preventing stale-server readiness from racing a new disposable database.
+
+Playwright test-runner discovery fix:
+
+- Converted the self-executing script to the installed `playwright/test`
+  runner API. All assertions now execute within the named
+  `test("uploads, tailors, validates, and downloads a job-specific resume",
+  async ({ page }) => { ... })` flow, with server lifecycle handled by
+  `beforeAll`/`afterAll` hooks.
+- The npm command now invokes `playwright test` with one worker and the line
+  reporter, so the runner discovers, reports, and owns the headless Chromium
+  page fixture instead of the file launching Chromium itself.
+- `npx playwright test tests/tailored-resume-generator.spec.ts --list` found
+  one named test. That test passed headlessly, and `npm run lint`,
+  `npx tsc --noEmit`, `npm run build`, and `git diff --check` also passed.

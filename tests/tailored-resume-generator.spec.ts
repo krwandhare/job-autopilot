@@ -1,11 +1,10 @@
-import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import Database from "better-sqlite3";
-import { chromium, type Browser, type Page } from "playwright";
+import { expect, test, type Page } from "playwright/test";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const fixturePath = path.join(
@@ -21,7 +20,6 @@ const port = Number(
 const baseUrl = `http://127.0.0.1:${port}`;
 const serverLogPath = path.join(runtimeDir, "server.log");
 
-let browser: Browser | undefined;
 let server: ChildProcess | undefined;
 
 async function stopServer(): Promise<void> {
@@ -123,26 +121,29 @@ async function tailorAndDownload(page: Page, jobId: number): Promise<void> {
   );
   await page.getByRole("button", { name: "Create tailored draft" }).click();
   const variantResponse = await variantResponsePromise;
-  assert.equal(variantResponse.ok(), true, "tailored variant creation should succeed");
+  expect(variantResponse.ok(), "tailored variant creation should succeed").toBe(true);
   const variantPayload = (await variantResponse.json()) as {
     variant: {
       status: string;
       items: Array<{ originalText: string; tailoredText: string; included: boolean }>;
     };
   };
-  assert.equal(variantPayload.variant.status, "draft");
-  assert.ok(variantPayload.variant.items.length > 0, "tailoring should include verified evidence");
-  assert.ok(variantPayload.variant.items.every((item) => item.included));
-  assert.ok(
+  expect(variantPayload.variant.status).toBe("draft");
+  expect(
+    variantPayload.variant.items.length,
+    "tailoring should include verified evidence"
+  ).toBeGreaterThan(0);
+  expect(variantPayload.variant.items.every((item) => item.included)).toBe(true);
+  expect(
     variantPayload.variant.items.some((item) => item.tailoredText.includes("Kubernetes")),
     "tailoring should retain verified Kubernetes evidence"
-  );
-  assert.ok(
+  ).toBe(true);
+  expect(
     variantPayload.variant.items.every(
       (item) => !item.originalText.includes("Python") && !item.tailoredText.includes("Python")
     ),
     "tailoring must not invent the unevidenced Python requirement"
-  );
+  ).toBe(true);
 
   await page.getByRole("button", { name: "Approve this variant" }).click();
   await page.getByText("Approved for this job", { exact: true }).waitFor();
@@ -157,38 +158,39 @@ async function tailorAndDownload(page: Page, jobId: number): Promise<void> {
     error?: string;
     artifacts?: Array<{ format: string; validationStatus: string }>;
   };
-  assert.equal(
+  expect(
     artifactResponse.ok(),
-    true,
     `artifact generation should succeed: ${artifactPayload.error ?? artifactResponse.status()}`
-  );
-  assert.deepEqual(
-    artifactPayload.artifacts?.map((artifact) => [artifact.format, artifact.validationStatus]),
-    [
+  ).toBe(true);
+  expect(
+    artifactPayload.artifacts?.map((artifact) => [artifact.format, artifact.validationStatus])
+  ).toEqual([
       ["docx", "passed"],
       ["pdf", "passed"],
-    ]
-  );
+  ]);
   await page.reload();
   await page.getByRole("heading", { name: "Synthetic Platform Engineer" }).waitFor();
   await page.getByText("Download DOCX", { exact: true }).waitFor();
   await page.getByText("Download PDF", { exact: true }).waitFor();
-  assert.equal(await page.getByText("Parsing passed", { exact: true }).count(), 2);
+  await expect(page.getByText("Parsing passed", { exact: true })).toHaveCount(2);
 
   for (const format of ["DOCX", "PDF"] as const) {
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("link", { name: `Download ${format}` }).click();
     const download = await downloadPromise;
     const expectedExtension = format.toLowerCase();
-    assert.match(download.suggestedFilename(), new RegExp(`\\.${expectedExtension}$`, "i"));
+    expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${expectedExtension}$`, "i"));
     const destination = path.join(runtimeDir, `downloaded-resume.${expectedExtension}`);
     await download.saveAs(destination);
-    assert.ok(fs.statSync(destination).size > 100, `${format} download should contain data`);
+    expect(fs.statSync(destination).size, `${format} download should contain data`).toBeGreaterThan(
+      100
+    );
   }
 }
 
-async function run(): Promise<void> {
-  assert.ok(fs.existsSync(fixturePath), "resume fixture must exist");
+test.setTimeout(60_000);
+
+test.beforeAll(async () => {
   const serverLog = fs.openSync(serverLogPath, "a");
   server = spawn(
     process.execPath,
@@ -205,24 +207,16 @@ async function run(): Promise<void> {
   );
   fs.closeSync(serverLog);
   await waitForServer();
+});
 
-  browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ acceptDownloads: true });
-  const page = await context.newPage();
+test.afterAll(async () => {
+  await stopServer();
+  fs.rmSync(runtimeDir, { recursive: true, force: true });
+});
+
+test("uploads, tailors, validates, and downloads a job-specific resume", async ({ page }) => {
+  expect(fs.existsSync(fixturePath), "resume fixture must exist").toBe(true);
   await uploadAndVerifyResume(page);
   const jobId = seedTailoringJob();
   await tailorAndDownload(page, jobId);
-  await context.close();
-  console.log("Tailored resume generator Playwright integration passed.");
-}
-
-run()
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await browser?.close();
-    await stopServer();
-    fs.rmSync(runtimeDir, { recursive: true, force: true });
-  });
+});
