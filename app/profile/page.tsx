@@ -62,6 +62,7 @@ export default function ProfilePage() {
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function loadEvidence(resumeId: number) {
     setEvidenceLoading(true);
@@ -82,28 +83,43 @@ export default function ProfilePage() {
     }
   }
 
-  useEffect(() => {
-    fetch("/api/resume")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.resume) {
-          setResume(d.resume);
-          setSkills(JSON.parse(d.resume.skills_json));
-          loadEvidence(d.resume.id);
-        }
-      })
-      .catch((err) => setLoadError(`Could not load your resume: ${err instanceof Error ? err.message : String(err)}`));
+  async function loadProfile() {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [resumeResponse, filtersResponse] = await Promise.all([
+        fetch("/api/resume"),
+        fetch("/api/filters"),
+      ]);
+      if (!resumeResponse.ok || !filtersResponse.ok) {
+        throw new Error("Profile data unavailable");
+      }
+      const [resumeData, filtersData] = await Promise.all([
+        resumeResponse.json(),
+        filtersResponse.json(),
+      ]);
+      if (resumeData.resume) {
+        setResume(resumeData.resume);
+        setSkills(JSON.parse(resumeData.resume.skills_json));
+        void loadEvidence(resumeData.resume.id);
+      }
+      if (filtersData.filter) {
+        setFilter(filtersData.filter);
+        setLocationsText(filtersData.filter.locations.join(", "));
+        setExcludedCompaniesText(filtersData.filter.excludedCompanies.join(", "));
+      }
+    } catch {
+      setLoadError("Your resume and job preferences could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    fetch("/api/filters")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.filter) {
-          setFilter(d.filter);
-          setLocationsText(d.filter.locations.join(", "));
-          setExcludedCompaniesText(d.filter.excludedCompanies.join(", "));
-        }
-      })
-      .catch((err) => setLoadError(`Could not load your filters: ${err instanceof Error ? err.message : String(err)}`));
+  useEffect(() => {
+    // Initial server-backed page load.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -371,7 +387,21 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
+      {loading && (
+        <p role="status" aria-live="polite" className="text-sm text-gray-500">
+          Loading your profile…
+        </p>
+      )}
+
+      {loadError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">Profile unavailable</p>
+          <p className="mt-1">{loadError} Check that the local app is running, then try again.</p>
+          <button type="button" onClick={() => void loadProfile()} className="mt-3 rounded-md bg-red-700 px-3 py-2 font-medium text-white">
+            Retry
+          </button>
+        </div>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Resume</h2>
@@ -384,7 +414,12 @@ export default function ProfilePage() {
           suppressHydrationWarning
         />
         {uploading && <p className="text-sm text-gray-500">Parsing resume…</p>}
-        {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
+        {uploadError && (
+          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <p>{uploadError}</p>
+            <p className="mt-1">Choose a PDF, DOCX, or TXT file and try the upload again.</p>
+          </div>
+        )}
 
         {resume && (
           <div className="border rounded-lg p-4 space-y-3">
@@ -407,7 +442,7 @@ export default function ProfilePage() {
               <p className="text-xs text-gray-500 mb-1">
                 Detected skills (edit as needed — these drive job matching):
               </p>
-              {skillsError && <p className="text-xs text-red-600 mb-2">{skillsError}</p>}
+              {skillsError && <p role="alert" className="mb-2 text-xs text-red-700">{skillsError} Please retry the skill change.</p>}
               <div className="flex flex-wrap gap-2 mb-2">
                 {skills.map((s) => (
                   <span
@@ -458,8 +493,8 @@ export default function ProfilePage() {
             {evidenceLoading && (
               <p className="text-sm text-gray-500">Building evidence profile…</p>
             )}
-            {evidenceError && <p className="text-sm text-red-600">{evidenceError}</p>}
-            {evidenceMessage && <p className="text-sm text-green-700">{evidenceMessage}</p>}
+            {evidenceError && <p role="alert" className="text-sm text-red-700">{evidenceError} Review the resume and retry.</p>}
+            {evidenceMessage && <p role="status" className="text-sm text-green-700">{evidenceMessage}</p>}
             {!evidenceLoading && evidence.length === 0 && !evidenceError && (
               <p className="text-sm text-gray-500">
                 No evidence was extracted. The master resume remains available.
@@ -656,9 +691,9 @@ export default function ProfilePage() {
           >
             Save filters
           </button>
-          {savedMessage && <span className="text-sm text-green-600">{savedMessage}</span>}
+          {savedMessage && <span role="status" className="text-sm text-green-700">{savedMessage}</span>}
         </div>
-        {filtersError && <p className="text-sm text-red-600">{filtersError}</p>}
+        {filtersError && <p role="alert" className="text-sm text-red-700">{filtersError} Check the filter values and try again.</p>}
       </section>
     </div>
   );
