@@ -1,5 +1,21 @@
 # Session Handoff
 
+## Ship-feature shared integration and Claude availability
+
+On 2026-07-31, the cross-agent `ship-feature` workflow was isolated onto
+`feature/shared-ship-feature` with an explicit ownership manifest. The guarded
+integrator passed lint, strict TypeScript, and the production build and advanced
+`integration/concurrent-work` to `000545c`. The only source-preparation
+conflict was in `TODO.md`; it was resolved semantically by preserving the
+integration baseline and adding only the ship-feature milestone.
+
+Claude's `feature/claude-autofill` worktree still contains user/agent-owned
+uncommitted page changes, so it was deliberately not merged, stashed, or
+rewritten. For immediate discovery independent of branch state, the validated
+portable skill was also installed at `~/.claude/skills/ship-feature`. Claude
+Code 2.1.220 supports that location; an already-open session should run
+`/reload-skills`, then invoke `/ship-feature <requirement>` explicitly.
+
 ## Standard deterministic test command
 
 On 2026-07-31, `npm test` was added as the single fail-fast entry point for
