@@ -63,6 +63,7 @@ function friendlyNetworkError(err: unknown): string {
 
 export default function AutofillPage() {
   const [job, setJob] = useState<QueueJob | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [phase, setPhase] = useState<Phase>("idle");
   const [reason, setReason] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<MissingField[]>([]);
@@ -110,7 +111,9 @@ export default function AutofillPage() {
       const data = await res.json();
       if (!res.ok) {
         setJob(null);
-        setReason(data.error ?? `Could not load the job (HTTP ${res.status}).`);
+        setReason(
+          data.error ?? "Could not load the next job. Try again, or check the dashboard."
+        );
         setPhase("error");
         return;
       }
@@ -123,6 +126,8 @@ export default function AutofillPage() {
     } catch (err) {
       setReason(friendlyNetworkError(err));
       setPhase("error");
+    } finally {
+      setInitialLoading(false);
     }
   }
 
@@ -165,7 +170,7 @@ export default function AutofillPage() {
     }
 
     if (!res.ok) {
-      setReason(data.error ?? `Could not start filling this job (HTTP ${res.status}).`);
+      setReason(data.error ?? "Could not start filling this job. Try again in a moment.");
       setPhase("error");
       return;
     }
@@ -268,7 +273,7 @@ export default function AutofillPage() {
     if (!res.ok) {
       setFieldErrors((e) => ({
         ...e,
-        [field.autofillId]: data.error ?? `Could not save this answer (HTTP ${res.status}).`,
+        [field.autofillId]: data.error ?? "Could not save this answer. Try again.",
       }));
       return;
     }
@@ -316,7 +321,7 @@ export default function AutofillPage() {
     if (!res.ok) {
       setFieldErrors((e) => ({
         ...e,
-        [field.autofillId]: data.error ?? `Could not upload this file (HTTP ${res.status}).`,
+        [field.autofillId]: data.error ?? "Could not upload this file. Try again.",
       }));
       return;
     }
@@ -458,7 +463,7 @@ export default function AutofillPage() {
     }
     if (!statusRes.ok) {
       const data = await statusRes.json().catch(() => ({}) as { error?: string });
-      setReason(data.error ?? `Could not skip this job (HTTP ${statusRes.status}).`);
+      setReason(data.error ?? "Could not skip this job. Try again.");
       setPhase("error");
       return;
     }
@@ -496,7 +501,7 @@ export default function AutofillPage() {
     }
     if (!statusRes.ok) {
       const data = await statusRes.json().catch(() => ({}) as { error?: string });
-      setReason(data.error ?? `Could not save this job for later (HTTP ${statusRes.status}).`);
+      setReason(data.error ?? "Could not save this job for later. Try again.");
       setPhase("error");
       return;
     }
@@ -526,7 +531,15 @@ export default function AutofillPage() {
         </p>
       </div>
 
-      {phase === "queue_empty" && (
+      {initialLoading && (
+        <div className="border rounded-lg p-6 space-y-3 animate-pulse">
+          <div className="h-5 w-2/3 bg-gray-200 rounded" />
+          <div className="h-4 w-1/3 bg-gray-200 rounded" />
+          <div className="h-4 w-1/2 bg-gray-200 rounded" />
+        </div>
+      )}
+
+      {!initialLoading && phase === "queue_empty" && (
         <div className="border rounded-lg p-6 text-sm text-gray-500">
           No jobs with status &quot;New&quot; left to work through. Sync more jobs, or change some
           statuses back to New on the{" "}
@@ -537,7 +550,7 @@ export default function AutofillPage() {
         </div>
       )}
 
-      {!job && phase === "error" && (
+      {!initialLoading && !job && phase === "error" && (
         <div className="border rounded-lg p-6 space-y-3">
           <p className="text-sm text-red-600">{reason}</p>
           <button

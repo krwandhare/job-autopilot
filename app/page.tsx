@@ -157,6 +157,7 @@ export default function DashboardPage() {
   // add/remove, seeding, quick-decision buttons, the jobs/sources lists
   // themselves) -- one visible place instead of failing silently.
   const [pageError, setPageError] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   async function loadJobs(status: string, pageNum: number, includeNonMatches: boolean) {
     const params = new URLSearchParams({ page: String(pageNum) });
@@ -165,13 +166,16 @@ export default function DashboardPage() {
     try {
       const res = await fetch(`/api/jobs?${params.toString()}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Could not load jobs (HTTP ${res.status}).`);
+      if (!res.ok)
+        throw new Error(data.error ?? "Could not load jobs. Try again, or refresh the page.");
       setJobs(data.jobs);
       setMaxScore(data.maxScore ?? 0);
       setTotal(data.total ?? 0);
       setPageSize(data.pageSize ?? 50);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } finally {
+      setInitialLoading(false);
     }
   }
 
@@ -179,7 +183,8 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/sources");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Could not load sources (HTTP ${res.status}).`);
+      if (!res.ok)
+        throw new Error(data.error ?? "Could not load sources. Try again, or refresh the page.");
       setSources(data.sources);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
@@ -218,7 +223,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not add that source (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not add that source. Try again.");
       }
       loadSources();
     } catch (err) {
@@ -235,7 +240,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not remove that source (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not remove that source. Try again.");
       }
       loadSources();
     } catch (err) {
@@ -248,7 +253,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/sources/seed", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Could not seed sources (HTTP ${res.status}).`);
+      if (!res.ok) throw new Error(data.error ?? "Could not seed sources. Try again.");
       setSyncMessage(
         `Added ${data.added} new companies (${data.totalAvailable} available in the seed list). Click "Sync jobs" to fetch their listings.`
       );
@@ -266,7 +271,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/jobs/sync", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Sync failed (HTTP ${res.status}).`);
+      if (!res.ok) throw new Error(data.error ?? "Sync failed. Try again in a moment.");
       if (data.sourcesConfigured === 0) {
         setSyncMessage(
           "No sources configured yet — add a Greenhouse/Lever slug or Adzuna search above, then sync."
@@ -336,7 +341,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not update this job (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not update this job. Try again.");
       }
     } catch (err) {
       setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
@@ -776,12 +781,19 @@ export default function DashboardPage() {
         </div>
 
         <div className="divide-y border rounded-lg">
-          {jobs.length === 0 && (
+          {initialLoading && (
+            <div className="space-y-3 p-4 animate-pulse">
+              <div className="h-4 w-2/3 bg-gray-200 rounded" />
+              <div className="h-4 w-1/2 bg-gray-200 rounded" />
+              <div className="h-4 w-3/5 bg-gray-200 rounded" />
+            </div>
+          )}
+          {!initialLoading && jobs.length === 0 && (
             <p className="p-6 text-sm text-gray-500">
               No jobs yet. Add a source and click &quot;Sync jobs&quot;, or import a LinkedIn URL.
             </p>
           )}
-          {jobs.map((job) => (
+          {!initialLoading && jobs.map((job) => (
             <div
               key={job.id}
               className="flex flex-col gap-3 p-4 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"

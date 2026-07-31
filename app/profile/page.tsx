@@ -59,6 +59,7 @@ export default function ProfilePage() {
   const [locationsText, setLocationsText] = useState("");
   const [excludedCompaniesText, setExcludedCompaniesText] = useState("");
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [savingFilters, setSavingFilters] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -194,7 +195,7 @@ export default function ProfilePage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not save skills (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not save skills. Try again.");
       }
     } catch (err) {
       setSkills(previous);
@@ -330,6 +331,7 @@ export default function ProfilePage() {
 
   async function saveFilters() {
     setFiltersError(null);
+    setSavingFilters(true);
     const payload = {
       ...filter,
       locations: locationsText
@@ -349,7 +351,7 @@ export default function ProfilePage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not save filters (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not save filters. Try again.");
       }
       setSavedMessage("Filters saved.");
       setTimeout(() => setSavedMessage(null), 2000);
@@ -359,6 +361,8 @@ export default function ProfilePage() {
           ? err.message
           : `Lost connection to the server (${String(err)}). Check your network connection and try again.`
       );
+    } finally {
+      setSavingFilters(false);
     }
   }
 
@@ -652,9 +656,10 @@ export default function ProfilePage() {
         <div className="flex items-center gap-3">
           <button
             onClick={saveFilters}
-            className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
+            disabled={savingFilters}
+            className="bg-gray-900 text-white text-sm px-4 py-2 rounded disabled:opacity-50"
           >
-            Save filters
+            {savingFilters ? "Saving…" : "Save filters"}
           </button>
           {savedMessage && <span className="text-sm text-green-600">{savedMessage}</span>}
         </div>

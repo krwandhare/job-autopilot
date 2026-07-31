@@ -129,6 +129,7 @@ export default function JobDetailPage({
   const [maxScore, setMaxScore] = useState(0);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null);
@@ -140,8 +141,10 @@ export default function JobDetailPage({
   const [savingVariantItem, setSavingVariantItem] = useState<number | null>(null);
   const [resumeArtifacts, setResumeArtifacts] = useState<ResumeArtifact[]>([]);
   const [artifactLoading, setArtifactLoading] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   async function load() {
+    setError(null);
     try {
       const res = await fetch(`/api/jobs/${id}`);
       const data = await res.json();
@@ -149,15 +152,19 @@ export default function JobDetailPage({
         setJob(data.job);
         setMaxScore(data.maxScore ?? 0);
         setDraft(data.draft);
+      } else if (res.status === 404) {
+        setError("This job couldn't be found. It may have been removed. Go back to the dashboard and pick another job.");
       } else {
-        setError(data.error ?? "Job not found");
+        setError(
+          data.error ?? "The job details couldn't be loaded. Try again, or go back to the dashboard."
+        );
       }
-    } catch (err) {
+    } catch {
       setError(
-        `Lost connection to the server (${
-          err instanceof Error ? err.message : String(err)
-        }). Check your network connection and try again.`
+        "Can't reach the local server right now. Make sure the app is still running, then retry."
       );
+    } finally {
+      setInitialLoading(false);
     }
   }
 
@@ -228,6 +235,7 @@ export default function JobDetailPage({
 
   async function updateStatus(status: string) {
     setActionError(null);
+    setUpdatingStatus(true);
     try {
       const res = await fetch(`/api/jobs/${id}`, {
         method: "PATCH",
@@ -236,15 +244,19 @@ export default function JobDetailPage({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not update status (HTTP ${res.status}).`);
+        throw new Error(
+          data.error ?? "The status change wasn't saved. Try again in a moment."
+        );
       }
-      load();
+      await load();
     } catch (err) {
       setActionError(
         err instanceof Error
           ? err.message
-          : `Lost connection to the server (${String(err)}). Check your network connection and try again.`
+          : "Can't reach the local server right now. Make sure the app is still running, then retry."
       );
+    } finally {
+      setUpdatingStatus(false);
     }
   }
 
@@ -258,13 +270,14 @@ export default function JobDetailPage({
         setDraft(data.draft);
         updateStatus("drafted");
       } else {
-        setActionError(data.error ?? `Could not generate a draft (HTTP ${res.status}).`);
+        setActionError(
+          data.error ??
+            "The draft couldn't be generated. Check that a resume is uploaded on the Profile page, then try again."
+        );
       }
-    } catch (err) {
+    } catch {
       setActionError(
-        `Lost connection to the server (${
-          err instanceof Error ? err.message : String(err)
-        }). Check your network connection and try again.`
+        "Can't reach the local server right now. Make sure the app is still running, then retry."
       );
     } finally {
       setGenerating(false);
@@ -407,12 +420,42 @@ export default function JobDetailPage({
     }
   }
 
+  if (initialLoading) {
+    return (
+      <div className="max-w-3xl mx-auto p-8 space-y-4 animate-pulse">
+        <div className="h-4 w-32 bg-gray-200 rounded" />
+        <div className="h-7 w-2/3 bg-gray-200 rounded" />
+        <div className="h-4 w-1/3 bg-gray-200 rounded" />
+        <div className="h-24 w-full bg-gray-200 rounded" />
+      </div>
+    );
+  }
+
   if (error) {
-    return <div className="max-w-3xl mx-auto p-8 text-red-600">{error}</div>;
+    return (
+      <div className="max-w-3xl mx-auto p-8">
+        <Link href="/" className="text-sm text-gray-500 hover:underline">
+          ← Back to dashboard
+        </Link>
+        <div className="mt-4 rounded border border-red-200 bg-red-50 p-4 space-y-3">
+          <p className="text-sm font-medium text-red-800">Couldn&apos;t load this job</p>
+          <p className="text-sm text-red-700">{error}</p>
+          <button
+            onClick={() => {
+              setInitialLoading(true);
+              load();
+            }}
+            className="text-sm bg-red-700 text-white px-3 py-1.5 rounded hover:bg-red-800"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!job) {
-    return <div className="max-w-3xl mx-auto p-8 text-gray-500">Loading…</div>;
+    return null;
   }
 
   return (
@@ -439,8 +482,15 @@ export default function JobDetailPage({
       </div>
 
       {actionError && (
-        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {actionError}
+        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex items-center justify-between gap-3">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-red-700 hover:text-red-900 text-xs shrink-0"
+            aria-label="Dismiss"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -449,7 +499,8 @@ export default function JobDetailPage({
         <select
           value={job.status}
           onChange={(e) => updateStatus(e.target.value)}
-          className="border rounded px-2 py-1 text-sm"
+          disabled={updatingStatus}
+          className="border rounded px-2 py-1 text-sm disabled:opacity-50"
         >
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>
@@ -457,6 +508,7 @@ export default function JobDetailPage({
             </option>
           ))}
         </select>
+        {updatingStatus && <span className="text-xs text-gray-400">Saving…</span>}
         <span className="text-sm text-gray-500 ml-4">Match score:</span>
         <span className="font-semibold">
           {job.matchScore ?? 0}
