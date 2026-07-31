@@ -233,6 +233,32 @@ export default function DashboardPage() {
     loadActions();
   }
 
+  const [gmailSyncing, setGmailSyncing] = useState(false);
+  const [gmailSyncMessage, setGmailSyncMessage] = useState<string | null>(null);
+
+  async function runGmailSync() {
+    setGmailSyncing(true);
+    setGmailSyncMessage(null);
+    try {
+      const res = await fetch("/api/jobs/sync-gmail", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setGmailSyncMessage(data.error ?? "Gmail sync failed");
+      } else {
+        const cappedNote = data.rateLimited ? " (rate limit reached — more next run)" : "";
+        setGmailSyncMessage(
+          `Imported ${data.imported} lead(s) from ${data.threadsProcessed} alert email(s)${cappedNote}.`
+        );
+      }
+    } catch (err) {
+      setGmailSyncMessage(err instanceof Error ? err.message : "Gmail sync failed");
+    } finally {
+      setGmailSyncing(false);
+      loadJobs(statusFilter, page, showAll);
+      loadActions();
+    }
+  }
+
   const [decidingJobId, setDecidingJobId] = useState<number | null>(null);
 
   async function decideAction(jobId: number, status: string) {
@@ -289,9 +315,17 @@ export default function DashboardPage() {
           >
             {syncing ? "Syncing…" : "Sync jobs"}
           </button>
+          <button
+            onClick={runGmailSync}
+            disabled={gmailSyncing}
+            className="rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {gmailSyncing ? "Checking Gmail…" : "Sync Gmail leads"}
+          </button>
         </div>
       </div>
       {syncMessage && <p className="text-sm text-gray-600">{syncMessage}</p>}
+      {gmailSyncMessage && <p className="text-sm text-gray-600">{gmailSyncMessage}</p>}
 
       <section aria-labelledby="action-center-heading" className="space-y-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
