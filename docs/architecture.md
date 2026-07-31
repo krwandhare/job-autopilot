@@ -44,6 +44,11 @@ Browser UI
 | `PATCH /api/jobs/[id]` | Set a validated local status: `new`, `drafted`, `applied`, `rejected`, `skipped`, `watchlist`, `needs_code`, `needs_review`, or `external_lead`. |
 | `GET /api/jobs/[id]/resume-analysis` | Return a stored requirement analysis and recomputed coverage against the latest verified resume evidence. |
 | `POST /api/jobs/[id]/resume-analysis` | Deterministically extract or refresh posting requirements and return evidence-backed coverage. |
+| `GET /api/jobs/[id]/resume-variant` | Return the latest active draft or approved resume variant for a job. |
+| `POST /api/jobs/[id]/resume-variant` | Compose a new draft exclusively from the latest resume's verified evidence. |
+| `GET /api/resume-variants/[id]` | Return one variant and its ordered audit items. |
+| `PATCH /api/resume-variants/[id]` | Include or exclude one item while the variant remains a draft. |
+| `POST /api/resume-variants/[id]/approve` | Approve a current, non-stale, evidence-valid job-specific variant. |
 | `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
 | `POST /api/jobs/import-url` | Import, score, and upsert exactly one user-supplied LinkedIn URL. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
@@ -83,6 +88,11 @@ connection on `global.__db`, and initializes:
 - `job_requirements`: ordered required, preferred, or contextual posting
   expectations with conservative normalized terms and the original source
   line.
+- `resume_variants`: versioned job/resume associations with draft, approved,
+  superseded, or rejected status and the source posting fingerprint.
+- `resume_variant_items`: ordered source/after pairs with evidence ID,
+  inclusion, rationale, normalized terms, and change type for a complete local
+  audit trail.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
@@ -171,6 +181,21 @@ with one verified evidence item. Experience duration is not calculated from
 resume dates. Results are evidence found, partial, not evidenced, or needs
 review and are not represented as an employer ATS probability.
 
+## Resume variant composition
+
+`lib/resumeVariants.ts` composes from verified evidence only. Requirement
+coverage determines relevance ordering: required expectations outrank
+preferred and contextual expectations within conventional section order.
+Automatic text changes are limited to whitespace, first-letter
+capitalization, and terminal punctuation. Each item retains the exact
+normalized evidence snapshot, its resulting text, rationale, and matched
+terms.
+
+Draft items can be included or excluded. Approval is a separate transaction
+that refuses a changed posting, a newer master resume, modified/unverified
+evidence, or a variant with nothing included. Approved variants are immutable
+and unique per job; a later approval supersedes the older approved variant.
+
 ## Draft generation
 
 `lib/draft.ts` is deterministic. It takes the first two sentence-like segments of the resume, incorporates up to six matched skills, and produces:
@@ -213,6 +238,7 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 | `lib/resume.ts` | File-format-specific text extraction. |
 | `lib/resumeEvidence.ts` | Deterministic evidence extraction, idempotent persistence, and API serialization. |
 | `lib/jobRequirements.ts` | Posting requirement extraction, fingerprinted persistence, and verified-evidence coverage. |
+| `lib/resumeVariants.ts` | Evidence-constrained ordering, variant audit persistence, stale checks, and approval. |
 | `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
 | `lib/draft.ts` | Template-based cover letters and screening answers. |
@@ -228,6 +254,7 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 Resume upload -> extract text -> detect/edit skills -> SQLite + local file
                               -> evidence extraction -> user verification
 Job description -> requirement extraction -> verified-evidence coverage
+Verified evidence + coverage -> draft variant -> human review -> approved variant
 Filters ----------------------------------------------------------+
 Source config -> external source -> NormalizedJob -> scoreJob -----+-> jobs table
 LinkedIn URL -> one public page -> NormalizedJob -> scoreJob ------+

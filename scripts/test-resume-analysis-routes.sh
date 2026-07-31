@@ -114,4 +114,59 @@ assert python["requirement"]["priority"] == "required"
 assert python["status"] == "not_evidenced"
 '
 
-printf 'Disposable resume-analysis route E2E passed.\n'
+variant="$(
+  curl -fsS -X POST "http://127.0.0.1:$PORT/api/jobs/1/resume-variant"
+)"
+printf '%s' "$variant" | python3 -c '
+import json, sys
+variant = json.load(sys.stdin)["variant"]
+assert variant["status"] == "draft"
+assert len(variant["items"]) == 7
+assert all(item["included"] for item in variant["items"])
+assert not any("Python" in item["tailoredText"] for item in variant["items"])
+assert any(
+  "required" in item["rationale"] and "Kubernetes" in item["matchedTerms"]
+  for item in variant["items"]
+)
+'
+variant_id="$(
+  printf '%s' "$variant" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["variant"]["id"])'
+)"
+first_item_id="$(
+  printf '%s' "$variant" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["variant"]["items"][0]["id"])'
+)"
+
+updated_variant="$(
+  curl -fsS -X PATCH "http://127.0.0.1:$PORT/api/resume-variants/$variant_id" \
+    -H "Content-Type: application/json" \
+    -d "{\"itemId\":$first_item_id,\"included\":false}"
+)"
+printf '%s' "$updated_variant" | python3 -c '
+import json, sys
+variant = json.load(sys.stdin)["variant"]
+assert variant["status"] == "draft"
+assert sum(1 for item in variant["items"] if not item["included"]) == 1
+'
+
+approved="$(
+  curl -fsS -X POST \
+    "http://127.0.0.1:$PORT/api/resume-variants/$variant_id/approve"
+)"
+printf '%s' "$approved" | python3 -c '
+import json, sys
+variant = json.load(sys.stdin)["variant"]
+assert variant["status"] == "approved"
+assert variant["approvedAt"] is not None
+'
+
+immutable_code="$(
+  curl -sS -o "$TEST_DATA/immutable.json" -w '%{http_code}' \
+    -X PATCH "http://127.0.0.1:$PORT/api/resume-variants/$variant_id" \
+    -H "Content-Type: application/json" \
+    -d "{\"itemId\":$first_item_id,\"included\":true}"
+)"
+[ "$immutable_code" = "409" ]
+
+printf 'Disposable resume-analysis and variant route E2E passed.\n'

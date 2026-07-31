@@ -56,6 +56,28 @@ type ResumeAnalysis = {
   }>;
 };
 
+type ResumeVariant = {
+  id: number;
+  jobId: number;
+  resumeId: number;
+  status: "draft" | "approved" | "superseded" | "rejected";
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  items: Array<{
+    id: number;
+    evidenceId: number;
+    section: string;
+    position: number;
+    originalText: string;
+    tailoredText: string;
+    rationale: string;
+    changeType: string;
+    matchedTerms: string[];
+    included: boolean;
+  }>;
+};
+
 const COVERAGE_LABELS = {
   supported: "Evidence found",
   partial: "Partial evidence",
@@ -96,6 +118,10 @@ export default function JobDetailPage({
   const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [resumeVariant, setResumeVariant] = useState<ResumeVariant | null>(null);
+  const [variantLoading, setVariantLoading] = useState(false);
+  const [variantError, setVariantError] = useState<string | null>(null);
+  const [savingVariantItem, setSavingVariantItem] = useState<number | null>(null);
 
   async function load() {
     const res = await fetch(`/api/jobs/${id}`);
@@ -120,11 +146,23 @@ export default function JobDetailPage({
     }
   }
 
+  async function loadResumeVariant() {
+    const res = await fetch(`/api/jobs/${id}/resume-variant`);
+    const data = await res.json();
+    if (res.ok) {
+      setResumeVariant(data.variant);
+      setVariantError(null);
+    } else {
+      setVariantError(data.error ?? "Could not load tailored resume");
+    }
+  }
+
   useEffect(() => {
     // Data load on mount/id change, not synchronous render-derived state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
     loadResumeAnalysis();
+    loadResumeVariant();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -164,6 +202,72 @@ export default function JobDetailPage({
       );
     } finally {
       setAnalysisLoading(false);
+    }
+  }
+
+  async function generateResumeVariant() {
+    setVariantLoading(true);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/jobs/${id}/resume-variant`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not create tailored resume");
+      setResumeVariant(data.variant);
+      await loadResumeAnalysis();
+    } catch (variantFailure) {
+      setVariantError(
+        variantFailure instanceof Error
+          ? variantFailure.message
+          : "Could not create tailored resume"
+      );
+    } finally {
+      setVariantLoading(false);
+    }
+  }
+
+  async function setVariantItemIncluded(itemId: number, included: boolean) {
+    if (!resumeVariant) return;
+    setSavingVariantItem(itemId);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, included }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not update tailored resume");
+      setResumeVariant(data.variant);
+    } catch (variantFailure) {
+      setVariantError(
+        variantFailure instanceof Error
+          ? variantFailure.message
+          : "Could not update tailored resume"
+      );
+    } finally {
+      setSavingVariantItem(null);
+    }
+  }
+
+  async function approveVariant() {
+    if (!resumeVariant) return;
+    setVariantLoading(true);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}/approve`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not approve tailored resume");
+      setResumeVariant(data.variant);
+    } catch (variantFailure) {
+      setVariantError(
+        variantFailure instanceof Error
+          ? variantFailure.message
+          : "Could not approve tailored resume"
+      );
+    } finally {
+      setVariantLoading(false);
     }
   }
 
@@ -342,6 +446,137 @@ export default function JobDetailPage({
                         ))}
                       </ul>
                     </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="border rounded-lg p-4 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-medium">Tailored resume draft</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Reorders and lightly reformats only verified evidence. No new skills,
+              achievements, dates, titles, or metrics are generated.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={generateResumeVariant}
+            disabled={variantLoading || !job.description}
+            className="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {variantLoading
+              ? "Working…"
+              : resumeVariant
+                ? "Create new draft"
+                : "Create tailored draft"}
+          </button>
+        </div>
+
+        {variantError && (
+          <div className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+            {variantError}{" "}
+            {variantError.toLowerCase().includes("evidence") && (
+              <Link href="/profile" className="underline">
+                Review evidence
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!resumeVariant && !variantError && (
+          <p className="text-sm text-gray-500">
+            Create a reviewable version after verifying your career evidence.
+          </p>
+        )}
+
+        {resumeVariant && (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded bg-gray-50 p-3">
+              <div className="text-sm">
+                <span className="font-medium capitalize">{resumeVariant.status}</span>
+                <span className="text-gray-500">
+                  {" "}
+                  · {resumeVariant.items.filter((item) => item.included).length} of{" "}
+                  {resumeVariant.items.length} verified items included
+                </span>
+              </div>
+              {resumeVariant.status === "draft" && (
+                <button
+                  type="button"
+                  onClick={approveVariant}
+                  disabled={
+                    variantLoading ||
+                    resumeVariant.items.every((item) => !item.included)
+                  }
+                  className="rounded bg-green-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+                >
+                  Approve this variant
+                </button>
+              )}
+              {resumeVariant.status === "approved" && (
+                <span className="rounded bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                  Approved for this job
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-500">
+              Approval is job-specific and auditable. Export and autofill attachment are added in
+              the next checkpoints; approval alone does not submit or transmit anything.
+            </p>
+
+            <div className="space-y-3">
+              {resumeVariant.items.map((item) => (
+                <article
+                  key={item.id}
+                  className={`rounded border p-3 space-y-3 ${
+                    item.included ? "" : "bg-gray-50 opacity-70"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs text-gray-500">
+                      <span className="font-medium text-gray-700">{item.section}</span>
+                      {" · "}
+                      {item.changeType}
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={item.included}
+                        disabled={
+                          resumeVariant.status !== "draft" ||
+                          savingVariantItem === item.id
+                        }
+                        onChange={(event) =>
+                          setVariantItemIncluded(item.id, event.target.checked)
+                        }
+                        suppressHydrationWarning
+                      />
+                      Include
+                    </label>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded bg-gray-50 p-2">
+                      <p className="text-xs font-medium text-gray-500">Verified source</p>
+                      <p className="mt-1 text-sm text-gray-700">{item.originalText}</p>
+                    </div>
+                    <div className="rounded bg-blue-50 p-2">
+                      <p className="text-xs font-medium text-blue-700">Tailored version</p>
+                      <p className="mt-1 text-sm text-gray-800">{item.tailoredText}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500">{item.rationale}</p>
+                  {item.matchedTerms.length > 0 && (
+                    <p className="text-xs text-green-700">
+                      Evidence-backed terms: {item.matchedTerms.join(", ")}
+                    </p>
                   )}
                 </article>
               ))}

@@ -142,6 +142,42 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_job_requirements_job
       ON job_requirements(job_id, source_order, id);
+
+    CREATE TABLE IF NOT EXISTS resume_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'draft',
+      job_fingerprint TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      approved_at TEXT,
+      CHECK (status IN ('draft', 'approved', 'superseded', 'rejected'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_resume_variants_approved_job
+      ON resume_variants(job_id) WHERE status = 'approved';
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variants_job
+      ON resume_variants(job_id, created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS resume_variant_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      variant_id INTEGER NOT NULL REFERENCES resume_variants(id) ON DELETE CASCADE,
+      evidence_id INTEGER NOT NULL REFERENCES resume_evidence(id),
+      section TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      original_text TEXT NOT NULL,
+      tailored_text TEXT NOT NULL,
+      rationale TEXT NOT NULL,
+      change_type TEXT NOT NULL,
+      matched_terms_json TEXT NOT NULL DEFAULT '[]',
+      included INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variant_items_variant
+      ON resume_variant_items(variant_id, position, id);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -275,5 +311,31 @@ export type JobRequirementRow = {
   terms_json: string;
   source_text: string;
   source_order: number;
+  created_at: string;
+};
+
+export type ResumeVariantRow = {
+  id: number;
+  job_id: number;
+  resume_id: number;
+  status: "draft" | "approved" | "superseded" | "rejected";
+  job_fingerprint: string;
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+};
+
+export type ResumeVariantItemRow = {
+  id: number;
+  variant_id: number;
+  evidence_id: number;
+  section: string;
+  position: number;
+  original_text: string;
+  tailored_text: string;
+  rationale: string;
+  change_type: string;
+  matched_terms_json: string;
+  included: number;
   created_at: string;
 };

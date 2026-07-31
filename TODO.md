@@ -2,10 +2,10 @@
 
 ## In Progress
 
-- Implement truthful per-job resume tailoring. Next checkpoint: compose
-  evidence-constrained job-specific drafts with a side-by-side review and
-  explicit approval. Later checkpoints add ATS-safe export and exact-job
-  autofill selection; see `docs/resume-tailoring-plan.md`.
+- Implement truthful per-job resume tailoring. Next checkpoint: generate
+  ATS-safe DOCX/PDF artifacts and reject any export that fails round-trip text
+  validation. The following checkpoint adds exact-job autofill selection; see
+  `docs/resume-tailoring-plan.md`.
 - Live-run and verify Claude's Gmail-alert LinkedIn lead importer through the
   shared runtime, using its existing rate limit and `external_lead` boundary.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
@@ -43,6 +43,11 @@
   and a disposable production-route E2E. Unverified evidence never counts,
   experience duration is not inferred from dates, and the UI does not claim a
   universal ATS score or review probability.
+- Added evidence-constrained resume variants with relevance ordering, safe
+  punctuation-only normalization, per-item source/after/rationale review,
+  include/exclude controls, explicit job-specific approval, stale
+  job/resume/evidence rejection, superseded draft history, and approved
+  immutability. Isolated model and disposable route E2E checks passed.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.

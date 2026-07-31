@@ -227,6 +227,26 @@ The second resume-tailoring checkpoint was then completed:
   synthetic resume/job data, and a disposable SQLite database, then removed
   them.
 
+The third resume-tailoring checkpoint was then completed:
+
+- Added `resume_variants` and `resume_variant_items`, including an audit record
+  for source evidence, tailored text, rationale, matched terms, ordering, and
+  inclusion.
+- Variant composition uses only verified evidence. It prioritizes evidence
+  supporting required, then preferred, then contextual expectations within
+  conventional resume sections. The only automatic text change is whitespace,
+  capitalization, and terminal punctuation; it does not create claims.
+- The job-detail page presents verified source and tailored text side by side,
+  lets the user include/exclude items while the variant is a draft, and
+  requires a separate approval action.
+- Approval rejects stale master resumes, changed job descriptions, modified or
+  unverified evidence, and empty variants. Approved variants are immutable;
+  creating a new draft does not silently replace an approved version.
+- `npm run test:resume-variants`, lint, strict TypeScript, the production
+  build, and the expanded `npm run test:resume-analysis-routes` passed. The
+  route E2E verified draft creation, item exclusion, approval, and immutable
+  approved state using only temporary synthetic data.
+
 ## Current objective
 
 Build and validate truthful per-job resume tailoring that improves ATS
@@ -244,6 +264,6 @@ automatically using an unapproved variant.
 
 ## Exact next recommended task
 
-Implement evidence-constrained job-specific resume drafts, record every
-included evidence item and rationale, present a side-by-side review, and
-require explicit approval before a variant can become eligible for export.
+Generate ATS-safe DOCX and text-based PDF artifacts for approved variants,
+reparse both formats, compare expected content, and refuse downloads that fail
+round-trip validation.
