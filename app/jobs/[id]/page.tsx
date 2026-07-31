@@ -67,6 +67,7 @@ type ResumeVariant = {
   items: Array<{
     id: number;
     evidenceId: number;
+    evidenceKind: string;
     section: string;
     position: number;
     originalText: string;
@@ -76,6 +77,19 @@ type ResumeVariant = {
     matchedTerms: string[];
     included: boolean;
   }>;
+};
+
+type ResumeArtifact = {
+  format: "docx" | "pdf";
+  filename: string;
+  validationStatus: "passed" | "failed";
+  validation: {
+    expectedItemCount: number;
+    missingItemCount: number;
+    parsedCharacterCount: number;
+  };
+  downloadUrl: string | null;
+  createdAt: string;
 };
 
 const COVERAGE_LABELS = {
@@ -122,6 +136,8 @@ export default function JobDetailPage({
   const [variantLoading, setVariantLoading] = useState(false);
   const [variantError, setVariantError] = useState<string | null>(null);
   const [savingVariantItem, setSavingVariantItem] = useState<number | null>(null);
+  const [resumeArtifacts, setResumeArtifacts] = useState<ResumeArtifact[]>([]);
+  const [artifactLoading, setArtifactLoading] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/jobs/${id}`);
@@ -152,8 +168,21 @@ export default function JobDetailPage({
     if (res.ok) {
       setResumeVariant(data.variant);
       setVariantError(null);
+      if (data.variant?.id) {
+        await loadArtifacts(data.variant.id);
+      } else {
+        setResumeArtifacts([]);
+      }
     } else {
       setVariantError(data.error ?? "Could not load tailored resume");
+    }
+  }
+
+  async function loadArtifacts(variantId: number) {
+    const res = await fetch(`/api/resume-variants/${variantId}/artifacts`);
+    const data = await res.json();
+    if (res.ok) {
+      setResumeArtifacts(data.artifacts ?? []);
     }
   }
 
@@ -213,6 +242,7 @@ export default function JobDetailPage({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not create tailored resume");
       setResumeVariant(data.variant);
+      setResumeArtifacts([]);
       await loadResumeAnalysis();
     } catch (variantFailure) {
       setVariantError(
@@ -238,6 +268,7 @@ export default function JobDetailPage({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not update tailored resume");
       setResumeVariant(data.variant);
+      await loadArtifacts(data.variant.id);
     } catch (variantFailure) {
       setVariantError(
         variantFailure instanceof Error
@@ -246,6 +277,34 @@ export default function JobDetailPage({
       );
     } finally {
       setSavingVariantItem(null);
+    }
+  }
+
+  async function generateArtifacts() {
+    if (!resumeVariant) return;
+    setArtifactLoading(true);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}/artifacts`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.error ??
+            "The generated files did not pass round-trip text validation"
+        );
+      }
+      setResumeArtifacts(data.artifacts ?? []);
+    } catch (artifactFailure) {
+      setVariantError(
+        artifactFailure instanceof Error
+          ? artifactFailure.message
+          : "Could not generate resume files"
+      );
+      await loadArtifacts(resumeVariant.id);
+    } finally {
+      setArtifactLoading(false);
     }
   }
 
@@ -526,9 +585,73 @@ export default function JobDetailPage({
             </div>
 
             <p className="text-xs text-gray-500">
-              Approval is job-specific and auditable. Export and autofill attachment are added in
-              the next checkpoints; approval alone does not submit or transmit anything.
+              Approval is job-specific and auditable. Approval alone does not submit or transmit
+              anything.
             </p>
+
+            {resumeVariant.status === "approved" && (
+              <div className="rounded border border-green-200 bg-green-50 p-3 space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-900">ATS-safe files</p>
+                    <p className="text-xs text-green-800">
+                      Simple single-column DOCX and text-based PDF. Downloads appear only after
+                      every included line survives reparsing.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={generateArtifacts}
+                    disabled={artifactLoading}
+                    className="shrink-0 rounded bg-green-800 px-4 py-2 text-sm text-white disabled:opacity-50"
+                  >
+                    {artifactLoading
+                      ? "Generating & validating…"
+                      : resumeArtifacts.length > 0
+                        ? "Regenerate files"
+                        : "Generate files"}
+                  </button>
+                </div>
+
+                {resumeArtifacts.length > 0 && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {resumeArtifacts.map((artifact) => (
+                      <div key={artifact.format} className="rounded bg-white p-3 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium uppercase">{artifact.format}</span>
+                          <span
+                            className={
+                              artifact.validationStatus === "passed"
+                                ? "text-green-700"
+                                : "text-red-700"
+                            }
+                          >
+                            {artifact.validationStatus === "passed"
+                              ? "Parsing passed"
+                              : "Validation failed"}
+                          </span>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-gray-500">
+                          {artifact.filename}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {artifact.validation.expectedItemCount} expected items ·{" "}
+                          {artifact.validation.missingItemCount} missing
+                        </p>
+                        {artifact.downloadUrl && (
+                          <a
+                            href={artifact.downloadUrl}
+                            className="mt-2 inline-block text-sm font-medium text-blue-700 underline"
+                          >
+                            Download {artifact.format.toUpperCase()}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-3">
               {resumeVariant.items.map((item) => (

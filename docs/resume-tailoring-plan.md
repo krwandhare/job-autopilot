@@ -38,6 +38,8 @@ not sent to an external model or service.
      header/footer content.
    - Reparse each artifact and compare required text before marking it valid.
    - Keep both formats available because ATS/provider guidance differs.
+   - Preserve narrative source order; only the skills list may be reordered by
+     requirement relevance.
 5. **Autofill integration**
    - Attach the approved variant associated with the exact job.
    - Fall back to the master resume when no approved variant exists.

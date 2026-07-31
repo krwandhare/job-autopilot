@@ -165,6 +165,7 @@ function init(db: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       variant_id INTEGER NOT NULL REFERENCES resume_variants(id) ON DELETE CASCADE,
       evidence_id INTEGER NOT NULL REFERENCES resume_evidence(id),
+      evidence_kind TEXT NOT NULL,
       section TEXT NOT NULL,
       position INTEGER NOT NULL,
       original_text TEXT NOT NULL,
@@ -178,6 +179,24 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_resume_variant_items_variant
       ON resume_variant_items(variant_id, position, id);
+
+    CREATE TABLE IF NOT EXISTS resume_variant_artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      variant_id INTEGER NOT NULL REFERENCES resume_variants(id) ON DELETE CASCADE,
+      format TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      validation_status TEXT NOT NULL,
+      validation_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(variant_id, format),
+      CHECK (format IN ('docx', 'pdf')),
+      CHECK (validation_status IN ('passed', 'failed'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variant_artifacts_variant
+      ON resume_variant_artifacts(variant_id, format);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -191,6 +210,15 @@ function init(db: Database.Database) {
   const resumeCols = db.prepare("PRAGMA table_info(resumes)").all() as { name: string }[];
   if (!resumeCols.some((c) => c.name === "file_path")) {
     db.exec("ALTER TABLE resumes ADD COLUMN file_path TEXT");
+  }
+
+  const variantItemCols = db.prepare("PRAGMA table_info(resume_variant_items)").all() as {
+    name: string;
+  }[];
+  if (!variantItemCols.some((column) => column.name === "evidence_kind")) {
+    db.exec(
+      "ALTER TABLE resume_variant_items ADD COLUMN evidence_kind TEXT NOT NULL DEFAULT 'other'"
+    );
   }
 }
 
@@ -329,6 +357,7 @@ export type ResumeVariantItemRow = {
   id: number;
   variant_id: number;
   evidence_id: number;
+  evidence_kind: string;
   section: string;
   position: number;
   original_text: string;
@@ -337,5 +366,17 @@ export type ResumeVariantItemRow = {
   change_type: string;
   matched_terms_json: string;
   included: number;
+  created_at: string;
+};
+
+export type ResumeVariantArtifactRow = {
+  id: number;
+  variant_id: number;
+  format: "docx" | "pdf";
+  file_path: string;
+  filename: string;
+  sha256: string;
+  validation_status: "passed" | "failed";
+  validation_json: string;
   created_at: string;
 };

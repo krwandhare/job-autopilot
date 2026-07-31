@@ -49,6 +49,9 @@ Browser UI
 | `GET /api/resume-variants/[id]` | Return one variant and its ordered audit items. |
 | `PATCH /api/resume-variants/[id]` | Include or exclude one item while the variant remains a draft. |
 | `POST /api/resume-variants/[id]/approve` | Approve a current, non-stale, evidence-valid job-specific variant. |
+| `GET /api/resume-variants/[id]/artifacts` | Return validation summaries and download availability for a variant. |
+| `POST /api/resume-variants/[id]/artifacts` | Generate DOCX/PDF for an approved variant and round-trip validate every included line. |
+| `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX or PDF artifact without exposing its internal path. |
 | `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
 | `POST /api/jobs/import-url` | Import, score, and upsert exactly one user-supplied LinkedIn URL. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
@@ -93,6 +96,9 @@ connection on `global.__db`, and initializes:
 - `resume_variant_items`: ordered source/after pairs with evidence ID,
   inclusion, rationale, normalized terms, and change type for a complete local
   audit trail.
+- `resume_variant_artifacts`: per-format path, safe filename, checksum,
+  pass/fail status, bounded validation metadata, and creation time for an
+  approved variant.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
@@ -196,6 +202,24 @@ that refuses a changed posting, a newer master resume, modified/unverified
 evidence, or a variant with nothing included. Approved variants are immutable
 and unique per job; a later approval supersedes the older approved variant.
 
+## Resume artifact generation
+
+`lib/resumeArtifacts.ts` renders approved variants only. It preserves the
+master resume's pre-section contact block unchanged and refuses export when no
+recognizable contact detail exists. Included items are grouped under
+conventional section headings. Skills may follow relevance order; narrative
+sections preserve source order.
+
+DOCX is generated as single-column Open XML with Arial body text and no tables,
+graphics, columns, headers, or footers. PDF is printed from local static HTML
+through the already-installed Playwright Chromium with an explicit white page,
+Letter margins, standard fonts, no remote assets, and selectable text.
+
+Each in-memory artifact is reparsed by `lib/resume.ts`. All contact-header and
+included variant lines must appear after normalized whitespace comparison.
+Only passed artifacts are written and downloadable; the client never receives
+the private filesystem path.
+
 ## Draft generation
 
 `lib/draft.ts` is deterministic. It takes the first two sentence-like segments of the resume, incorporates up to six matched skills, and produces:
@@ -239,6 +263,7 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 | `lib/resumeEvidence.ts` | Deterministic evidence extraction, idempotent persistence, and API serialization. |
 | `lib/jobRequirements.ts` | Posting requirement extraction, fingerprinted persistence, and verified-evidence coverage. |
 | `lib/resumeVariants.ts` | Evidence-constrained ordering, variant audit persistence, stale checks, and approval. |
+| `lib/resumeArtifacts.ts` | ATS-safe DOCX/PDF rendering, round-trip validation, artifact persistence, and validated lookup. |
 | `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
 | `lib/draft.ts` | Template-based cover letters and screening answers. |
@@ -255,6 +280,7 @@ Resume upload -> extract text -> detect/edit skills -> SQLite + local file
                               -> evidence extraction -> user verification
 Job description -> requirement extraction -> verified-evidence coverage
 Verified evidence + coverage -> draft variant -> human review -> approved variant
+Approved variant -> DOCX/PDF render -> reparse all expected text -> validated download
 Filters ----------------------------------------------------------+
 Source config -> external source -> NormalizedJob -> scoreJob -----+-> jobs table
 LinkedIn URL -> one public page -> NormalizedJob -> scoreJob ------+

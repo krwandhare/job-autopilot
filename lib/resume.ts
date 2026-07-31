@@ -1,4 +1,4 @@
-import { extractSkills } from "./skills";
+import { extractSkills } from "./skills.ts";
 
 export async function extractResumeText(buffer: Buffer, filename: string): Promise<string> {
   const ext = filename.toLowerCase().split(".").pop();

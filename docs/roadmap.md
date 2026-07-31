@@ -14,6 +14,9 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Auditable, evidence-constrained per-job resume drafts with side-by-side
   source review, include/exclude controls, stale-input rejection, and explicit
   approval.
+- Approved-only ATS-safe DOCX/PDF artifacts with preserved contact header,
+  simple formatting, full round-trip text validation, visual PDF QA, and
+  validated-only downloads.
 - Greenhouse and Lever public-board synchronization.
 - Optional Adzuna keyword/location search with local environment credentials.
 - Static curated Greenhouse/Lever source seeding.

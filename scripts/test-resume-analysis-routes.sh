@@ -161,6 +161,39 @@ assert variant["status"] == "approved"
 assert variant["approvedAt"] is not None
 '
 
+artifacts="$(
+  curl -fsS -X POST \
+    "http://127.0.0.1:$PORT/api/resume-variants/$variant_id/artifacts"
+)"
+printf '%s' "$artifacts" | python3 -c '
+import json, sys
+artifacts = json.load(sys.stdin)["artifacts"]
+assert [(item["format"], item["validationStatus"]) for item in artifacts] == [
+    ("docx", "passed"),
+    ("pdf", "passed"),
+]
+assert all(item["validation"]["missingItemCount"] == 0 for item in artifacts)
+'
+
+curl -fsS -D "$TEST_DATA/docx.headers" \
+  -o "$TEST_DATA/tailored.docx" \
+  "http://127.0.0.1:$PORT/api/resume-variants/$variant_id/download/docx"
+curl -fsS -D "$TEST_DATA/pdf.headers" \
+  -o "$TEST_DATA/tailored.pdf" \
+  "http://127.0.0.1:$PORT/api/resume-variants/$variant_id/download/pdf"
+python3 - "$TEST_DATA" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+assert (root / "tailored.docx").read_bytes().startswith(b"PK")
+assert (root / "tailored.pdf").read_bytes().startswith(b"%PDF")
+assert "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in (
+    root / "docx.headers"
+).read_text().lower()
+assert "application/pdf" in (root / "pdf.headers").read_text().lower()
+PY
+
 immutable_code="$(
   curl -sS -o "$TEST_DATA/immutable.json" -w '%{http_code}' \
     -X PATCH "http://127.0.0.1:$PORT/api/resume-variants/$variant_id" \
@@ -169,4 +202,4 @@ immutable_code="$(
 )"
 [ "$immutable_code" = "409" ]
 
-printf 'Disposable resume-analysis and variant route E2E passed.\n'
+printf 'Disposable resume-analysis, variant, and artifact route E2E passed.\n'

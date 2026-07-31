@@ -247,6 +247,30 @@ The third resume-tailoring checkpoint was then completed:
   route E2E verified draft creation, item exclusion, approval, and immutable
   approved state using only temporary synthetic data.
 
+The fourth resume-tailoring checkpoint was then completed:
+
+- Added `resume_variant_artifacts` and approved-only generation/download
+  routes. Failed round-trip validation records diagnostics but provides no
+  download path.
+- DOCX output is a simple single-column Open XML document using Arial, body
+  paragraphs, conventional headings, and no tables, graphics, columns,
+  headers, or footers. PDF output is a text-based Letter document with the
+  same content and no external font/network dependency.
+- The untouched contact block is preserved from the master resume header.
+  Export refuses a master resume without a recognizable contact detail.
+- Skills may be relevance-ordered, but experience, education, projects, and
+  other narrative evidence preserve source order so bullets cannot become
+  detached from their employer or context.
+- Both formats are reparsed using the app's PDF/DOCX extractors. Every header
+  and included variant item must survive normalized text comparison before a
+  download is exposed.
+- `npm run test:resume-artifacts` generated and reparsed both formats using
+  synthetic data. The expanded route E2E generated, validated, and downloaded
+  both signatures/content types. Visual rendering initially exposed a
+  transparent PDF page displayed as black; an explicit white background fixed
+  it, and the rerender showed readable typography, margins, section rules, and
+  no clipping or overlap. Temporary QA artifacts were deleted.
+
 ## Current objective
 
 Build and validate truthful per-job resume tailoring that improves ATS
@@ -264,6 +288,7 @@ automatically using an unapproved variant.
 
 ## Exact next recommended task
 
-Generate ATS-safe DOCX and text-based PDF artifacts for approved variants,
-reparse both formats, compare expected content, and refuse downloads that fail
-round-trip validation.
+Update autofill to attach the exact job's newest approved, round-trip-validated
+resume artifact (prefer DOCX unless the user chooses PDF), fall back to the
+master resume when none exists, and prove that one job can never receive
+another job's variant.

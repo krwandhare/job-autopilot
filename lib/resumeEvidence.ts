@@ -100,6 +100,18 @@ function splitSkillLine(line: string): string[] {
     .filter((value) => value.length >= 2 && value.length <= 100);
 }
 
+export function extractResumeHeader(text: string): string[] {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const header: string[] = [];
+  for (const rawLine of lines) {
+    if (SECTION_HEADINGS[headingKey(rawLine)]) break;
+    const cleaned = rawLine.replace(/\s+/g, " ").trim();
+    if (cleaned) header.push(cleaned);
+    if (header.length >= 8) break;
+  }
+  return header;
+}
+
 export function extractResumeEvidence(
   text: string,
   detectedSkills: string[] = []

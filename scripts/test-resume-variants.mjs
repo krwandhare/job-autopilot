@@ -131,6 +131,7 @@ try {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       variant_id INTEGER NOT NULL,
       evidence_id INTEGER NOT NULL,
+      evidence_kind TEXT NOT NULL,
       section TEXT NOT NULL,
       position INTEGER NOT NULL,
       original_text TEXT NOT NULL,

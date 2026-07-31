@@ -25,6 +25,7 @@ export type ResumeVariantItemRow = {
   id: number;
   variant_id: number;
   evidence_id: number;
+  evidence_kind: string;
   section: string;
   position: number;
   original_text: string;
@@ -134,7 +135,9 @@ export function composeVariantItems(
         relevance: reason.relevance,
         changeType:
           tailoredText === evidence.normalized_text
-            ? ("reordered" as const)
+            ? evidence.evidence_kind === "skill"
+              ? ("reordered" as const)
+              : ("unchanged" as const)
             : ("reformatted" as const),
         included: true,
       };
@@ -144,7 +147,13 @@ export function composeVariantItems(
         (SECTION_ORDER[left.evidenceKind] ?? 99) -
         (SECTION_ORDER[right.evidenceKind] ?? 99);
       if (sectionDifference !== 0) return sectionDifference;
-      if (right.relevance !== left.relevance) return right.relevance - left.relevance;
+      if (
+        left.evidenceKind === "skill" &&
+        right.evidenceKind === "skill" &&
+        right.relevance !== left.relevance
+      ) {
+        return right.relevance - left.relevance;
+      }
       return (left.sourceLine ?? Number.MAX_SAFE_INTEGER) -
         (right.sourceLine ?? Number.MAX_SAFE_INTEGER);
     })
@@ -184,14 +193,15 @@ export function createResumeVariant(
     const variantId = Number(result.lastInsertRowid);
     const insertItem = db.prepare(
       `INSERT INTO resume_variant_items
-         (variant_id, evidence_id, section, position, original_text,
+         (variant_id, evidence_id, evidence_kind, section, position, original_text,
           tailored_text, rationale, change_type, matched_terms_json, included)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const item of items) {
       insertItem.run(
         variantId,
         item.evidenceId,
+        item.evidenceKind,
         item.section,
         item.position,
         item.originalText,
@@ -360,6 +370,7 @@ export function serializeResumeVariant(
       return {
         id: item.id,
         evidenceId: item.evidence_id,
+        evidenceKind: item.evidence_kind,
         section: item.section,
         position: item.position,
         originalText: item.original_text,

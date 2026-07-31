@@ -2,9 +2,9 @@
 
 ## In Progress
 
-- Implement truthful per-job resume tailoring. Next checkpoint: generate
-  ATS-safe DOCX/PDF artifacts and reject any export that fails round-trip text
-  validation. The following checkpoint adds exact-job autofill selection; see
+- Implement truthful per-job resume tailoring. Final feature checkpoint:
+  select the exact job's approved, validated artifact in autofill and fall
+  back to the master resume otherwise; see
   `docs/resume-tailoring-plan.md`.
 - Live-run and verify Claude's Gmail-alert LinkedIn lead importer through the
   shared runtime, using its existing rate limit and `external_lead` boundary.
@@ -48,6 +48,11 @@
   include/exclude controls, explicit job-specific approval, stale
   job/resume/evidence rejection, superseded draft history, and approved
   immutability. Isolated model and disposable route E2E checks passed.
+- Added ATS-safe single-column DOCX and text-based PDF generation for approved
+  variants, conventional headings, preserved contact header, round-trip
+  extraction checks for every included item, validated-only downloads, and
+  route E2E coverage. Visual PDF QA caught and fixed a transparent-page
+  background before acceptance.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.
