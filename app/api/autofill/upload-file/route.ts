@@ -4,8 +4,7 @@ import fs from "node:fs";
 import { getDb, type ResumeRow } from "@/lib/db";
 import { fillFileField } from "@/lib/autofill/filler";
 import type { MissingField } from "@/lib/autofill/filler";
-
-const resumesDir = path.join(process.cwd(), "data", "resumes");
+import { getResumesDir } from "@/lib/runtimePaths";
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[/\\]/g, "_").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -35,7 +34,7 @@ export async function POST(req: NextRequest) {
   // "autofill-13344-1785332712166-Wandhare_Kamlesh_Resume_0618.pdf", which
   // looks unprofessional and reveals automation was used. Uniqueness on
   // disk comes from a per-upload subfolder instead of mangling the filename.
-  const uploadDir = path.join(resumesDir, `autofill-${jobId}-${Date.now()}`);
+  const uploadDir = path.join(getResumesDir(), `autofill-${jobId}-${Date.now()}`);
   fs.mkdirSync(uploadDir, { recursive: true });
   const filePath = path.join(uploadDir, sanitizeFilename(file.name));
   fs.writeFileSync(filePath, buffer);

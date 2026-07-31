@@ -1,17 +1,12 @@
 import Database from "better-sqlite3";
-import path from "node:path";
-import fs from "node:fs";
-
-const dataDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-const dbPath = path.join(dataDir, "app.db");
+import { getDatabasePath } from "@/lib/runtimePaths";
 
 declare global {
   var __db: Database.Database | undefined;
 }
 
 function init(db: Database.Database) {
+  db.pragma("busy_timeout = 5000");
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS resumes (
@@ -91,6 +86,21 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_job_actions_open_job
       ON job_actions(job_id, resolved_at, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS job_claims (
+      job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      owner_id TEXT NOT NULL,
+      lease_token TEXT NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      heartbeat_at INTEGER NOT NULL,
+      lease_expires_at INTEGER NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_job_claims_owner
+      ON job_claims(owner_id);
+
+    CREATE INDEX IF NOT EXISTS idx_job_claims_expiry
+      ON job_claims(lease_expires_at);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -109,7 +119,7 @@ function init(db: Database.Database) {
 
 export function getDb(): Database.Database {
   if (!global.__db) {
-    const db = new Database(dbPath);
+    const db = new Database(getDatabasePath());
     init(db);
     global.__db = db;
   }
@@ -189,4 +199,13 @@ export type JobActionRow = {
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
+};
+
+export type JobClaimRow = {
+  job_id: number;
+  owner_id: string;
+  lease_token: string;
+  claimed_at: number;
+  heartbeat_at: number;
+  lease_expires_at: number;
 };

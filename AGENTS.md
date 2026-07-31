@@ -90,6 +90,20 @@ There is no automated test framework or test suite in the repository at present.
 
 The application creates `data/app.db` and its schema lazily on first database access. It also creates `data/resumes/` as needed.
 
+For simultaneous Codex and Claude development, do not use the ordinary command
+in both worktrees. Start each server with a distinct instance ID and port:
+
+```bash
+npm run dev:shared -- codex 3002
+npm run dev:shared -- claude 3003
+```
+
+`dev:shared` resolves the primary worktree's ignored `data/` directory and sets
+`JOB_AUTOPILOT_DATA_DIR` so both processes use the same SQLite database and
+resume storage. It also sets `JOB_AUTOPILOT_INSTANCE_ID`; autofill queue reads
+and starts use that ID to acquire an expiring atomic job claim. Never reuse one
+instance ID for two simultaneously running processes.
+
 ## Architecture overview
 
 - `app/` contains client-rendered pages and server-side App Router API route handlers.
@@ -98,6 +112,10 @@ The application creates `data/app.db` and its schema lazily on first database ac
 - `app/jobs/[id]/page.tsx` displays a job, match reasoning, local status, and the latest generated draft.
 - `app/autofill/page.tsx` manages the highest-ranked `new` job queue and coordinates a visible Playwright session.
 - `lib/db.ts` owns the process-global SQLite connection, schema initialization, WAL mode, and row types.
+- `lib/runtimePaths.ts` resolves the default or explicitly shared runtime data
+  directory and validates local instance IDs.
+- `lib/jobClaims.ts` owns atomic, expiring SQLite job leases used to prevent two
+  local workers from opening the same autofill job.
 - `lib/sources/` normalizes Greenhouse, Lever, Adzuna, and one-off LinkedIn data into `NormalizedJob`.
 - `lib/matching.ts` performs deterministic rule-based scoring.
 - `lib/draft.ts` produces deterministic template-based cover letters and screening answers; it does not call an LLM.
@@ -179,8 +197,13 @@ For autofill changes, static checks are not enough. Manually verify in a visible
 
 ## SQLite and uploaded-resume handling
 
-- The database is `data/app.db`; SQLite journal, shared-memory, and WAL files are local runtime artifacts.
-- `lib/db.ts` enables WAL mode and creates the `resumes`, `filters`, `jobs`, `drafts`, `source_configs`, and `profile_answers` tables. It also adds `resumes.file_path` to older databases when missing.
+- The database defaults to `data/app.db`; `JOB_AUTOPILOT_DATA_DIR` can point
+  every worktree at one explicit shared runtime directory. SQLite
+  journal/shared-memory/WAL files remain local runtime artifacts.
+- `lib/db.ts` enables WAL mode, applies a bounded busy timeout, and creates the
+  `resumes`, `filters`, `jobs`, `drafts`, `source_configs`,
+  `profile_answers`, `job_actions`, and `job_claims` tables. It also adds
+  `resumes.file_path` to older databases when missing.
 - Do not edit, delete, migrate, or inspect a user's live database unless the task requires it and the user has authorized that scope. Back up material local data before risky schema work.
 - Resume uploads are stored both as extracted text/skills in SQLite and as the original bytes under a per-upload directory in `data/resumes/`.
 - The stored basename is sanitized while preserving a clean filename for ATS upload. Do not expose internal storage paths to the client.

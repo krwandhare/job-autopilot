@@ -22,6 +22,9 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Auto-fill queue cards show stored matched and missing skills before the user starts filling.
 - Dashboard Action Center prioritizes manual application work with readable
   reasons, exact persisted details when available, and status-specific actions.
+- Concurrent worktrees can share one explicit runtime directory; expiring
+  SQLite leases atomically keep separate local servers from opening the same
+  autofill job.
 - Skill comparison uses conservative canonical aliases and labels results as mentioned/not mentioned in the posting; draft generation does not claim the user lacks an unmentioned target skill.
 
 ## Stabilization work
