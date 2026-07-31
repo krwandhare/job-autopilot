@@ -296,6 +296,19 @@ export default function DashboardPage() {
       const data = await res.json();
       if (!res.ok) {
         setGmailSyncMessage(data.error ?? "Gmail sync failed");
+      } else if (data.imported === 0) {
+        setGmailSyncMessage(
+          data.threadsChecked === 0
+            ? "No unread alert emails found."
+            : `Checked ${data.threadsChecked} alert email(s), no new leads.`
+        );
+      } else if (data.rateLimited && data.threadsProcessed === 0) {
+        // Rate limit hit partway through the very first (still-unread)
+        // thread -- "0 alert emails" would otherwise read as "imported
+        // from nowhere" when leads clearly were imported.
+        setGmailSyncMessage(
+          `Imported ${data.imported} lead(s), rate limit reached partway through an alert email -- more next run.`
+        );
       } else {
         const cappedNote = data.rateLimited ? " (rate limit reached — more next run)" : "";
         setGmailSyncMessage(
