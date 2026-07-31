@@ -20,6 +20,12 @@
 
 ## Next
 
+- `npm run test:resume-artifacts` fails in this sandbox with `Executable
+  doesn't exist at .../chromium_headless_shell-1234/...` -- Playwright's
+  default `chromium` channel resolves to `chrome-headless-shell`, which
+  isn't installed here (only the plain `chromium` build is); unrelated to
+  any change in this session. Do not run `playwright install` without
+  approval; rerun where the headless-shell binary is available.
 - Add an automated test framework, an `npm test` script, and deterministic fixtures for matching, skill extraction, TXT resume parsing, draft generation, and source normalization.
 - Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
@@ -37,6 +43,23 @@
 
 ## Completed
 
+- Fixed a real dashboard bug found via live E2E: clicking the Action
+  Center's "Verification" tile (or Needs Review/External/Drafts/Decisions)
+  filtered the job pipeline to that status, but `GET /api/jobs` still
+  applied the default `match_score > 0` exclusion even for an explicit
+  actionable-status filter, so a job with a zero match score (e.g. one
+  resumed directly via `/autofill?jobId=`) silently vanished from the list
+  the user just clicked through to -- showing "No jobs yet" right under an
+  Action Center card that said the opposite. Fixed by skipping that default
+  exclusion whenever the status filter is one of `ACTIONABLE_STATUSES`
+  (`lib/actions.ts`), matching `getDashboardActions()`'s existing behavior.
+  Added a permanent route E2E regression (`npm run
+  test:jobs-status-filter-routes`) covering the fixed case, the unaffected
+  general "new" browsing default, and `showAll=1`. Verified live in a real
+  headless browser against a disposable data directory (screenshots of
+  both the broken and fixed states); lint, strict TypeScript, and a
+  production build all passed, plus the full existing test suite except
+  the pre-existing environment gap noted below.
 - Extended the error-handling audit to API routes (`f56521d`): ~9 of 20
   routes crashed to an empty 500 on malformed/absent JSON bodies (confirmed
   live), fixed via a shared `lib/apiUtils.ts` helper rather than repeating
@@ -85,6 +108,80 @@
   after all of the above landed; confirmed no regressions from touching
   shared files.
 - Pushed `feature/claude-autofill` to `origin` at the user's request.
+- Added the vendor-neutral `ship-feature` requirement-to-handoff workflow,
+  project adapters for Claude Code and Gemini CLI, the universal
+  `SHIP-FEATURE:` trigger, and a personal Codex `$ship-feature` skill with a
+  bundled fallback for repositories that do not define their own workflow.
+  The ownership-scoped workflow passed guarded integration into
+  `integration/concurrent-work`, and the portable skill is also installed in
+  the personal Claude skills directory for branch-independent discovery.
+
+- Reconciled Claude's Gmail lead intake and application/response tracking with
+  Codex's truthful resume-tailoring stack. Both schema families, job/profile/
+  autofill UI behavior, and all test commands are preserved; focused model,
+  artifact, route, shared-runtime, queue, integration-automation, lint,
+  TypeScript, and production-build checks passed.
+- Added consistent experience hierarchy to generated DOCX and PDF resumes:
+  employer/date/location rows are bold, role titles are bold italic, and
+  accomplishment text remains normal. Both `year - Present` and
+  `year - Month year` ranges are covered. Synthetic visual QA and current-job
+  round-trip validation passed without changing resume content.
+- Made job-specific resume download controls resilient to restored/mobile tab
+  state. Artifact reads bypass caches, visible/restored job tabs refresh their
+  file summaries, and downloads open separately from the job-detail page.
+- Made generated-PDF validation robust to punctuation-glyph normalization for
+  multi-word narrative lines while preserving strict matching for short skills
+  and values. This removes false missing-line failures without weakening
+  content-presence checks into loose keyword matching.
+- Separated source-PDF layout reconstruction from generated-artifact
+  round-trip extraction, eliminating false PDF validation failures after the
+  coordinate-aware parser was introduced.
+- Replaced source-order PDF text extraction with coordinate-aware resume
+  reconstruction. Wrapped experience bullets are joined, line-break hyphens
+  are preserved correctly, side-by-side impact metrics remain separate, and
+  parallel education/certification columns keep distinct sections. Added a
+  safe Profile repair action that creates a new resume revision instead of
+  rewriting prior evidence or approved variants.
+- Restored full-resume tailoring for PDF text with letter-spaced headings by
+  normalizing section labels and safely reclassifying existing evidence.
+  Added one-confirmation verification of all pending resume content while
+  preserving rejected records; newly generated variants now include verified
+  experience, education, certifications, and other resume sections.
+- Added one-confirmation bulk verification for pending skill evidence while
+  preserving rejected skills and keeping non-skill career claims under
+  individual review. Disposable route coverage confirms the server-side
+  boundary.
+- Completed truthful per-job resume tailoring across five validated commits:
+  verified evidence (`051632b`), deterministic requirement coverage
+  (`ddd3a2e`), reviewable approved variants (`b9bd33e`), round-trip-validated
+  DOCX/PDF export (`bdb81ac`), and exact-job autofill attachment with master
+  fallback (`62fee11`).
+- Added the resume-tailoring evidence foundation: immutable master-resume
+  source records, deterministic line/skill evidence extraction, explicit
+  verify/reject/edit controls, an idempotent API, and isolated model coverage.
+  A disposable browser E2E verified synthetic upload, persisted verification,
+  zero console errors, and a 390px layout without horizontal overflow.
+- Added deterministic job-requirement extraction and stored analysis with
+  required/preferred/context classification, evidence-backed coverage, posting
+  fingerprint invalidation, a job-detail review surface, isolated model tests,
+  and a disposable production-route E2E. Unverified evidence never counts,
+  experience duration is not inferred from dates, and the UI does not claim a
+  universal ATS score or review probability.
+- Added evidence-constrained resume variants with relevance ordering, safe
+  punctuation-only normalization, per-item source/after/rationale review,
+  include/exclude controls, explicit job-specific approval, stale
+  job/resume/evidence rejection, superseded draft history, and approved
+  immutability. Isolated model and disposable route E2E checks passed.
+- Added ATS-safe single-column DOCX and text-based PDF generation for approved
+  variants, conventional headings, preserved contact header, round-trip
+  extraction checks for every included item, validated-only downloads, and
+  route E2E coverage. Visual PDF QA caught and fixed a transparent-page
+  background before acceptance.
+- Integrated exact-job resume selection into autofill. The queue previews the
+  filename and source, DOCX is preferred unless PDF is explicitly selected,
+  missing/stale/mutated artifacts fall back to the master resume, another job
+  can never receive the variant, and a failed Playwright attachment is surfaced
+  for manual handling.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.

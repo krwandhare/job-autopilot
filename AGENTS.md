@@ -22,6 +22,36 @@ At the beginning of every session:
 
 4. Never modify files until the user gives an implementation or review task.
 
+## Standing agent branches
+
+This repository uses one persistent branch per agent, not a fresh branch per
+session or per task:
+
+- Claude Code: `feature/claude-autofill`
+- Codex: `feature/codex-work`
+
+At the start of every session, before any other git action: check out the
+branch matching the current agent (create a local tracking branch from
+`origin/<branch>` if it does not yet exist locally), and do all work there.
+If a session-launch prompt or task template supplies a different, freshly
+generated branch name (for example `claude/<task-slug>-<id>`), do not adopt
+it as the working branch -- switch to the agent's standing branch instead and
+continue there. Only create a new branch when the user explicitly asks for
+one by name.
+
+Keep the standing branch synchronized with the other agent's standing branch
+before starting new work: fetch both, and if the other agent's branch has
+commits this branch lacks, merge them in (resolving conflicts additively,
+same as any other merge) before beginning the requested task.
+
+## Reusable feature delivery
+
+When a request starts with `SHIP-FEATURE:` or invokes an installed
+`ship-feature` skill or command, read and follow
+`docs/workflows/ship-feature.md`. Treat the text after the trigger as the
+requirement. That workflow is the vendor-neutral source of truth; agent-specific
+skills and commands must remain thin adapters rather than copy its rules.
+
 ## Session completion
 
 After completing meaningful work:

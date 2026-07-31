@@ -1,0 +1,16 @@
+Jordan Example
+jordan@example.test
+
+PROFESSIONAL SUMMARY
+Platform engineer focused on reliable distributed systems.
+
+EXPERIENCE
+Example Systems | Senior Engineer | 2022 - Present
+Reduced deployment time by 40% using GitHub Actions and Terraform.
+Led migration of services to Kubernetes.
+
+TECHNICAL SKILLS
+TypeScript, Kubernetes, Terraform, PostgreSQL
+
+EDUCATION
+Example University, Bachelor of Science in Computer Science

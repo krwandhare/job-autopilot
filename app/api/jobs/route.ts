@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type JobRow, type FilterRow, type ResumeRow } from "@/lib/db";
 import { maxPossibleScore, type FilterRules } from "@/lib/matching";
+import { ACTIONABLE_STATUSES } from "@/lib/actions";
 
 const VALID_STATUSES = [
   "new",
@@ -25,6 +26,14 @@ export async function GET(req: NextRequest) {
   const offset = (page - 1) * PAGE_SIZE;
 
   const statusFilter = status && VALID_STATUSES.includes(status) ? status : null;
+  // Statuses the Action Center surfaces (needs_code, needs_review,
+  // external_lead, drafted, watchlist) are jobs the user is already
+  // explicitly acting on -- getDashboardActions() never hides these behind
+  // match_score, so filtering the pipeline list to one of them must not
+  // either, or clicking an Action Center tile silently shows an empty list
+  // for a job the dashboard itself just said needs attention.
+  const isActionableStatusFilter =
+    !!statusFilter && (ACTIONABLE_STATUSES as readonly string[]).includes(statusFilter);
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];
@@ -32,7 +41,7 @@ export async function GET(req: NextRequest) {
     conditions.push("status = ?");
     params.push(statusFilter);
   }
-  if (!showAll) {
+  if (!showAll && !isActionableStatusFilter) {
     // Score-0 jobs are hard scoring failures (e.g. title or location didn't
     // match at all) -- still stored so nothing's lost if filters loosen
     // later, but not worth showing by default among thousands of synced jobs.

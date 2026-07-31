@@ -3,6 +3,7 @@ import { getDb, type JobRow, type ResumeRow, type DraftRow, type ProfileAnswerRo
 import { generateDraft } from "@/lib/draft";
 import type { MatchResult } from "@/lib/matching";
 import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
+import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
 import {
   getOrCreateSession,
   getSession,
@@ -449,6 +450,7 @@ async function runFillerUnsafe(
   const resume = db
     .prepare("SELECT * FROM resumes ORDER BY uploaded_at DESC LIMIT 1")
     .get() as ResumeRow | undefined;
+  const resumeAttachment = selectResumeAttachmentForJob(db, job, resume);
   const draft = db
     .prepare("SELECT * FROM drafts WHERE job_id = ? ORDER BY generated_at DESC LIMIT 1")
     .get(jobId) as DraftRow | undefined;
@@ -457,10 +459,17 @@ async function runFillerUnsafe(
 
   for (const field of [...scan.matched, ...scan.custom]) {
     if (field.key === "resume") {
-      if (resume?.file_path) {
-        await locatorFor(target, field.autofillId)
-          .setInputFiles(resume.file_path)
-          .catch(() => {});
+      if (resumeAttachment) {
+        const attached = await locatorFor(target, field.autofillId)
+          .setInputFiles(resumeAttachment.filePath)
+          .then(() => true)
+          .catch(() => false);
+        if (!attached) {
+          missing.push({
+            ...field,
+            label: `${field.label} (automatic attachment failed — attach manually)`,
+          });
+        }
       } else {
         missing.push({ ...field, label: `${field.label} (no stored resume file — attach manually)` });
       }

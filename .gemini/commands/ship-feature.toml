@@ -1,0 +1,11 @@
+description = "Deliver a requirement through the repository's complete feature workflow."
+prompt = """
+Read AGENTS.md and docs/workflows/ship-feature.md completely, then execute that
+workflow. Treat the following text as the complete feature requirement:
+
+{{args}}
+
+Continue through safe reversible stages. Do not stop after planning. Apply all
+repository approval boundaries and use repository-native ownership and guarded
+integration tooling.
+"""
