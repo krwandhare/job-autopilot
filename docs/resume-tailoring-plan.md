@@ -1,5 +1,9 @@
 # Truthful per-job resume tailoring
 
+Implementation status: completed on `feature/codex-work` through application
+baseline `62fee11`. The five checkpoints and their focused validations are
+recorded in `SESSION.md`.
+
 ## Outcome and limits
 
 The feature will create an ATS-parseable, recruiter-readable resume variant

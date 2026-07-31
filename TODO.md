@@ -28,6 +28,11 @@
 
 ## Completed
 
+- Completed truthful per-job resume tailoring across five validated commits:
+  verified evidence (`051632b`), deterministic requirement coverage
+  (`ddd3a2e`), reviewable approved variants (`b9bd33e`), round-trip-validated
+  DOCX/PDF export (`bdb81ac`), and exact-job autofill attachment with master
+  fallback (`62fee11`).
 - Added the resume-tailoring evidence foundation: immutable master-resume
   source records, deterministic line/skill evidence extraction, explicit
   verify/reject/edit controls, an idempotent API, and isolated model coverage.

@@ -292,6 +292,25 @@ The fifth and final resume-tailoring checkpoint was then completed:
   isolation, and master fallback for a second job. No employer form or live
   application was opened or submitted.
 
+The verified resume-tailoring application baseline is `62fee11`
+(`feat: attach exact-job tailored resumes`). Its preceding checkpoints are
+`bdb81ac` (validated DOCX/PDF export), `b9bd33e` (reviewable variants),
+`ddd3a2e` (job requirement analysis), and `051632b` (verified evidence).
+
+Final validation after the attachment selector refinement:
+
+- `npm run test:resume-evidence` passed.
+- `npm run test:resume-requirements` passed.
+- `npm run test:resume-variants` passed.
+- `npm run test:resume-artifacts` passed with installed headless Chromium.
+- `npm run test:resume-analysis-routes` passed against a disposable production
+  server and SQLite runtime.
+- `npm run lint` passed with no warnings.
+- `npx tsc --noEmit` passed.
+- `npm run build` passed and registered every resume analysis, variant,
+  artifact, download, and existing autofill route.
+- `git diff --check` passed.
+
 ## Current objective
 
 Truthful per-job resume tailoring is implemented and validated through local
