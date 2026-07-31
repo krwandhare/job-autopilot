@@ -22,6 +22,14 @@ At the beginning of every session:
 
 4. Never modify files until the user gives an implementation or review task.
 
+## Reusable feature delivery
+
+When a request starts with `SHIP-FEATURE:` or invokes an installed
+`ship-feature` skill or command, read and follow
+`docs/workflows/ship-feature.md`. Treat the text after the trigger as the
+requirement. That workflow is the vendor-neutral source of truth; agent-specific
+skills and commands must remain thin adapters rather than copy its rules.
+
 ## Session completion
 
 After completing meaningful work:
