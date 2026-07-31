@@ -11,25 +11,25 @@ visible-browser assisted form filling, and a shared-runtime concurrent-agent
 workflow. There is no authentication layer, deployment configuration, or
 employer-verified submission tracking.
 
-The current working tree contains only the shared Figma design-system rules and
-this associated handoff update. The rules are stored in `AGENTS.md`;
+The latest documentation checkpoint adds shared Figma design-system rules in
+`AGENTS.md`;
 `CLAUDE.md` imports that file, so Codex and Claude receive identical
 Figma-to-code component, token, accessibility, asset, responsive, safety, and
 validation conventions. The connected Figma server was verified, but its
 current toolset does not expose the legacy `create_design_system_rules` helper
 expected by the installed skill, so the skill's bundled foundational template
 was used as the documented fallback. Ignored local runtime artifacts remain
-sensitive/generated and must stay uncommitted.
+sensitive/generated and stayed uncommitted.
 
 ## Latest completed milestone and Git commit
 
-The latest committed repository milestone is Claude's final handoff merge:
+The latest completed repository milestone is the shared Figma rules checkpoint:
 
-- `4f2e728` (`merge: include Claude final handoff`)
+- `2572326` (`docs: add shared Figma design rules`)
 
-The preceding reconciliation merge is `d4ea4fa` (`merge: reconcile Claude
-applications with resume tailoring`). The Figma design-system rules described
-above are not yet committed.
+The preceding merge commit is `4f2e728` (`merge: include Claude final
+handoff`), preceded by `d4ea4fa` (`merge: reconcile Claude applications with
+resume tailoring`).
 
 ## Latest validation
 
