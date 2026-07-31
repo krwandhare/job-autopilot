@@ -592,6 +592,7 @@ export default function DashboardPage() {
                 setPage(1);
               }}
               className="border rounded px-2 py-1 text-sm"
+              suppressHydrationWarning
             >
               <option value="all">All statuses</option>
               {Object.entries(STATUS_LABELS).map(([k, v]) => (
