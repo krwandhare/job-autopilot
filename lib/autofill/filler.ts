@@ -3,6 +3,7 @@ import { getDb, type JobRow, type ResumeRow, type DraftRow, type ProfileAnswerRo
 import { generateDraft } from "@/lib/draft";
 import type { MatchResult } from "@/lib/matching";
 import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
+import { createApplication } from "@/lib/applications";
 import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
 import {
   getOrCreateSession,
@@ -943,8 +944,24 @@ function startSubmissionWatcher(): void {
         if (confirmed) {
           const db = getDb();
           const complete = db.transaction(() => {
+            const job = db
+              .prepare("SELECT status, company FROM jobs WHERE id = ?")
+              .get(jobId) as { status: string; company: string } | undefined;
             db.prepare("UPDATE jobs SET status = 'applied' WHERE id = ?").run(jobId);
             resolveJobActions(db, jobId);
+            // Mirrors PATCH /api/jobs/[id]'s applied-transition hook, which
+            // this background path bypasses since it writes status directly.
+            if (job && job.status !== "applied") {
+              const latestResume = db
+                .prepare("SELECT filename FROM resumes ORDER BY uploaded_at DESC LIMIT 1")
+                .get() as { filename: string } | undefined;
+              createApplication(db, {
+                jobId,
+                companyName: job.company,
+                resumeVersion: latestResume?.filename ?? null,
+                source: "autofill_submit",
+              });
+            }
           });
           complete();
           await closeSession(jobId);

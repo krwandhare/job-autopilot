@@ -2,6 +2,11 @@
 
 ## In Progress
 
+- Job 23's LinkedIn-imported title displays a literal `&amp;` instead of a
+  decoded `&` on the Applications page (found while fixing the
+  0-applications bug on 2026-07-31; unrelated to that fix, not yet
+  addressed).
+
 - **Re-upload the current resume.** Its `file_path` was accidentally
   overwritten during error-handling audit testing (`f56521d`) and had to be
   nulled out rather than left pointing at a fake test file -- the real file
@@ -43,6 +48,17 @@
 
 ## Completed
 
+- Fixed the Applications page showing 0 applications: the Auto-fill &
+  submit background confirmation watcher (`startSubmissionWatcher()` in
+  `lib/autofill/filler.ts`) marked jobs `applied` via a direct SQL update
+  that bypassed the `createApplication()` hook every other "mark applied"
+  path already used, so background-confirmed submissions never got an
+  `applications` row. Fixed the watcher to call `createApplication()` the
+  same way `PATCH /api/jobs/[id]` does, backfilled the one live job (23)
+  already affected (backed up `data/app.db` first, user-approved), and
+  verified live in a real headless browser that the page now shows the
+  correct total with zero console errors. Lint, strict TypeScript, the
+  production build, and `git diff --check` passed.
 - Fixed a real dashboard bug found via live E2E: clicking the Action
   Center's "Verification" tile (or Needs Review/External/Drafts/Decisions)
   filtered the job pipeline to that status, but `GET /api/jobs` still

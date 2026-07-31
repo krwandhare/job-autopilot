@@ -1,5 +1,54 @@
 # Session Handoff
 
+## Applications page showing 0 applications (ship-feature run)
+
+Requirement: the user reported the `/applications` page showing 0
+applications; troubleshoot and fix.
+
+- Live database inspection (`data/app.db`, read-only counts) showed `jobs`
+  had one `status = 'applied'` row (id 23) while the `applications` table
+  had zero rows -- consistent with the page's real empty state, not a
+  rendering bug.
+- Root cause: `startSubmissionWatcher()` in `lib/autofill/filler.ts` (the
+  background safety net that confirms an Auto-fill & submit attempt
+  succeeded after a manual-completion recovery, e.g. a verification code)
+  marks the job `applied` with a direct
+  `UPDATE jobs SET status = 'applied'`, bypassing the only place that had
+  previously been wired to call `createApplication()`
+  (`PATCH /api/jobs/[id]`, per the 2026-07-31 application-tracking work).
+  Every other "mark applied" path (autofill's own explicit confirmation,
+  the job-detail dropdown, the Action Center quick-action, and
+  `scripts/queue-runner.sh`'s `mark_status`, which calls the same PATCH
+  route over HTTP) already went through that hook correctly -- this
+  background watcher was the one path that wrote status directly.
+- Fixed in `lib/autofill/filler.ts`: the watcher's transaction now reads
+  the job's prior status/company, and on a real `new -> applied`
+  transition calls `createApplication()` the same way the PATCH route
+  does (latest resume filename, `source: "autofill_submit"` since this
+  watcher only runs for the opt-in submit-mode confirmation flow).
+- Backfilled the one already-affected live row: backed up `data/app.db`
+  first, then inserted the missing `applications` row for job 23 (source
+  `autofill_submit`) using the same `createApplication()` function via a
+  disposable one-off script, deleted after use. User explicitly approved
+  the live-data backfill before it ran.
+- Verified live: after `npm run build` and `npm run start` on a separate
+  port, `GET /api/applications` and `GET /api/applications?stats=1`
+  returned the backfilled row and `total: 1`; a real headless Chromium
+  pass against `/applications` confirmed the empty state no longer shows,
+  the stats strip reads "1" total, and there were zero console errors.
+  Screenshot inspected directly. Temporary server, script, and screenshot
+  were all removed afterward.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `git diff
+  --check` all passed. No other file changed for this fix.
+- Noted but out of scope for this fix: the LinkedIn-imported title for job
+  23 renders a literal `&amp;` instead of a decoded `&` on the
+  Applications page (pre-existing LinkedIn import/display issue, unrelated
+  to the 0-applications bug). Left for a future task; recorded in
+  `TODO.md`.
+- Changed files: `lib/autofill/filler.ts` (fix) plus the pre-existing
+  uncommitted page changes already in this worktree, which were left
+  untouched as user-owned work.
+
 ## Dashboard "Verification" tab E2E fix (ship-feature run)
 
 Requirement: run the dashboard's Action Center "Verification" tab through a
