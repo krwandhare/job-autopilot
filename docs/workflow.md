@@ -34,6 +34,12 @@ verification carries forward because the repair only reconstructs the same
 source text; otherwise the reconstructed evidence remains pending. A new
 tailored draft is always required after repair.
 
+Generated-artifact validation deliberately uses plain text extraction rather
+than source-resume layout reconstruction. The latter joins and reorganizes
+positioned source fragments; applying it to Job Autopilot's already
+single-column PDF would create false missing-item failures even when the
+generated file contains every expected line.
+
 ### Incomplete or unverified
 
 - Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.

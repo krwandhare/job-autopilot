@@ -399,3 +399,16 @@ tailored attachments in a real application.
 - The live resume has not been reprocessed automatically. Next action: use the
   Profile repair action, then create, approve, and export a new job-specific
   variant.
+
+Follow-up validation found two distinct states in the user's next variant:
+
+- Variant 6 still referenced the pre-repair resume revision and therefore
+  retained the original fragmented evidence. No repaired resume revision had
+  been created yet.
+- Its generated PDF contained the expected content, but round-trip validation
+  incorrectly passed that single-column artifact through the new source-PDF
+  layout reconstructor, producing 17 false missing-item results. Generated
+  artifact validation now uses plain text extraction, while uploaded source
+  PDFs alone use coordinate-aware reconstruction.
+- The disposable artifact suite passed for both DOCX and PDF after the
+  separation. Lint and strict TypeScript also passed.

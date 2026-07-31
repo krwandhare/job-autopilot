@@ -28,6 +28,9 @@
 
 ## Completed
 
+- Separated source-PDF layout reconstruction from generated-artifact
+  round-trip extraction, eliminating false PDF validation failures after the
+  coordinate-aware parser was introduced.
 - Replaced source-order PDF text extraction with coordinate-aware resume
   reconstruction. Wrapped experience bullets are joined, line-break hyphens
   are preserved correctly, side-by-side impact metrics remain separate, and

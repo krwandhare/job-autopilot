@@ -307,6 +307,24 @@ async function extractPositionedPdfText(buffer: Buffer): Promise<string> {
   }
 }
 
+export async function extractResumeTextForValidation(
+  buffer: Buffer,
+  filename: string
+): Promise<string> {
+  const ext = filename.toLowerCase().split(".").pop();
+  if (ext === "pdf") {
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return result.text;
+    } finally {
+      await parser.destroy();
+    }
+  }
+  return extractResumeText(buffer, filename);
+}
+
 export async function extractResumeText(buffer: Buffer, filename: string): Promise<string> {
   const ext = filename.toLowerCase().split(".").pop();
 

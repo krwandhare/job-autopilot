@@ -4,7 +4,7 @@ import path from "node:path";
 import JSZip from "jszip";
 import { chromium } from "playwright";
 import type Database from "better-sqlite3";
-import { extractResumeText } from "./resume.ts";
+import { extractResumeTextForValidation } from "./resume.ts";
 import { extractResumeHeader } from "./resumeEvidence.ts";
 import { getResumesDir } from "./runtimePaths.ts";
 import { postingFingerprint } from "./jobRequirements.ts";
@@ -224,7 +224,10 @@ async function validateArtifact(
   format: ResumeArtifactFormat,
   expectedLines: string[]
 ) {
-  const parsed = await extractResumeText(buffer, `tailored-resume.${format}`);
+  const parsed = await extractResumeTextForValidation(
+    buffer,
+    `tailored-resume.${format}`
+  );
   const normalizedParsed = normalizeExtractedText(parsed);
   const missing = expectedLines.filter(
     (line) => !normalizedParsed.includes(normalizeExtractedText(line))
