@@ -129,6 +129,7 @@ export default function JobDetailPage({
   const [maxScore, setMaxScore] = useState(0);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -142,6 +143,8 @@ export default function JobDetailPage({
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function load() {
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/jobs/${id}`);
       const data = await res.json();
@@ -150,14 +153,16 @@ export default function JobDetailPage({
         setMaxScore(data.maxScore ?? 0);
         setDraft(data.draft);
       } else {
-        setError(data.error ?? "Job not found");
+        setError(
+          res.status === 404
+            ? "This job could not be found. It may have been removed."
+            : "We could not load this job right now."
+        );
       }
-    } catch (err) {
-      setError(
-        `Lost connection to the server (${
-          err instanceof Error ? err.message : String(err)
-        }). Check your network connection and try again.`
-      );
+    } catch {
+      setError("We could not connect to the local job service.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -408,11 +413,44 @@ export default function JobDetailPage({
   }
 
   if (error) {
-    return <div className="max-w-3xl mx-auto p-8 text-red-600">{error}</div>;
+    return (
+      <main className="mx-auto max-w-3xl p-8">
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-900"
+        >
+          <h1 className="font-semibold">Job details unavailable</h1>
+          <p className="mt-2 text-sm">{error}</p>
+          <p className="mt-1 text-sm">
+            Check that the local app is running, then try again. You can also return to the
+            dashboard and select another job.
+          </p>
+          <div className="mt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            >
+              {loading ? "Retrying…" : "Retry"}
+            </button>
+            <Link href="/" className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium">
+              Back to dashboard
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
   }
 
-  if (!job) {
-    return <div className="max-w-3xl mx-auto p-8 text-gray-500">Loading…</div>;
+  if (loading || !job) {
+    return (
+      <main className="mx-auto max-w-3xl p-8" aria-live="polite" aria-busy="true">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 text-sm text-gray-600">
+          Loading job details…
+        </div>
+      </main>
+    );
   }
 
   return (
