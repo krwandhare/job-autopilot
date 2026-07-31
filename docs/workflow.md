@@ -246,6 +246,12 @@ access, while `job_claims` prevents both runtimes from reserving or starting
 the same autofill job. Resume uploads are also written beneath the shared
 runtime directory, keeping stored database paths valid in both worktrees.
 
+`npm run test:shared-runtime-routes` starts two production servers with
+different instance IDs against one disposable SQLite directory. Using only
+synthetic jobs, it verifies distinct queue claims, HTTP 409 for cross-owner
+resumption, owner-safe release/reclaim, structured action persistence through
+the real routes, and zero remaining claims after cleanup.
+
 Each agent creates focused checkpoint commits on its own feature branch without
 requiring a repeated user instruction: after a coherent validated unit,
 normally every 30–90 minutes, and before a task switch or session handoff.

@@ -168,6 +168,12 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
   indexes already defined by the validated code. Status-only Action Center
   fallbacks then had 129 actionable local rows available; no job content or
   resume data was printed.
+- `npm run test:shared-runtime-routes` started two production servers with
+  distinct instance IDs against one disposable database. Synthetic route E2E
+  verified jobs 1 and 2 were claimed separately, cross-owner resumption
+  returned HTTP 409, owner cleanup made a job reclaimable, structured action
+  details round-tripped through `/api/jobs/[id]` and `/api/actions`, and all
+  claims were released. The temporary processes and database were removed.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -189,6 +195,6 @@ autofill safety boundaries.
 
 ## Exact next recommended task
 
-Run a disposable two-server/shared-database route E2E for claim separation and
-structured action persistence, then checkpoint and guarded-integrate the
-blocker-outcome work.
+Checkpoint and guarded-integrate the passed two-instance route E2E, then update
+the documented integration baseline and hand the next isolated feature to the
+appropriate agent.

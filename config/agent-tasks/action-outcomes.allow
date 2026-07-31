@@ -5,6 +5,7 @@ lib/autofill/**
 lib/actions.ts
 scripts/queue-runner.sh
 scripts/test-queue-runner.sh
+scripts/test-shared-runtime-routes.sh
 scripts/test-action-center.mjs
 package.json
 SESSION.md
