@@ -7,6 +7,8 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Local Next.js dashboard, profile, job detail, and auto-fill pages.
 - SQLite persistence for resumes, filters, normalized jobs, drafts, source configurations, remembered profile answers, match metadata, and local statuses.
 - PDF, DOCX, and TXT resume extraction with editable curated skill detection.
+- Immutable master-resume evidence extraction with explicit user
+  verify/reject/edit controls for future truthful tailoring.
 - Greenhouse and Lever public-board synchronization.
 - Optional Adzuna keyword/location search with local environment credentials.
 - Static curated Greenhouse/Lever source seeding.
@@ -42,6 +44,9 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 
 ## Near-term improvements
 
+- Complete per-job resume tailoring: deterministic requirement coverage,
+  evidence-constrained reviewed variants, ATS-safe round-trip-validated export,
+  and exact-job approved-variant autofill selection.
 - Recompute stored job scores when profile filters or resume skills change, or clearly prompt the user to resync.
 - Add draft editing and persistence before copy/use.
 - Improve user-visible failure handling for profile, source, status, and file requests that currently assume successful JSON responses.

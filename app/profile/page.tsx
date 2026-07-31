@@ -9,6 +9,17 @@ type Resume = {
   skills_json: string;
 };
 
+type ResumeEvidence = {
+  id: number;
+  resumeId: number;
+  kind: string;
+  section: string;
+  sourceText: string;
+  normalizedText: string;
+  sourceStartLine: number | null;
+  verificationStatus: "extracted" | "verified" | "rejected";
+};
+
 type Filter = {
   id: number;
   titleInclude: string;
@@ -26,6 +37,10 @@ export default function ProfilePage() {
   const [newSkill, setNewSkill] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<ResumeEvidence[]>([]);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [savingEvidenceId, setSavingEvidenceId] = useState<number | null>(null);
 
   const [filter, setFilter] = useState<Filter>({
     id: 0,
@@ -41,6 +56,25 @@ export default function ProfilePage() {
   const [excludedCompaniesText, setExcludedCompaniesText] = useState("");
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
+  async function loadEvidence(resumeId: number) {
+    setEvidenceLoading(true);
+    setEvidenceError(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resumeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not build evidence profile");
+      setEvidence(data.evidence ?? []);
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "Could not build evidence profile");
+    } finally {
+      setEvidenceLoading(false);
+    }
+  }
+
   useEffect(() => {
     fetch("/api/resume")
       .then((r) => r.json())
@@ -48,6 +82,7 @@ export default function ProfilePage() {
         if (d.resume) {
           setResume(d.resume);
           setSkills(JSON.parse(d.resume.skills_json));
+          loadEvidence(d.resume.id);
         }
       });
 
@@ -84,6 +119,7 @@ export default function ProfilePage() {
         skills_json: JSON.stringify(data.skills),
       });
       setSkills(data.skills);
+      await loadEvidence(data.id);
     }
     setUploading(false);
   }
@@ -107,6 +143,37 @@ export default function ProfilePage() {
 
   function removeSkill(skill: string) {
     saveSkills(skills.filter((s) => s !== skill));
+  }
+
+  function updateEvidence(id: number, change: Partial<ResumeEvidence>) {
+    setEvidence((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...change } : item))
+    );
+  }
+
+  async function saveEvidence(item: ResumeEvidence) {
+    setSavingEvidenceId(item.id);
+    setEvidenceError(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          normalizedText: item.normalizedText,
+          verificationStatus: item.verificationStatus,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not save evidence");
+      if (data.evidence) {
+        updateEvidence(item.id, data.evidence);
+      }
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "Could not save evidence");
+    } finally {
+      setSavingEvidenceId(null);
+    }
   }
 
   async function saveFilters() {
@@ -193,6 +260,101 @@ export default function ProfilePage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {resume && (
+          <div className="border rounded-lg p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Verified career evidence</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Tailored resumes will use only facts you mark verified. Edit unclear extraction,
+                reject incorrect items, and keep the uploaded master resume unchanged.
+              </p>
+            </div>
+
+            {evidenceLoading && (
+              <p className="text-sm text-gray-500">Building evidence profile…</p>
+            )}
+            {evidenceError && <p className="text-sm text-red-600">{evidenceError}</p>}
+            {!evidenceLoading && evidence.length === 0 && !evidenceError && (
+              <p className="text-sm text-gray-500">
+                No evidence was extracted. The master resume remains available.
+              </p>
+            )}
+
+            {evidence.length > 0 && (
+              <>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <span className="text-green-700">
+                    {evidence.filter((item) => item.verificationStatus === "verified").length}{" "}
+                    verified
+                  </span>
+                  <span className="text-amber-700">
+                    {evidence.filter((item) => item.verificationStatus === "extracted").length}{" "}
+                    awaiting review
+                  </span>
+                  <span className="text-gray-500">
+                    {evidence.filter((item) => item.verificationStatus === "rejected").length}{" "}
+                    rejected
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {evidence.map((item) => (
+                    <article key={item.id} className="rounded border p-3 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-gray-500">
+                          <span className="font-medium text-gray-700">{item.section}</span>
+                          {" · "}
+                          {item.kind}
+                          {item.sourceStartLine ? ` · source line ${item.sourceStartLine}` : ""}
+                        </div>
+                        <select
+                          value={item.verificationStatus}
+                          onChange={(event) =>
+                            updateEvidence(item.id, {
+                              verificationStatus: event.target
+                                .value as ResumeEvidence["verificationStatus"],
+                            })
+                          }
+                          className="border rounded px-2 py-1 text-xs"
+                          suppressHydrationWarning
+                        >
+                          <option value="extracted">Needs review</option>
+                          <option value="verified">Verified</option>
+                          <option value="rejected">Reject</option>
+                        </select>
+                      </div>
+                      <textarea
+                        value={item.normalizedText}
+                        onChange={(event) =>
+                          updateEvidence(item.id, { normalizedText: event.target.value })
+                        }
+                        rows={2}
+                        className="w-full rounded border px-2 py-1 text-sm"
+                        suppressHydrationWarning
+                      />
+                      {item.sourceText !== item.normalizedText && (
+                        <p className="text-xs text-gray-400">
+                          Extracted source: {item.sourceText}
+                        </p>
+                      )}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => saveEvidence(item)}
+                          disabled={savingEvidenceId === item.id || !item.normalizedText.trim()}
+                          className="rounded bg-gray-900 px-3 py-1 text-xs text-white disabled:opacity-50"
+                        >
+                          {savingEvidenceId === item.id ? "Saving…" : "Save evidence"}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </section>

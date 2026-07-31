@@ -1,0 +1,21 @@
+# Codex owns truthful, evidence-constrained per-job resume tailoring.
+config/agent-tasks/resume-tailoring.allow
+app/api/resume/**
+app/api/jobs/\[id\]/**
+app/api/resume-variants/**
+app/profile/**
+app/jobs/\[id\]/**
+lib/db.ts
+lib/resume.ts
+lib/resumeEvidence.ts
+lib/jobRequirements.ts
+lib/resumeTailoring.ts
+lib/resumeVariants.ts
+lib/autofill/filler.ts
+scripts/test-resume-*.mjs
+package.json
+package-lock.json
+SESSION.md
+TODO.md
+docs/**
+fixtures/resume-tailoring/**

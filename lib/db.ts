@@ -101,6 +101,25 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_job_claims_expiry
       ON job_claims(lease_expires_at);
+
+    CREATE TABLE IF NOT EXISTS resume_evidence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+      evidence_kind TEXT NOT NULL,
+      section TEXT NOT NULL,
+      source_text TEXT NOT NULL,
+      normalized_text TEXT NOT NULL,
+      source_start_line INTEGER,
+      source_end_line INTEGER,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      verification_status TEXT NOT NULL DEFAULT 'extracted',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (verification_status IN ('extracted', 'verified', 'rejected'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_evidence_resume
+      ON resume_evidence(resume_id, source_start_line, id);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -208,4 +227,19 @@ export type JobClaimRow = {
   claimed_at: number;
   heartbeat_at: number;
   lease_expires_at: number;
+};
+
+export type ResumeEvidenceRow = {
+  id: number;
+  resume_id: number;
+  evidence_kind: string;
+  section: string;
+  source_text: string;
+  normalized_text: string;
+  source_start_line: number | null;
+  source_end_line: number | null;
+  metadata_json: string;
+  verification_status: string;
+  created_at: string;
+  updated_at: string;
 };

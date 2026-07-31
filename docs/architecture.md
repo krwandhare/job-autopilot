@@ -30,6 +30,9 @@ Browser UI
 | `GET /api/resume` | Return the latest resume row. |
 | `POST /api/resume` | Parse and store a PDF/DOCX/TXT resume, detect skills, save the original bytes, and record `file_path`. |
 | `PATCH /api/resume` | Replace the detected/editable skills JSON for a resume ID. |
+| `GET /api/resume/evidence` | Return extracted evidence for a selected or latest resume without mutating it. |
+| `POST /api/resume/evidence` | Idempotently derive line-addressable evidence from one stored resume. |
+| `PATCH /api/resume/evidence` | Edit the normalized representation and mark one evidence item extracted, verified, or rejected. |
 | `GET /api/filters` | Return the latest filter row in UI-shaped JSON. |
 | `PUT /api/filters` | Update the current filter row or insert one if absent. |
 | `GET /api/sources` | List source configurations with parsed JSON. |
@@ -70,6 +73,9 @@ connection on `global.__db`, and initializes:
   source, and timestamps associated with jobs.
 - `job_claims`: one expiring autofill lease per job and per runtime owner,
   including an unguessable token, heartbeat, and expiry timestamps.
+- `resume_evidence`: line-addressable facts derived from one immutable master
+  resume, retaining source text separately from the editable normalized value
+  and an explicit extracted/verified/rejected status.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
@@ -107,6 +113,12 @@ simultaneous server; otherwise a hostname/process-ID fallback is used.
 - UTF-8 decoding for TXT.
 
 `lib/skills.ts` performs case-insensitive boundary matching against a curated vocabulary and a conservative canonical alias map (for example, NodeJS → Node.js, K8s → Kubernetes, and continuous integration → CI/CD). Users can edit the detected list in `/profile`. Extracted text and skills are stored in SQLite; original bytes are written to `data/resumes/<resume-id>/<sanitized-original-name>`. The route does not currently enforce file-size, MIME, retention, or cleanup limits.
+
+`lib/resumeEvidence.ts` deterministically converts known resume sections,
+lines, bullets, and detected skills into evidence records. Contact-like lines
+are excluded. Extraction is idempotent and never rewrites the uploaded file or
+stored source text. The Profile UI lets the user clarify and explicitly verify
+or reject each item; later tailoring may use only verified evidence.
 
 ## Job-source integrations
 
@@ -176,6 +188,7 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 | `lib/runtimePaths.ts` | Shared/default data paths and validated runtime identity. |
 | `lib/jobClaims.ts` | Atomic claim, renewal, expiry, and owner-safe release primitives. |
 | `lib/resume.ts` | File-format-specific text extraction. |
+| `lib/resumeEvidence.ts` | Deterministic evidence extraction, idempotent persistence, and API serialization. |
 | `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
 | `lib/draft.ts` | Template-based cover letters and screening answers. |
@@ -189,6 +202,7 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 
 ```text
 Resume upload -> extract text -> detect/edit skills -> SQLite + local file
+                              -> evidence extraction -> user verification
 Filters ----------------------------------------------------------+
 Source config -> external source -> NormalizedJob -> scoreJob -----+-> jobs table
 LinkedIn URL -> one public page -> NormalizedJob -> scoreJob ------+

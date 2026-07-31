@@ -2,6 +2,10 @@
 
 ## In Progress
 
+- Implement truthful per-job resume tailoring. Next checkpoint: deterministic
+  job-requirement extraction and evidence-backed coverage on the job detail
+  page. Later checkpoints add reviewed variants, ATS-safe export, and exact-job
+  autofill selection; see `docs/resume-tailoring-plan.md`.
 - Live-run and verify Claude's Gmail-alert LinkedIn lead importer through the
   shared runtime, using its existing rate limit and `external_lead` boundary.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
@@ -28,6 +32,11 @@
 
 ## Completed
 
+- Added the resume-tailoring evidence foundation: immutable master-resume
+  source records, deterministic line/skill evidence extraction, explicit
+  verify/reject/edit controls, an idempotent API, and isolated model coverage.
+  A disposable browser E2E verified synthetic upload, persisted verification,
+  zero console errors, and a 390px layout without horizontal overflow.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.

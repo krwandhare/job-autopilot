@@ -185,21 +185,43 @@ exist. Live source synchronization, resume parsing across all supported
 formats, and real ATS autofill behavior were not re-run during this
 implementation session.
 
+On 2026-07-30, the first truthful resume-tailoring checkpoint was completed on
+`feature/codex-work`:
+
+- Added the implementation and validation plan in
+  `docs/resume-tailoring-plan.md` and a guarded ownership manifest in
+  `config/agent-tasks/resume-tailoring.allow`.
+- Added idempotent `resume_evidence` persistence. Extracted evidence retains
+  the immutable source text and line references, while a separate normalized
+  value can be marked `extracted`, `verified`, or `rejected`.
+- Added `GET`, `POST`, and `PATCH /api/resume/evidence` and a Profile review
+  surface. Future tailoring is explicitly limited to items the user marks
+  verified.
+- `npm run test:resume-evidence`, `npm run lint`, `npx tsc --noEmit`,
+  `npm run build`, and `git diff --check` passed.
+- A production server using a disposable runtime directory accepted a
+  synthetic TXT resume, extracted ten evidence items, persisted a summary as
+  verified across reload, and emitted no browser console errors. At a 390px
+  viewport, the evidence UI had no horizontal overflow. The temporary browser,
+  server, and database were removed; live resume data was not read or changed.
+
 ## Current objective
 
-Build and validate a dashboard Action Center that makes every manual
-application step easy to identify, understand, and resume without weakening
-autofill safety boundaries.
+Build and validate truthful per-job resume tailoring that improves ATS
+parseability and recruiter relevance without fabricating qualifications or
+automatically using an unapproved variant.
 
 ## Blockers
 
-- There is no test framework, fixtures, or `npm test` command.
-- A production build cannot be fully validated in the current network-restricted environment because `next/font` fetches Google-hosted Geist assets.
+- There is no unified test framework or `npm test` command; focused standalone
+  test scripts exist for several modules, including resume evidence.
 - Real ATS forms and external source responses are unstable third-party dependencies; their current end-to-end behavior is unverified in this session.
 - “Applied” remains a user-confirmed local status. The app has no verified employer receipt or submission evidence.
+- No ATS or resume-tailoring feature can guarantee ranking, an interview, or
+  human review because employer screening rules are undisclosed.
 
 ## Exact next recommended task
 
-Live-run Claude's rate-limited Gmail-alert LinkedIn lead importer through the
-shared runtime and verify deduplication plus `external_lead` tagging without
-allowing imported alerts into the `new` autofill queue.
+Implement deterministic required/preferred job-requirement extraction and
+evidence-backed coverage, expose it on `/jobs/[id]`, and validate it using
+synthetic postings plus an isolated route/browser test.
