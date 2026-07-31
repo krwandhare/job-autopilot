@@ -39,6 +39,11 @@
 
 ## Completed
 
+- Added a headless, isolated Playwright integration script for the complete
+  tailored-resume generator workflow. It covers rejected and accepted upload
+  inputs, bulk evidence verification, supported versus unevidenced tailoring,
+  approval, round-trip artifact validation, and real DOCX/PDF download actions
+  without reading or changing the user's runtime database.
 - Redesigned the dashboard around manual work: explicit action reasons and
   urgency, one primary next step, five category counters, eight expanded
   highest-priority items, a clearer job pipeline, and expandable secondary

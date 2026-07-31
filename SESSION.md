@@ -647,3 +647,21 @@ Follow-up review found that the first hierarchy rule recognized Oracle's
   integration automation suite passed. `npm run validate` then passed lint,
   strict TypeScript, and a production build registering all 27 merged routes.
 - No live Gmail mailbox operation or real ATS submission was performed.
+
+## 2026-07-31 tailored-resume browser integration
+
+- Added `tests/tailored-resume-generator.spec.ts`, a headless single-project
+  Playwright integration script that starts the production app with a
+  disposable runtime directory and SQLite database.
+- The browser flow rejects an unsupported upload, uploads the synthetic TXT
+  resume fixture, verifies extracted evidence, analyzes a synthetic posting,
+  and confirms an unevidenced Python requirement is excluded while verified
+  Kubernetes evidence remains in the tailored draft.
+- The flow approves the job-specific variant, generates round-trip-validated
+  DOCX and PDF artifacts, triggers both download links, and verifies that both
+  downloaded files contain data. It does not inspect live application data,
+  open an employer page, or submit anything.
+- `npm run test:tailored-resume-generator`, `npm run lint`,
+  `npx tsc --noEmit`, `npm run build`, and `git diff --check` passed. The first
+  sandboxed browser run could not bind its local test port; the approved local
+  rerun passed.

@@ -25,3 +25,4 @@ SESSION.md
 TODO.md
 docs/**
 fixtures/resume-tailoring/**
+tests/tailored-resume-generator.spec.ts

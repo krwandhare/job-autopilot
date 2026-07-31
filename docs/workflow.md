@@ -58,13 +58,21 @@ verified row immediately following that header renders as a bold italic role
 title, while accomplishment evidence retains normal body styling. DOCX and PDF
 apply the same hierarchy without changing any verified text.
 
+`npm run test:tailored-resume-generator` starts the production app with a
+disposable runtime directory and drives this workflow in headless Chromium.
+It checks an unsupported upload, a valid TXT upload, bulk evidence
+verification, evidence-constrained tailoring for a synthetic job, approval,
+round-trip DOCX/PDF generation, and both browser download actions. The script
+never opens the default `data/app.db` or an employer page.
+
 ### Incomplete or unverified
 
 - Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.
 - The latest uploaded resume remains the master. An approved, validated
   job-specific variant can override it only for that exact job in autofill.
 - Saving a resume or filters does not rescore existing jobs immediately. Run synchronization or re-import a URL to compute new scores.
-- PDF/DOCX/TXT parsing was not exercised during this documentation session.
+- PDF and DOCX input uploads are not covered by the browser integration script;
+  their extraction and artifact paths retain focused model/route coverage.
 
 ## Job discovery and synchronization
 

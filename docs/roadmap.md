@@ -46,12 +46,19 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Autofill and queue-runner stop conditions feed structured, privacy-bounded
   reasons and field labels into the dashboard Action Center.
 - Skill comparison uses conservative canonical aliases and labels results as mentioned/not mentioned in the posting; draft generation does not claim the user lacks an unmentioned target skill.
+- A headless single-project Playwright integration script exercises the
+  tailored-resume workflow against disposable runtime data: invalid and valid
+  uploads, evidence verification, evidence-constrained tailoring, approval,
+  validated artifact generation, and DOCX/PDF downloads.
 
 ## Stabilization work
 
 - Add an automated test framework and `npm test` script. Start with pure modules: matching, skill extraction, TXT parsing, drafts, HTML cleanup, and source normalization.
 - Add isolated SQLite/route integration tests that never touch the user's `data/app.db`.
-- Add controlled Playwright fixtures for field matching, native selects, React-style comboboxes, embedded forms, browser closure, CAPTCHA boundaries, and confirmation that submit controls are ignored.
+- Expand controlled Playwright coverage beyond the tailored-resume generator
+  to field matching, native selects, React-style comboboxes, embedded forms,
+  browser closure, CAPTCHA boundaries, and confirmation that submit controls
+  are ignored.
 - Remove the production build's dependency on fetching Google Fonts at build time or otherwise provide a reproducible network-enabled build path.
 - Add file-size, supported-content/MIME, and error handling limits to both upload endpoints.
 - Add remote-fetch timeouts and response-size bounds, especially for the user-supplied LinkedIn page.
