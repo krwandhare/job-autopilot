@@ -40,6 +40,9 @@ export default function ProfilePage() {
   const [locationsText, setLocationsText] = useState("");
   const [excludedCompaniesText, setExcludedCompaniesText] = useState("");
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [filtersError, setFiltersError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/resume")
@@ -49,7 +52,8 @@ export default function ProfilePage() {
           setResume(d.resume);
           setSkills(JSON.parse(d.resume.skills_json));
         }
-      });
+      })
+      .catch((err) => setLoadError(`Could not load your resume: ${err instanceof Error ? err.message : String(err)}`));
 
     fetch("/api/filters")
       .then((r) => r.json())
@@ -59,7 +63,8 @@ export default function ProfilePage() {
           setLocationsText(d.filter.locations.join(", "));
           setExcludedCompaniesText(d.filter.excludedCompanies.join(", "));
         }
-      });
+      })
+      .catch((err) => setLoadError(`Could not load your filters: ${err instanceof Error ? err.message : String(err)}`));
   }, []);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -71,31 +76,55 @@ export default function ProfilePage() {
     const form = new FormData();
     form.append("file", file);
 
-    const res = await fetch("/api/resume", { method: "POST", body: form });
-    const data = await res.json();
+    try {
+      const res = await fetch("/api/resume", { method: "POST", body: form });
+      const data = await res.json();
 
-    if (!res.ok) {
-      setUploadError(data.error ?? "Upload failed");
-    } else {
-      setResume({
-        id: data.id,
-        filename: data.filename,
-        text: data.textPreview,
-        skills_json: JSON.stringify(data.skills),
-      });
-      setSkills(data.skills);
+      if (!res.ok) {
+        setUploadError(data.error ?? "Upload failed");
+      } else {
+        setResume({
+          id: data.id,
+          filename: data.filename,
+          text: data.textPreview,
+          skills_json: JSON.stringify(data.skills),
+        });
+        setSkills(data.skills);
+      }
+    } catch (err) {
+      setUploadError(
+        `Lost connection to the server (${
+          err instanceof Error ? err.message : String(err)
+        }). Check your network connection and try again.`
+      );
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   }
 
   async function saveSkills(updated: string[]) {
+    const previous = skills;
     setSkills(updated);
+    setSkillsError(null);
     if (!resume) return;
-    await fetch("/api/resume", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: resume.id, skills: updated }),
-    });
+    try {
+      const res = await fetch("/api/resume", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: resume.id, skills: updated }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        throw new Error(data.error ?? `Could not save skills (HTTP ${res.status}).`);
+      }
+    } catch (err) {
+      setSkills(previous);
+      setSkillsError(
+        err instanceof Error
+          ? err.message
+          : `Lost connection to the server (${String(err)}). Check your network connection and try again.`
+      );
+    }
   }
 
   function addSkill() {
@@ -110,6 +139,7 @@ export default function ProfilePage() {
   }
 
   async function saveFilters() {
+    setFiltersError(null);
     const payload = {
       ...filter,
       locations: locationsText
@@ -121,13 +151,25 @@ export default function ProfilePage() {
         .map((s) => s.trim())
         .filter(Boolean),
     };
-    await fetch("/api/filters", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setSavedMessage("Filters saved.");
-    setTimeout(() => setSavedMessage(null), 2000);
+    try {
+      const res = await fetch("/api/filters", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        throw new Error(data.error ?? `Could not save filters (HTTP ${res.status}).`);
+      }
+      setSavedMessage("Filters saved.");
+      setTimeout(() => setSavedMessage(null), 2000);
+    } catch (err) {
+      setFiltersError(
+        err instanceof Error
+          ? err.message
+          : `Lost connection to the server (${String(err)}). Check your network connection and try again.`
+      );
+    }
   }
 
   return (
@@ -138,6 +180,8 @@ export default function ProfilePage() {
           Upload your resume and set the filters that decide which jobs count as a match.
         </p>
       </div>
+
+      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Resume</h2>
@@ -159,6 +203,7 @@ export default function ProfilePage() {
               <p className="text-xs text-gray-500 mb-1">
                 Detected skills (edit as needed — these drive job matching):
               </p>
+              {skillsError && <p className="text-xs text-red-600 mb-2">{skillsError}</p>}
               <div className="flex flex-wrap gap-2 mb-2">
                 {skills.map((s) => (
                   <span
@@ -275,6 +320,7 @@ export default function ProfilePage() {
           </button>
           {savedMessage && <span className="text-sm text-green-600">{savedMessage}</span>}
         </div>
+        {filtersError && <p className="text-sm text-red-600">{filtersError}</p>}
       </section>
     </div>
   );

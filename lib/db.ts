@@ -101,6 +101,39 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_job_claims_expiry
       ON job_claims(lease_expires_at);
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      website TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      company_id INTEGER REFERENCES companies(id),
+      applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resume_version TEXT,
+      cover_letter_used INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'manual',
+      notes TEXT,
+      follow_up_at TEXT,
+      response_received_at TEXT,
+      response_type TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_job_id
+      ON applications(job_id);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_follow_up
+      ON applications(follow_up_at);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_no_response
+      ON applications(response_received_at, applied_at);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -208,4 +241,28 @@ export type JobClaimRow = {
   claimed_at: number;
   heartbeat_at: number;
   lease_expires_at: number;
+};
+
+export type CompanyRow = {
+  id: number;
+  name: string;
+  website: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type ApplicationRow = {
+  id: number;
+  job_id: number;
+  company_id: number | null;
+  applied_at: string;
+  resume_version: string | null;
+  cover_letter_used: number;
+  source: string;
+  notes: string | null;
+  follow_up_at: string | null;
+  response_received_at: string | null;
+  response_type: string | null;
+  created_at: string;
+  updated_at: string;
 };
