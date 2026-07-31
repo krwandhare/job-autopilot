@@ -1,5 +1,100 @@
 # Session Handoff
 
+## LLM-assisted resume tailoring wired into the existing pipeline (ship-feature run)
+
+Requirement: extend the existing deterministic resume-tailoring pipeline
+with a real Claude API call as the "smart generation engine" for wording,
+while keeping the deterministic DOCX/PDF renderer and its round-trip
+validation exactly as they were.
+
+- Used the `claude-api` skill rather than guessing SDK usage or model
+  behavior; two points it corrected from the initial plan, confirmed
+  against live docs rather than assumed:
+  - `temperature` (the user asked for "temperature 0" for reliability)
+    does not exist on Claude Opus 5 -- non-default sampling params return
+    400 on every request. Determinism instead comes from the forced
+    `tool_choice` + `strict: true` schema (guarantees the JSON shape) and
+    a fixed `effort: "high"`, not from a sampling parameter.
+  - Confirmed via a live WebFetch of the thinking docs (not assumed) that
+    forced `tool_choice: {type: "tool", ...}` **is** compatible with
+    adaptive thinking on Opus 5 specifically ("Adaptive thinking,
+    including on models where thinking is on by default, supports forced
+    tool use") -- it's only manual/legacy extended thinking that forbids
+    forced tool choice. Opus 5 has thinking on by default and disabling it
+    has a documented failure mode (tool calls can leak into plain text
+    instead of a real tool_use block) that would have broken this exact
+    forced-single-tool-call design, so thinking was deliberately left on.
+- New `lib/llmTailoring.ts`: `tailorEvidenceText()` sends only the
+  free-text/narrative evidence kinds (summary, experience, project,
+  publication) to `claude-opus-5` -- single-token kinds (skill, education,
+  certification, other) never leave the deterministic path, since there's
+  nothing useful for a rewrite to do to "Kubernetes". One forced tool call
+  (`submit_tailored_resume_items`, `strict: true`, `tool_choice` forced to
+  that tool) returns tailored text keyed by the original evidence id;
+  dates, employer names, titles, and section/ordering logic never pass
+  through the model at all. Validates the returned id set matches the
+  requested set exactly, plus a coarse grounding check (word-overlap +
+  length-ratio heuristic) per item, and throws a typed
+  `LLMTailoringError` on any failure -- never returns a partial or guessed
+  result.
+- `lib/resumeVariants.ts`: `composeVariantItems()` and
+  `createResumeVariant()` now accept an optional
+  `tailoredOverrides: Map<evidenceId, text>`. When present, it substitutes
+  for the deterministic `formatEvidenceText()` output per item; everything
+  else (verified-evidence filtering, requirement-coverage rationale,
+  section ordering, relevance sort) is completely untouched.
+- `app/api/jobs/[id]/resume-variant` (`POST`) gained an optional
+  `{"mode": "auto" | "llm" | "deterministic"}` body (still tolerates the
+  existing no-body call from `app/jobs/[id]/page.tsx` unchanged -- body
+  parsing distinguishes "empty body" from "malformed JSON"). `"auto"`
+  (default) tries the LLM when `ANTHROPIC_API_KEY` is configured and
+  falls back to the original deterministic path on *any* failure
+  (missing key, refusal, truncation, network) rather than blocking variant
+  creation -- but always reports which path actually ran via a new
+  `tailoringMode` response field (plus `tailoringError` when it fell back
+  from a real failure, not just a missing key), so nothing is silently
+  mislabeled. `"llm"` requires success and returns 502 with the reason
+  otherwise; `"deterministic"` skips the LLM entirely.
+- Added `ANTHROPIC_API_KEY=` (empty) to `.env.local` and documented it in
+  `.env.local.example` -- **the user still needs to fill in their own key
+  before LLM tailoring activates**; until then every call transparently
+  falls back to the pre-existing deterministic behavior, verified live.
+- Installed `@anthropic-ai/sdk` (`^0.115.0`), the one new dependency this
+  required, authorized by this session's explicit request.
+- Added `scripts/test-llm-tailoring.mjs` (`npm run test:llm-tailoring`):
+  kind classification, config detection, and confirms
+  `tailorEvidenceText()` throws `LLMTailoringError{code:"not_configured"}`
+  synchronously (no network call) when unconfigured, rather than hanging
+  or silently succeeding.
+- Extended the existing `scripts/test-resume-analysis-routes.sh` E2E
+  (disposable server + database, no live Anthropic calls): confirmed
+  `mode: "llm"` returns 409 with no `ANTHROPIC_API_KEY` configured, and
+  that the default no-body call still returns `tailoringMode:
+  "deterministic"` with no spurious `tailoringError`, alongside the
+  pre-existing draft/patch/approve/DOCX/PDF-artifact assertions, all of
+  which still pass unmodified.
+- **Not verified: an actual live Claude API call.** No Anthropic API key
+  is available in this environment/session, so the real `mode: "llm"`
+  tailoring path (network request, response parsing, grounding check
+  against real model output) has only been verified by code review, type
+  checking, and the unconfigured-key failure path -- not by an actual
+  request to the API. This is the single most important next step before
+  relying on this feature: once the user adds their key to `.env.local`,
+  create a variant for a real job with `mode: "llm"` (or default `"auto"`)
+  and confirm the tailored wording, `tailoringMode: "llm"` in the
+  response, and a normal DOCX/PDF generation afterward.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`,
+  `test:resume-variants`, `test:resume-analysis-routes`,
+  `test:resume-artifacts`, and the new `test:llm-tailoring` all passed.
+- Scope: only `POST /api/jobs/[id]/resume-variant` gained AI tailoring;
+  no UI changes were made (`app/jobs/[id]/page.tsx`'s existing
+  no-body call works unchanged and already gets AI tailoring for free
+  once a key is configured, defaulting to "auto"). No UI surfaces which
+  mode ran per creation -- `tailoringMode` is in the API response but
+  not yet rendered anywhere. That, plus a "regenerate with AI" control
+  and per-item AI/deterministic labeling in the variant review UI, are
+  natural follow-ups, logged in `TODO.md`.
+
 ## Applications page UI overhaul (senior UI/UX design pass, ship-feature run)
 
 Requirement: "act as a senior UI/UX designer... comprehensive UI overhaul"

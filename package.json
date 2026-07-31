@@ -17,6 +17,7 @@
     "test:resume-layout": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-resume-layout.mjs",
     "test:resume-requirements": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-resume-requirements.mjs",
     "test:resume-variants": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-resume-variants.mjs",
+    "test:llm-tailoring": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-llm-tailoring.mjs",
     "test:resume-artifacts": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-resume-artifacts.mjs",
     "test:resume-analysis-routes": "bash scripts/test-resume-analysis-routes.sh",
     "test:jobs-status-filter-routes": "bash scripts/test-jobs-status-filter-routes.sh",
@@ -25,6 +26,7 @@
     "test:shared-runtime-routes": "bash scripts/test-shared-runtime-routes.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "better-sqlite3": "^13.0.1",
     "cheerio": "^1.2.0",
     "jszip": "^3.10.1",

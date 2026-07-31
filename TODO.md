@@ -2,6 +2,16 @@
 
 ## In Progress
 
+- **Add your own `ANTHROPIC_API_KEY` to `.env.local` to activate LLM
+  resume tailoring** -- the pipeline wiring (`lib/llmTailoring.ts`,
+  `POST /api/jobs/[id]/resume-variant`) is done and validated, but with
+  no key configured every request transparently falls back to the
+  original deterministic tailoring. No live Claude API call has been made
+  yet in this environment -- verify the actual tailored wording once a
+  key is added.
+- Resume-variant review UI: surface `tailoringMode` (llm vs deterministic)
+  per variant, and add a "regenerate with AI" control -- the API already
+  returns the field, nothing renders it yet.
 - Extend the 2026-07-31 Applications-page UI overhaul (stat tiles, weekly
   trend chart, status-colored response pills, `--color-accent`/
   `--color-status-*` tokens in `app/globals.css`) to the rest of the app
@@ -51,6 +61,20 @@
 
 ## Completed
 
+- Wired real LLM resume tailoring into the existing deterministic
+  pipeline (`lib/llmTailoring.ts`, `claude-opus-5`, forced strict
+  tool-use, no free text): tailors only the free-text evidence kinds
+  (summary/experience/project/publication), never the ones already stable
+  (skill/education/certification/other) or immutable facts (dates,
+  employer, title). `composeVariantItems()`/`createResumeVariant()` accept
+  the tailored overrides but are otherwise unchanged; the DOCX/PDF
+  renderer and round-trip validation are completely untouched.
+  `POST /api/jobs/[id]/resume-variant` gained an optional
+  `mode: "auto" | "llm" | "deterministic"` body (auto by default, falls
+  back safely without a key). Added `test:llm-tailoring` and extended
+  `test:resume-analysis-routes`; lint, strict TypeScript, build, and all
+  four relevant test suites passed. Live Claude API call not yet verified
+  -- no API key configured in this environment yet.
 - Redesigned the Applications page UI (senior UI/UX pass, `app/applications
   /page.tsx` + new `--color-accent`/`--color-status-*` tokens in
   `app/globals.css`): KPI stat tiles with icons, a real "Applications per

@@ -114,7 +114,14 @@ function bestReason(
 
 export function composeVariantItems(
   requirements: JobRequirementRow[],
-  evidenceRows: ResumeEvidenceRow[]
+  evidenceRows: ResumeEvidenceRow[],
+  // Evidence id -> LLM-tailored phrasing (lib/llmTailoring.ts). When an id
+  // has no override -- kinds the LLM never sees (skill, education, ...),
+  // or LLM tailoring was skipped entirely -- this falls back to the same
+  // deterministic formatting as before. Rationale, ordering, section, and
+  // relevance stay fully deterministic either way; the LLM only ever
+  // supplies wording for a kind it was explicitly given.
+  tailoredOverrides?: Map<number, string>
 ) {
   const verified = evidenceRows.filter((row) => row.verification_status === "verified");
   const coverage = analyzeRequirementCoverage(requirements.map(rowToRequirement), verified);
@@ -123,7 +130,9 @@ export function composeVariantItems(
   return verified
     .map((evidence) => {
       const reason = bestReason(evidenceCoverage.get(evidence.id) ?? []);
-      const tailoredText = formatEvidenceText(evidence.evidence_kind, evidence.normalized_text);
+      const tailoredText =
+        tailoredOverrides?.get(evidence.id) ??
+        formatEvidenceText(evidence.evidence_kind, evidence.normalized_text);
       return {
         evidenceId: evidence.id,
         evidenceKind: evidence.evidence_kind,
@@ -168,9 +177,10 @@ export function createResumeVariant(
     resume: { id: number };
     requirements: JobRequirementRow[];
     evidence: ResumeEvidenceRow[];
+    tailoredOverrides?: Map<number, string>;
   }
 ): ResumeVariantRow {
-  const items = composeVariantItems(inputs.requirements, inputs.evidence);
+  const items = composeVariantItems(inputs.requirements, inputs.evidence, inputs.tailoredOverrides);
   if (items.length === 0) {
     throw new Error("Verify at least one career-evidence item before creating a variant");
   }
