@@ -59,6 +59,7 @@ export async function importLinkedInJobUrl(url: string): Promise<NormalizedJob> 
 
   const company =
     jobPosting?.hiringOrganization?.name ??
+    ($("a.topcard__org-name-link").first().text().trim() || undefined) ??
     $('meta[property="og:site_name"]').attr("content") ??
     "Unknown";
 
