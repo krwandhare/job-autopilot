@@ -22,6 +22,12 @@
 
 ## Next
 
+- `npm run test:resume-artifacts` fails in this sandbox with `Executable
+  doesn't exist at .../chromium_headless_shell-1234/...` -- Playwright's
+  default `chromium` channel resolves to `chrome-headless-shell`, which
+  isn't installed here (only the plain `chromium` build is); unrelated to
+  any change in this session. Do not run `playwright install` without
+  approval; rerun where the headless-shell binary is available.
 - Add an automated test framework, an `npm test` script, and deterministic fixtures for matching, skill extraction, TXT resume parsing, draft generation, and source normalization.
 - Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
@@ -39,6 +45,23 @@
 
 ## Completed
 
+- Fixed a real dashboard bug found via live E2E: clicking the Action
+  Center's "Verification" tile (or Needs Review/External/Drafts/Decisions)
+  filtered the job pipeline to that status, but `GET /api/jobs` still
+  applied the default `match_score > 0` exclusion even for an explicit
+  actionable-status filter, so a job with a zero match score (e.g. one
+  resumed directly via `/autofill?jobId=`) silently vanished from the list
+  the user just clicked through to -- showing "No jobs yet" right under an
+  Action Center card that said the opposite. Fixed by skipping that default
+  exclusion whenever the status filter is one of `ACTIONABLE_STATUSES`
+  (`lib/actions.ts`), matching `getDashboardActions()`'s existing behavior.
+  Added a permanent route E2E regression (`npm run
+  test:jobs-status-filter-routes`) covering the fixed case, the unaffected
+  general "new" browsing default, and `showAll=1`. Verified live in a real
+  headless browser against a disposable data directory (screenshots of
+  both the broken and fixed states); lint, strict TypeScript, and a
+  production build all passed, plus the full existing test suite except
+  the pre-existing environment gap noted below.
 - Gave the app independent Gmail access (no agent session required):
   `lib/gmail.ts` REST client, digest-email parser, shared import/tag helper,
   `POST /api/jobs/sync-gmail`, an on-demand dashboard button, a scheduled-run

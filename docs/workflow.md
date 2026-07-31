@@ -96,14 +96,15 @@ apply the same hierarchy without changing any verified text.
 6. Each normalized job is scored and upserted by `(source, source_job_id)`.
 7. The dashboard reloads jobs sorted by score descending and fetch time descending.
 
-The dashboard shows 50 jobs per page, hides score-zero jobs by default, supports local status filtering, and can show non-matches.
+The dashboard shows 50 jobs per page, hides score-zero jobs by default, supports local status filtering, and can show non-matches. That score-zero exclusion is skipped whenever the status filter is one of the Action Center's actionable statuses (`needs_code`, `needs_review`, `external_lead`, `drafted`, `watchlist`) -- those jobs are already being explicitly acted on regardless of fit score, and the Action Center itself never hides them by score, so the pipeline list must not either once a tile filters down to one.
 
 Before the job pipeline, the dashboard Action Center groups work that requires
 the user: verification codes, manual application review, external leads,
 drafts, and watchlist decisions. Each item states why the user is needed,
 shows up to three exact persisted details when available, and exposes one
 status-specific primary action plus job details. Summary cards show counts and
-filter the pipeline to the selected status.
+filter the pipeline to the selected status, including any zero-score job in
+that status.
 
 Action reasons are persisted separately from local job status. If older code
 sets only an actionable status, the dashboard uses a conservative fallback

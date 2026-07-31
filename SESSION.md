@@ -1,5 +1,62 @@
 # Session Handoff
 
+## Dashboard "Verification" tab E2E fix (ship-feature run)
+
+Requirement: run the dashboard's Action Center "Verification" tab through a
+real E2E and fix any errors, ensuring error handling is properly implemented;
+noted only 1 job/test previously exercised that path.
+
+- Traced the flow: dashboard `app/page.tsx`'s Action Center tile for
+  `needs_code` sets `statusFilter` and scrolls to `#job-pipeline`, which
+  refetches `GET /api/jobs?status=needs_code`. The existing coverage
+  (`scripts/test-action-center.mjs`) only exercised `lib/actions.ts`'s
+  `getDashboardActions()` data model with one `needs_code` job at
+  `match_score = 90` -- never the actual `/api/jobs` route a real click
+  reaches, and never a job with `match_score = 0` (reachable in practice:
+  `GET /api/autofill/next?jobId=` resumes any job by ID regardless of
+  score, per its own comment).
+- Reproduced live: started the dev/prod server against a disposable
+  `JOB_AUTOPILOT_DATA_DIR`, seeded a `needs_code` job at `match_score = 0`,
+  drove a real headless Chromium session (Playwright, explicit
+  `executablePath` since only the plain `chromium` build is installed in
+  this sandbox, not `chrome-headless-shell`) through the dashboard, and
+  clicked the Verification tile. Confirmed the bug: Action Center correctly
+  showed the job needing verification, but the Job pipeline list right
+  below it said "Job pipeline (0)" / "No jobs yet" -- `GET /api/jobs`
+  applied its default `match_score > 0` exclusion even though a specific
+  actionable status was explicitly requested.
+- Fixed in `app/api/jobs/route.ts`: skip the default score-0 exclusion
+  whenever the status filter is one of `ACTIONABLE_STATUSES`
+  (`lib/actions.ts`) -- matching `getDashboardActions()`, which never
+  hides these by score. Verified the deeper "Resume verification" flow
+  itself (`/autofill?jobId=`) already worked correctly with no console or
+  API errors; the defect was isolated to the pipeline-list route.
+- Added a permanent regression test, `scripts/test-jobs-status-filter-routes.sh`
+  (wired as `npm run test:jobs-status-filter-routes`), covering: the fixed
+  case (score-0 job now appears under its actionable status), no regression
+  to default "new" browsing (score-0 still hidden there), and `showAll=1`
+  (unaffected). Along the way, hardened its cleanup to `fuser -k "$PORT/tcp"`
+  after discovering `npm run start`'s `$!` is only the npm wrapper -- it
+  doesn't forward signals to the real `next-server` grandchild, which
+  otherwise leaks as an orphan still bound to the port and serving out of
+  an already-deleted disposable data directory (confirmed live via
+  `/proc/net/tcp` + `/proc/*/fd` inode lookup, since `lsof -i` did not
+  reliably show these sandboxed listeners while `fuser` did). Killed all
+  orphaned `next-server`/`next dev` processes left over from this session's
+  manual testing before finishing.
+- Validation: `npm run lint`, `npx tsc --noEmit`, `npm run build`, and the
+  full existing `test:*` suite all passed, except `test:resume-artifacts`,
+  which fails in this sandbox for an unrelated, pre-existing reason
+  (`chrome-headless-shell` binary not installed here) -- confirmed via
+  `git stash` reasoning and direct inspection that this is untouched by
+  this change; documented in TODO.md rather than silently ignored.
+- Changed files: `app/api/jobs/route.ts`, `package.json` (new test script
+  entry), `scripts/test-jobs-status-filter-routes.sh` (new).
+- No product decision was ambiguous enough to need user input; this was a
+  single-agent, single-branch fix on the standing `feature/claude-autofill`
+  branch, so no guarded multi-agent integration was needed for this change
+  itself.
+
 ## Ship-feature shared integration and Claude availability
 
 On 2026-07-31, the cross-agent `ship-feature` workflow was isolated onto
