@@ -41,6 +41,9 @@ export default function RootLayout({
           <Link href="/autofill" className="text-sm text-gray-600 hover:text-gray-900">
             Auto-fill
           </Link>
+          <Link href="/applications" className="text-sm text-gray-600 hover:text-gray-900">
+            Applications
+          </Link>
         </nav>
         <main className="flex-1">{children}</main>
       </body>
