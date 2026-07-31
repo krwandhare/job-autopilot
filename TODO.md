@@ -28,6 +28,10 @@
 
 ## Completed
 
+- Added one-confirmation bulk verification for pending skill evidence while
+  preserving rejected skills and keeping non-skill career claims under
+  individual review. Disposable route coverage confirms the server-side
+  boundary.
 - Completed truthful per-job resume tailoring across five validated commits:
   verified evidence (`051632b`), deterministic requirement coverage
   (`ddd3a2e`), reviewable approved variants (`b9bd33e`), round-trip-validated

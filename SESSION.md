@@ -332,3 +332,20 @@ Perform a user review of the new Profile evidence and job-detail tailoring
 workflow with the real local resume, then create one approved variant for a
 non-destructive test job and inspect both downloaded formats before relying on
 tailored attachments in a real application.
+
+## 2026-07-30 bulk skill verification checkpoint
+
+- The Profile evidence surface now offers “Verify all skills” whenever pending
+  skill records exist. One confirmation verifies those pending skills without
+  overwriting rejected skills or changing non-skill evidence.
+- `PATCH /api/resume/evidence` supports the narrowly scoped
+  `verify_all_skills` action for one validated resume ID and returns the
+  refreshed evidence collection.
+- The disposable resume-analysis route E2E now proves that pending skills are
+  bulk-verified while a deliberately rejected skill remains rejected. The live
+  resume and database were not changed during validation.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `git diff --check`
+  passed.
+- Next action: the user can open `/profile`, click “Verify all skills,” confirm
+  once, and refresh any existing job analysis or tailored draft that should
+  use the newly verified skills.

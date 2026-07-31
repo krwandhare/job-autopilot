@@ -41,6 +41,8 @@ export default function ProfilePage() {
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [savingEvidenceId, setSavingEvidenceId] = useState<number | null>(null);
+  const [verifyingSkills, setVerifyingSkills] = useState(false);
+  const [evidenceMessage, setEvidenceMessage] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<Filter>({
     id: 0,
@@ -176,6 +178,45 @@ export default function ProfilePage() {
     }
   }
 
+  async function verifyAllPendingSkills() {
+    if (!resume) return;
+    const pendingSkills = evidence.filter(
+      (item) => item.kind === "skill" && item.verificationStatus === "extracted"
+    );
+    if (pendingSkills.length === 0) return;
+    if (
+      !window.confirm(
+        `Verify all ${pendingSkills.length} skills awaiting review? Rejected skills will stay rejected.`
+      )
+    ) {
+      return;
+    }
+
+    setVerifyingSkills(true);
+    setEvidenceError(null);
+    setEvidenceMessage(null);
+    try {
+      const res = await fetch("/api/resume/evidence", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify_all_skills",
+          resumeId: resume.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not verify skills");
+      setEvidence(data.evidence ?? []);
+      setEvidenceMessage(
+        `${data.updatedCount ?? pendingSkills.length} skills verified. Refresh existing job analyses or tailored drafts to use them.`
+      );
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : "Could not verify skills");
+    } finally {
+      setVerifyingSkills(false);
+    }
+  }
+
   async function saveFilters() {
     const payload = {
       ...filter,
@@ -277,6 +318,7 @@ export default function ProfilePage() {
               <p className="text-sm text-gray-500">Building evidence profile…</p>
             )}
             {evidenceError && <p className="text-sm text-red-600">{evidenceError}</p>}
+            {evidenceMessage && <p className="text-sm text-green-700">{evidenceMessage}</p>}
             {!evidenceLoading && evidence.length === 0 && !evidenceError && (
               <p className="text-sm text-gray-500">
                 No evidence was extracted. The master resume remains available.
@@ -285,19 +327,34 @@ export default function ProfilePage() {
 
             {evidence.length > 0 && (
               <>
-                <div className="flex flex-wrap gap-3 text-xs">
-                  <span className="text-green-700">
-                    {evidence.filter((item) => item.verificationStatus === "verified").length}{" "}
-                    verified
-                  </span>
-                  <span className="text-amber-700">
-                    {evidence.filter((item) => item.verificationStatus === "extracted").length}{" "}
-                    awaiting review
-                  </span>
-                  <span className="text-gray-500">
-                    {evidence.filter((item) => item.verificationStatus === "rejected").length}{" "}
-                    rejected
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="text-green-700">
+                      {evidence.filter((item) => item.verificationStatus === "verified").length}{" "}
+                      verified
+                    </span>
+                    <span className="text-amber-700">
+                      {evidence.filter((item) => item.verificationStatus === "extracted").length}{" "}
+                      awaiting review
+                    </span>
+                    <span className="text-gray-500">
+                      {evidence.filter((item) => item.verificationStatus === "rejected").length}{" "}
+                      rejected
+                    </span>
+                  </div>
+                  {evidence.some(
+                    (item) =>
+                      item.kind === "skill" && item.verificationStatus === "extracted"
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={verifyAllPendingSkills}
+                      disabled={verifyingSkills || savingEvidenceId !== null}
+                      className="rounded border border-green-700 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
+                    >
+                      {verifyingSkills ? "Verifying skills…" : "Verify all skills"}
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-3">

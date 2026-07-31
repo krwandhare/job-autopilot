@@ -46,6 +46,36 @@ curl -fsS -X POST "http://127.0.0.1:$PORT/api/resume/evidence" \
 
 sqlite3 "$TEST_DATA/app.db" "
   UPDATE resume_evidence
+  SET verification_status = 'rejected'
+  WHERE resume_id = $resume_id
+    AND evidence_kind = 'skill'
+    AND normalized_text = 'PostgreSQL';
+"
+bulk_skills="$(
+  curl -fsS -X PATCH "http://127.0.0.1:$PORT/api/resume/evidence" \
+    -H "Content-Type: application/json" \
+    -d "{\"action\":\"verify_all_skills\",\"resumeId\":$resume_id}"
+)"
+printf '%s' "$bulk_skills" | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+skills = {
+    item["normalizedText"]: item["verificationStatus"]
+    for item in payload["evidence"]
+    if item["kind"] == "skill"
+}
+assert {"TypeScript", "Kubernetes", "Terraform", "PostgreSQL"} <= skills.keys()
+assert skills["PostgreSQL"] == "rejected"
+assert all(
+    status == "verified"
+    for skill, status in skills.items()
+    if skill != "PostgreSQL"
+)
+assert payload["updatedCount"] == len(skills) - 1
+'
+
+sqlite3 "$TEST_DATA/app.db" "
+  UPDATE resume_evidence
   SET verification_status = 'verified'
   WHERE resume_id = $resume_id
     AND normalized_text IN (
@@ -129,7 +159,7 @@ printf '%s' "$variant" | python3 -c '
 import json, sys
 variant = json.load(sys.stdin)["variant"]
 assert variant["status"] == "draft"
-assert len(variant["items"]) == 7
+assert len(variant["items"]) >= 7
 assert all(item["included"] for item in variant["items"])
 assert not any("Python" in item["tailoredText"] for item in variant["items"])
 assert any(

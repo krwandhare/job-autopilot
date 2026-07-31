@@ -11,8 +11,11 @@ This document describes behavior present in the repository. “Implemented” me
 3. Upload one PDF, DOCX, or TXT file.
 4. `POST /api/resume` reads it into memory, extracts text, detects curated skills, inserts a resume row, stores the original bytes under a per-resume local directory, and records that path.
 5. Review the detected skills. Adding/removing a skill calls `PATCH /api/resume`.
-6. Configure title include/exclude terms, preferred locations, remote-only, minimum salary, required skills, and excluded companies.
-7. Save filters through `PUT /api/filters`.
+6. In Verified career evidence, “Verify all skills” marks every skill still
+   awaiting review as verified in one confirmed action. It preserves rejected
+   skills and does not bulk-approve experience, achievements, or other claims.
+7. Configure title include/exclude terms, preferred locations, remote-only, minimum salary, required skills, and excluded companies.
+8. Save filters through `PUT /api/filters`.
 
 ### Incomplete or unverified
 
