@@ -2,8 +2,12 @@
 
 ## In Progress
 
-- Extend the error-handling audit (`3128abf` covered the four client pages)
-  to API route handlers and `lib/autofill/filler.ts`'s Playwright internals.
+- **Re-upload the current resume.** Its `file_path` was accidentally
+  overwritten during error-handling audit testing (`f56521d`) and had to be
+  nulled out rather than left pointing at a fake test file -- the real file
+  couldn't be safely recovered. Matching/drafts are unaffected (extracted
+  text/skills are untouched); only auto-attaching the actual file during
+  autofill's file-upload step needs a fresh upload to restore.
 - Decide whether to delete the untracked `data/watch-and-integrate.sh`
   scratch file (abandoned background-merge-watcher, never used).
 - Tune the fit-scoring formula in `lib/matching.ts` per user judgment on
@@ -33,6 +37,15 @@
 
 ## Completed
 
+- Extended the error-handling audit to API routes (`f56521d`): ~9 of 20
+  routes crashed to an empty 500 on malformed/absent JSON bodies (confirmed
+  live), fixed via a shared `lib/apiUtils.ts` helper rather than repeating
+  the fix per-route. Also fixed `upload-file`'s formData parsing the same
+  way, plus a real "silent false success" bug -- `fillFileField()` always
+  returned void/success even when the Playwright file-attach failed
+  internally; now returns and threads through an actual `filled` boolean.
+  `runFiller`/`submitApplication` in `filler.ts` were reviewed and already
+  solidly hardened from earlier session work -- no change needed there.
 - Started `scripts/gmail-sync-runner.sh` (30 min interval) against the live
   instance -- both on-demand and scheduled Gmail sync are now actually
   running, not just built. Found and fixed a real bug while starting it:
