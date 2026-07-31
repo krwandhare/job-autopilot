@@ -2,10 +2,6 @@
 
 ## In Progress
 
-- Implement truthful per-job resume tailoring. Final feature checkpoint:
-  select the exact job's approved, validated artifact in autofill and fall
-  back to the master resume otherwise; see
-  `docs/resume-tailoring-plan.md`.
 - Live-run and verify Claude's Gmail-alert LinkedIn lead importer through the
   shared runtime, using its existing rate limit and `external_lead` boundary.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
@@ -53,6 +49,11 @@
   extraction checks for every included item, validated-only downloads, and
   route E2E coverage. Visual PDF QA caught and fixed a transparent-page
   background before acceptance.
+- Integrated exact-job resume selection into autofill. The queue previews the
+  filename and source, DOCX is preferred unless PDF is explicitly selected,
+  missing/stale/mutated artifacts fall back to the master resume, another job
+  can never receive the variant, and a failed Playwright attachment is surfaced
+  for manual handling.
 - Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
   two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
   TypeScript, and production build passed in the trial merge.

@@ -6,8 +6,10 @@ import Database from "better-sqlite3";
 import {
   generateResumeArtifacts,
   getResumeArtifactSummaries,
+  selectResumeAttachmentForJob,
 } from "../lib/resumeArtifacts.ts";
 import { extractResumeText } from "../lib/resume.ts";
+import { postingFingerprint } from "../lib/jobRequirements.ts";
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "job-autopilot-artifacts-"));
 process.env.JOB_AUTOPILOT_DATA_DIR = tempDir;
@@ -21,6 +23,7 @@ try {
       resume_id INTEGER NOT NULL,
       status TEXT NOT NULL,
       job_fingerprint TEXT NOT NULL,
+      preferred_format TEXT NOT NULL DEFAULT 'docx',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       approved_at TEXT
@@ -52,12 +55,17 @@ try {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(variant_id, format)
     );
+    CREATE TABLE resume_evidence (
+      id INTEGER PRIMARY KEY,
+      normalized_text TEXT NOT NULL,
+      verification_status TEXT NOT NULL
+    );
   `);
   db.prepare(
     `INSERT INTO resume_variants
-       VALUES (1, 1, 1, 'approved', 'fingerprint', '2026-07-30',
+       VALUES (1, 1, 1, 'approved', ?, 'docx', '2026-07-30',
                '2026-07-30', '2026-07-30')`
-  ).run();
+  ).run(postingFingerprint("Kubernetes is required."));
   const insertItem = db.prepare(
     `INSERT INTO resume_variant_items
        VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '2026-07-30')`
@@ -74,6 +82,15 @@ try {
     "unchanged",
     "[]"
   );
+  db.prepare(
+    "INSERT INTO resume_evidence VALUES (?, ?, 'verified')"
+  ).run(1, "Platform engineer.");
+  db.prepare(
+    "INSERT INTO resume_evidence VALUES (?, ?, 'verified')"
+  ).run(2, "TypeScript");
+  db.prepare(
+    "INSERT INTO resume_evidence VALUES (?, ?, 'verified')"
+  ).run(3, "Built reliable platform services.");
   insertItem.run(
     2,
     2,
@@ -141,6 +158,69 @@ Platform engineer.`;
   const summaries = getResumeArtifactSummaries(db, 1);
   assert.equal(summaries.length, 2);
   assert.equal(summaries.every((artifact) => artifact.downloadUrl), true);
+
+  const masterPath = path.join(tempDir, "master-resume.txt");
+  fs.writeFileSync(masterPath, sourceResume);
+  const master = {
+    id: 1,
+    filename: "Jordan Example Resume.txt",
+    file_path: masterPath,
+  };
+  const defaultSelection = selectResumeAttachmentForJob(
+    db,
+    { id: 1, description: "Kubernetes is required." },
+    master
+  );
+  assert.equal(defaultSelection?.source, "tailored");
+  assert.equal(defaultSelection?.format, "docx");
+
+  db.prepare("UPDATE resume_variants SET preferred_format = 'pdf' WHERE id = 1").run();
+  const preferredPdf = selectResumeAttachmentForJob(
+    db,
+    { id: 1, description: "Kubernetes is required." },
+    master
+  );
+  assert.equal(preferredPdf?.format, "pdf");
+  fs.unlinkSync(preferredPdf.filePath);
+  assert.equal(
+    selectResumeAttachmentForJob(
+      db,
+      { id: 1, description: "Kubernetes is required." },
+      master
+    )?.format,
+    "docx",
+    "a missing preferred artifact should fall back to the other validated format"
+  );
+  assert.equal(
+    selectResumeAttachmentForJob(
+      db,
+      { id: 2, description: "Kubernetes is required." },
+      master
+    )?.source,
+    "master",
+    "another job must never receive this job's approved variant"
+  );
+  assert.equal(
+    selectResumeAttachmentForJob(
+      db,
+      { id: 1, description: "The posting changed." },
+      master
+    )?.source,
+    "master",
+    "a changed posting must invalidate the tailored attachment"
+  );
+  db.prepare(
+    "UPDATE resume_evidence SET verification_status = 'rejected' WHERE id = 3"
+  ).run();
+  assert.equal(
+    selectResumeAttachmentForJob(
+      db,
+      { id: 1, description: "Kubernetes is required." },
+      master
+    )?.source,
+    "master",
+    "changed evidence must invalidate the tailored attachment"
+  );
 
   await assert.rejects(
     generateResumeArtifacts(db, 1, {

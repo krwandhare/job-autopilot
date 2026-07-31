@@ -61,6 +61,7 @@ type ResumeVariant = {
   jobId: number;
   resumeId: number;
   status: "draft" | "approved" | "superseded" | "rejected";
+  preferredFormat: "docx" | "pdf";
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
@@ -305,6 +306,27 @@ export default function JobDetailPage({
       await loadArtifacts(resumeVariant.id);
     } finally {
       setArtifactLoading(false);
+    }
+  }
+
+  async function setPreferredFormat(format: "docx" | "pdf") {
+    if (!resumeVariant) return;
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferredFormat: format }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not save resume format");
+      setResumeVariant(data.variant);
+    } catch (formatFailure) {
+      setVariantError(
+        formatFailure instanceof Error
+          ? formatFailure.message
+          : "Could not save resume format"
+      );
     }
   }
 
@@ -612,6 +634,23 @@ export default function JobDetailPage({
                         : "Generate files"}
                   </button>
                 </div>
+
+                {resumeArtifacts.length > 0 && (
+                  <label className="flex items-center gap-2 text-xs text-green-900">
+                    <span className="font-medium">Use in autofill:</span>
+                    <select
+                      value={resumeVariant.preferredFormat}
+                      onChange={(event) =>
+                        setPreferredFormat(event.target.value as "docx" | "pdf")
+                      }
+                      className="rounded border border-green-300 bg-white px-2 py-1"
+                      suppressHydrationWarning
+                    >
+                      <option value="docx">DOCX (default)</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                  </label>
+                )}
 
                 {resumeArtifacts.length > 0 && (
                   <div className="grid gap-2 sm:grid-cols-2">

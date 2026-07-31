@@ -149,10 +149,12 @@ function init(db: Database.Database) {
       resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
       status TEXT NOT NULL DEFAULT 'draft',
       job_fingerprint TEXT NOT NULL,
+      preferred_format TEXT NOT NULL DEFAULT 'docx',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       approved_at TEXT,
-      CHECK (status IN ('draft', 'approved', 'superseded', 'rejected'))
+      CHECK (status IN ('draft', 'approved', 'superseded', 'rejected')),
+      CHECK (preferred_format IN ('docx', 'pdf'))
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_resume_variants_approved_job
@@ -218,6 +220,15 @@ function init(db: Database.Database) {
   if (!variantItemCols.some((column) => column.name === "evidence_kind")) {
     db.exec(
       "ALTER TABLE resume_variant_items ADD COLUMN evidence_kind TEXT NOT NULL DEFAULT 'other'"
+    );
+  }
+
+  const variantCols = db.prepare("PRAGMA table_info(resume_variants)").all() as {
+    name: string;
+  }[];
+  if (!variantCols.some((column) => column.name === "preferred_format")) {
+    db.exec(
+      "ALTER TABLE resume_variants ADD COLUMN preferred_format TEXT NOT NULL DEFAULT 'docx'"
     );
   }
 }
@@ -348,6 +359,7 @@ export type ResumeVariantRow = {
   resume_id: number;
   status: "draft" | "approved" | "superseded" | "rejected";
   job_fingerprint: string;
+  preferred_format: "docx" | "pdf";
   created_at: string;
   updated_at: string;
   approved_at: string | null;

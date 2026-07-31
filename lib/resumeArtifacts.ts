@@ -7,6 +7,7 @@ import type Database from "better-sqlite3";
 import { extractResumeText } from "./resume.ts";
 import { extractResumeHeader } from "./resumeEvidence.ts";
 import { getResumesDir } from "./runtimePaths.ts";
+import { postingFingerprint } from "./jobRequirements.ts";
 import {
   getResumeVariant,
   type ResumeVariantItemRow,
@@ -379,4 +380,93 @@ export function getValidatedArtifact(
       )
       .get(variantId, format) as ResumeVariantArtifactRow | undefined) ?? null
   );
+}
+
+export type ResumeAttachmentSelection = {
+  source: "tailored" | "master";
+  filePath: string;
+  filename: string;
+  format: "docx" | "pdf" | "txt" | null;
+  variantId: number | null;
+};
+
+export function selectResumeAttachmentForJob(
+  db: Database.Database,
+  job: { id: number; description: string | null },
+  masterResume:
+    | { id: number; filename: string; file_path: string | null }
+    | undefined
+): ResumeAttachmentSelection | null {
+  if (masterResume) {
+    const tailoredCandidates = db
+      .prepare(
+        `SELECT
+           artifacts.file_path,
+           artifacts.filename,
+           artifacts.format,
+           variants.id AS variant_id
+         FROM resume_variants variants
+         JOIN resume_variant_artifacts artifacts
+           ON artifacts.variant_id = variants.id
+         WHERE variants.job_id = ?
+           AND variants.resume_id = ?
+           AND variants.status = 'approved'
+           AND variants.job_fingerprint = ?
+           AND artifacts.validation_status = 'passed'
+           AND artifacts.file_path <> ''
+           AND NOT EXISTS (
+             SELECT 1
+             FROM resume_variant_items items
+             LEFT JOIN resume_evidence evidence ON evidence.id = items.evidence_id
+             WHERE items.variant_id = variants.id
+               AND items.included = 1
+               AND (
+                 evidence.id IS NULL
+                 OR evidence.verification_status <> 'verified'
+                 OR evidence.normalized_text <> items.original_text
+               )
+           )
+         ORDER BY
+           CASE
+             WHEN artifacts.format = variants.preferred_format THEN 0
+             WHEN artifacts.format = 'docx' THEN 1
+             ELSE 2
+           END`
+      )
+      .all(
+        job.id,
+        masterResume.id,
+        postingFingerprint(job.description?.trim() ?? "")
+      ) as Array<{
+          file_path: string;
+          filename: string;
+          format: "docx" | "pdf";
+          variant_id: number;
+        }>;
+    const tailored = tailoredCandidates.find((candidate) =>
+      fs.existsSync(candidate.file_path)
+    );
+    if (tailored) {
+      return {
+        source: "tailored",
+        filePath: tailored.file_path,
+        filename: tailored.filename,
+        format: tailored.format,
+        variantId: tailored.variant_id,
+      };
+    }
+  }
+
+  if (!masterResume?.file_path || !fs.existsSync(masterResume.file_path)) return null;
+  const extension = path.extname(masterResume.filename).toLowerCase().slice(1);
+  return {
+    source: "master",
+    filePath: masterResume.file_path,
+    filename: masterResume.filename,
+    format:
+      extension === "docx" || extension === "pdf" || extension === "txt"
+        ? extension
+        : null,
+    variantId: null,
+  };
 }

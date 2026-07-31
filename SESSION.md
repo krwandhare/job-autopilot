@@ -271,11 +271,32 @@ The fourth resume-tailoring checkpoint was then completed:
   it, and the rerender showed readable typography, margins, section rules, and
   no clipping or overlap. Temporary QA artifacts were deleted.
 
+The fifth and final resume-tailoring checkpoint was then completed:
+
+- Added one saved preferred format per active variant. DOCX is the default;
+  the job-detail UI can explicitly select PDF after artifacts exist.
+- `selectResumeAttachmentForJob()` is the single selector used by both the
+  Auto-fill queue preview and the actual Playwright filler. It requires the
+  exact job ID, current posting fingerprint, latest master resume ID, approved
+  status, passed artifact validation, unchanged verified evidence, and an
+  existing local artifact file.
+- The selector tries the preferred artifact, then the other validated format,
+  and finally the master resume. A different job, changed posting, newer
+  resume, changed/rejected evidence, failed validation, or missing artifact
+  always falls back safely.
+- The Auto-fill card identifies the exact filename and whether it is approved
+  for this job or the master fallback. The filler no longer swallows file
+  attachment failures; it returns a manual attachment field.
+- Model coverage and the disposable production-route E2E verified DOCX
+  default, explicit PDF preference, missing-file format fallback, exact-job
+  isolation, and master fallback for a second job. No employer form or live
+  application was opened or submitted.
+
 ## Current objective
 
-Build and validate truthful per-job resume tailoring that improves ATS
-parseability and recruiter relevance without fabricating qualifications or
-automatically using an unapproved variant.
+Truthful per-job resume tailoring is implemented and validated through local
+model, route, artifact, and visual PDF checks. The next product priority is
+separate from this completed feature.
 
 ## Blockers
 
@@ -288,7 +309,7 @@ automatically using an unapproved variant.
 
 ## Exact next recommended task
 
-Update autofill to attach the exact job's newest approved, round-trip-validated
-resume artifact (prefer DOCX unless the user chooses PDF), fall back to the
-master resume when none exists, and prove that one job can never receive
-another job's variant.
+Perform a user review of the new Profile evidence and job-detail tailoring
+workflow with the real local resume, then create one approved variant for a
+non-destructive test job and inspect both downloaded formats before relying on
+tailored attachments in a real application.

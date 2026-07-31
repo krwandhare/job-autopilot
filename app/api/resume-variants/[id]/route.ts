@@ -4,6 +4,7 @@ import {
   getResumeVariant,
   serializeResumeVariant,
   setVariantItemIncluded,
+  setVariantPreferredFormat,
 } from "@/lib/resumeVariants";
 
 function parseId(value: unknown): number | null {
@@ -38,6 +39,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
   const candidate = body as Record<string, unknown>;
+  if (candidate.preferredFormat === "docx" || candidate.preferredFormat === "pdf") {
+    const db = getDb();
+    if (!setVariantPreferredFormat(db, variantId, candidate.preferredFormat)) {
+      return NextResponse.json(
+        { error: "Only an active draft or approved variant can change format" },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({
+      variant: serializeResumeVariant(getResumeVariant(db, variantId)),
+    });
+  }
   const itemId = parseId(candidate.itemId);
   if (itemId === null || typeof candidate.included !== "boolean") {
     return NextResponse.json(

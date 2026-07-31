@@ -16,6 +16,7 @@ export type ResumeVariantRow = {
   resume_id: number;
   status: ResumeVariantStatus;
   job_fingerprint: string;
+  preferred_format: "docx" | "pdf";
   created_at: string;
   updated_at: string;
   approved_at: string | null;
@@ -275,6 +276,21 @@ export function setVariantItemIncluded(
   return result.changes > 0;
 }
 
+export function setVariantPreferredFormat(
+  db: Database.Database,
+  variantId: number,
+  format: "docx" | "pdf"
+): boolean {
+  const result = db
+    .prepare(
+      `UPDATE resume_variants
+       SET preferred_format = ?, updated_at = datetime('now')
+       WHERE id = ? AND status IN ('draft', 'approved')`
+    )
+    .run(format, variantId);
+  return result.changes > 0;
+}
+
 export function approveResumeVariant(
   db: Database.Database,
   variantId: number,
@@ -354,6 +370,7 @@ export function serializeResumeVariant(
     jobId: loaded.variant.job_id,
     resumeId: loaded.variant.resume_id,
     status: loaded.variant.status,
+    preferredFormat: loaded.variant.preferred_format,
     createdAt: loaded.variant.created_at,
     updatedAt: loaded.variant.updated_at,
     approvedAt: loaded.variant.approved_at,

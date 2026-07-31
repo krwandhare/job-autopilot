@@ -72,6 +72,14 @@ At least 5 years of software engineering experience.
 PREFERRED QUALIFICATIONS
 Terraform experience is preferred.',
      'https://example.invalid/resume-analysis', '2026-07-30 12:00:00', 90, 'new');
+
+  INSERT INTO jobs
+    (source, source_job_id, title, company, location, remote, description, url,
+     fetched_at, match_score, status)
+  VALUES
+    ('test', 'resume-analysis-2', 'Synthetic Backend Engineer', 'Second Company',
+     'Remote', 1, 'TypeScript experience is required.',
+     'https://example.invalid/resume-analysis-2', '2026-07-30 11:00:00', 80, 'new');
 "
 
 analysis="$(
@@ -174,6 +182,46 @@ assert [(item["format"], item["validationStatus"]) for item in artifacts] == [
 ]
 assert all(item["validation"]["missingItemCount"] == 0 for item in artifacts)
 '
+
+default_attachment="$(
+  curl -fsS "http://127.0.0.1:$PORT/api/autofill/next?jobId=1"
+)"
+printf '%s' "$default_attachment" | python3 -c '
+import json, sys
+attachment = json.load(sys.stdin)["job"]["resumeAttachment"]
+assert attachment["source"] == "tailored"
+assert attachment["format"] == "docx"
+assert attachment["variantId"] is not None
+'
+curl -fsS -X POST "http://127.0.0.1:$PORT/api/autofill/finish" \
+  -H "Content-Type: application/json" -d '{"jobId":1}' >/dev/null
+
+curl -fsS -X PATCH "http://127.0.0.1:$PORT/api/resume-variants/$variant_id" \
+  -H "Content-Type: application/json" \
+  -d '{"preferredFormat":"pdf"}' >/dev/null
+pdf_attachment="$(
+  curl -fsS "http://127.0.0.1:$PORT/api/autofill/next?jobId=1"
+)"
+printf '%s' "$pdf_attachment" | python3 -c '
+import json, sys
+attachment = json.load(sys.stdin)["job"]["resumeAttachment"]
+assert attachment["source"] == "tailored"
+assert attachment["format"] == "pdf"
+'
+curl -fsS -X POST "http://127.0.0.1:$PORT/api/autofill/finish" \
+  -H "Content-Type: application/json" -d '{"jobId":1}' >/dev/null
+
+other_job_attachment="$(
+  curl -fsS "http://127.0.0.1:$PORT/api/autofill/next?jobId=2"
+)"
+printf '%s' "$other_job_attachment" | python3 -c '
+import json, sys
+attachment = json.load(sys.stdin)["job"]["resumeAttachment"]
+assert attachment["source"] == "master"
+assert attachment["variantId"] is None
+'
+curl -fsS -X POST "http://127.0.0.1:$PORT/api/autofill/finish" \
+  -H "Content-Type: application/json" -d '{"jobId":2}' >/dev/null
 
 curl -fsS -D "$TEST_DATA/docx.headers" \
   -o "$TEST_DATA/tailored.docx" \

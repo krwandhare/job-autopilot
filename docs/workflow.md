@@ -17,7 +17,8 @@ This document describes behavior present in the repository. “Implemented” me
 ### Incomplete or unverified
 
 - Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.
-- Only the latest resume is used; there is no resume history UI or selection by job.
+- The latest uploaded resume remains the master. An approved, validated
+  job-specific variant can override it only for that exact job in autofill.
 - Saving a resume or filters does not rescore existing jobs immediately. Run synchronization or re-import a URL to compute new scores.
 - PDF/DOCX/TXT parsing was not exercised during this documentation session.
 
@@ -139,7 +140,8 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
    directly. A job leased by another local runtime returns a conflict instead
    of opening twice. The Auto-fill card displays salary, extracted
    responsibilities/qualifications, skills mentioned in the posting, and known
-   posting skills absent from the resume.
+   posting skills absent from the resume, plus the exact resume filename and
+   whether it is an approved job-specific artifact or the master fallback.
 3. Click “Start filling.”
 4. The server verifies or acquires the current runtime's claim, extends it from
    a five-minute queue reservation to a two-hour browser-session lease, then
@@ -147,7 +149,11 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 5. Direct Lever listing URLs are changed to `/apply`.
 6. The filler checks page failures and visible CAPTCHA/bot-block signals.
 7. It resolves the page itself or a lazy Greenhouse/Lever iframe, scans fields, and tags them with ephemeral IDs.
-8. It attaches the stored resume, fills a stored/latest generated cover letter when possible, and applies remembered profile answers.
+8. It attaches the exact job's current approved and round-trip-validated
+   tailored artifact when one exists. DOCX is the default unless PDF was
+   explicitly selected. A different job, changed posting/resume/evidence,
+   missing file, or absent approval falls back to the master resume. A failed
+   attachment is surfaced for manual handling rather than silently ignored.
 9. The UI asks for remaining values; saved answers are reused by semantic key on later jobs. A grouped radio/checkbox question is presented once with its real options instead of once per option.
    Search-as-you-type location controls are cleared before retries, wait for their live suggestion list, and may retry a shorter city query; success still requires clicking a real suggestion.
 10. Policy acknowledgements, certifications, and other agreement checkboxes retain their full parent question and remain manual-only by default. In explicitly selected submit mode, the two narrowly allowlisted Twilio Applicant Privacy Policy and Candidate AI Responsible Use Policy acknowledgements are checked automatically after the confirmation dialog names that behavior; all other agreements remain manual.
@@ -165,6 +171,8 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 ### Implemented
 
 - A missing file field can be answered from the Auto-fill UI.
+- The queue and actual filler share one exact-job resume selector, so the file
+  previewed to the user is the one the filler attempts to attach.
 - The file is written under a unique local subdirectory while preserving a sanitized clean basename.
 - Playwright attaches that path to the live input.
 - If the semantic field key is `resume`, the latest resume row's canonical `file_path` is updated for future jobs.

@@ -17,6 +17,9 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Approved-only ATS-safe DOCX/PDF artifacts with preserved contact header,
   simple formatting, full round-trip text validation, visual PDF QA, and
   validated-only downloads.
+- Exact-job autofill attachment selection with visible filename/source,
+  user-selectable DOCX/PDF preference, current-evidence/posting checks, and
+  safe master-resume fallback.
 - Greenhouse and Lever public-board synchronization.
 - Optional Adzuna keyword/location search with local environment credentials.
 - Static curated Greenhouse/Lever source seeding.
@@ -52,9 +55,6 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 
 ## Near-term improvements
 
-- Complete per-job resume tailoring: deterministic requirement coverage,
-  evidence-constrained reviewed variants, ATS-safe round-trip-validated export,
-  and exact-job approved-variant autofill selection.
 - Recompute stored job scores when profile filters or resume skills change, or clearly prompt the user to resync.
 - Add draft editing and persistence before copy/use.
 - Improve user-visible failure handling for profile, source, status, and file requests that currently assume successful JSON responses.

@@ -245,10 +245,20 @@ store, and remains unsuitable for serverless deployment.
 3. checks common load failures and CAPTCHA/bot-block signals;
 4. resolves the page or a lazily loaded Greenhouse/Lever iframe;
 5. asks `fieldMatcher.ts` to scan and tag controls with temporary `data-autofill-id` attributes;
-6. fills the stored resume, latest draft or generated cover letter, and remembered profile answers;
+6. selects an exact-job approved, passed, current resume artifact when
+   available, otherwise the latest master resume, then fills that file, the
+   latest draft or generated cover letter, and remembered profile answers;
 7. returns missing fields and manual-only fields to the UI.
 
 `fieldMatcher.ts` classifies semantic fields, native inputs/selects, React-style comboboxes, search-as-you-type controls, custom questions, sensitive exclusions, and grouped radio/checkbox controls. It collapses each option group into one answerable question while retaining policy acknowledgements and certifications as manual-only controls with their full parent question. Submit-mode orchestration has a narrow text allowlist for Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy acknowledgements; it does not generalize to other agreements. Stored answers are checked against live options and re-surfaced when they no longer apply.
+
+The queue preview and filler both call
+`selectResumeAttachmentForJob()`—they cannot disagree about the file. The
+selector requires the exact job, current posting fingerprint, latest master
+resume, unchanged verified evidence, approved status, passed round-trip
+validation, and an existing local file. It honors the saved DOCX/PDF
+preference, tries the other validated format if that file is missing, and then
+falls back to the master resume. It never selects another job's variant.
 
 In opt-in submit mode, the filler locates and clicks a narrowly matched submit button only after all fillable questions are resolved and no manual-only controls remain. It requires a navigation or confirmation-text signal; otherwise it leaves the browser open and reports an unconfirmed result. `finish` only closes the browser and never proves employer receipt.
 
@@ -281,6 +291,7 @@ Resume upload -> extract text -> detect/edit skills -> SQLite + local file
 Job description -> requirement extraction -> verified-evidence coverage
 Verified evidence + coverage -> draft variant -> human review -> approved variant
 Approved variant -> DOCX/PDF render -> reparse all expected text -> validated download
+Exact job + current approved artifact -> autofill attachment (otherwise master resume)
 Filters ----------------------------------------------------------+
 Source config -> external source -> NormalizedJob -> scoreJob -----+-> jobs table
 LinkedIn URL -> one public page -> NormalizedJob -> scoreJob ------+
