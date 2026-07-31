@@ -22,7 +22,8 @@ try {
       location TEXT,
       remote INTEGER NOT NULL DEFAULT 0,
       match_score REAL,
-      fetched_at TEXT NOT NULL
+      fetched_at TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT ''
     );
     CREATE TABLE job_actions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,18 +41,22 @@ try {
 
   const insertJob = db.prepare(
     `INSERT INTO jobs
-       (id, status, title, company, location, remote, match_score, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, status, title, company, location, remote, match_score, fetched_at, url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  insertJob.run(1, "watchlist", "Platform Engineer", "Example One", "Remote", 1, 75, "2026-07-30 10:00:00");
-  insertJob.run(2, "needs_code", "Backend Engineer", "Example Two", "New York", 0, 90, "2026-07-30 11:00:00");
-  insertJob.run(3, "new", "Frontend Engineer", "Example Three", "Boston", 0, 80, "2026-07-30 12:00:00");
+  insertJob.run(1, "watchlist", "Platform Engineer", "Example One", "Remote", 1, 75, "2026-07-30 10:00:00", "https://example.com/jobs/1");
+  insertJob.run(2, "needs_code", "Backend Engineer", "Example Two", "New York", 0, 90, "2026-07-30 11:00:00", "https://example.com/jobs/2");
+  insertJob.run(3, "new", "Frontend Engineer", "Example Three", "Boston", 0, 80, "2026-07-30 12:00:00", "https://example.com/jobs/3");
+  insertJob.run(4, "external_lead", "Staff Engineer", "Example Four", "Remote", 1, 60, "2026-07-30 13:00:00", "https://www.linkedin.com/jobs/view/999/");
 
   let actions = getDashboardActions(db);
-  assert.equal(actions.length, 2);
-  assert.deepEqual(actions.map((action) => action.jobId), [2, 1]);
+  assert.equal(actions.length, 3);
+  assert.deepEqual(actions.map((action) => action.jobId), [2, 4, 1]);
   assert.equal(actions[0].reasonCode, "verification_code_required");
   assert.equal(actions[0].primaryHref, "/autofill?jobId=2");
+  assert.equal(actions[1].url, "https://www.linkedin.com/jobs/view/999/");
+  assert.equal(actions[1].primaryHref, "https://www.linkedin.com/jobs/view/999/");
+  assert.equal(actions[1].primaryLabel, "View posting ↗");
 
   recordJobAction(db, 2, {
     actionType: "verification",
@@ -68,7 +73,7 @@ try {
   resolveJobActions(db, 2);
   db.prepare("UPDATE jobs SET status = 'applied' WHERE id = 2").run();
   actions = getDashboardActions(db);
-  assert.deepEqual(actions.map((action) => action.jobId), [1]);
+  assert.deepEqual(actions.map((action) => action.jobId), [4, 1]);
 
   console.log("Action Center data-model checks passed.");
 } finally {

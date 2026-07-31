@@ -27,6 +27,7 @@ export type DashboardAction = {
   location: string | null;
   remote: boolean;
   matchScore: number | null;
+  url: string;
   actionType: string;
   reasonCode: string;
   reasonText: string;
@@ -69,7 +70,7 @@ const ACTION_CONFIG: Record<ActionableStatus, ActionConfig> = {
     reasonCode: "external_application_required",
     reasonText:
       "This opportunity was captured as an external lead and needs to be reviewed on its original site.",
-    primaryLabel: "Review external lead",
+    primaryLabel: "View posting ↗",
     priority: 30,
   },
   drafted: {
@@ -160,6 +161,7 @@ export function getDashboardActions(db: Database.Database): DashboardAction[] {
          j.remote,
          j.match_score,
          j.fetched_at,
+         j.url,
          a.id AS action_id,
          a.action_type,
          a.reason_code,
@@ -202,6 +204,7 @@ export function getDashboardActions(db: Database.Database): DashboardAction[] {
         location: row.location == null ? null : String(row.location),
         remote: !!row.remote,
         matchScore: row.match_score == null ? null : Number(row.match_score),
+        url: String(row.url),
         actionType: row.action_type ? String(row.action_type) : config.actionType,
         reasonCode: row.reason_code ? String(row.reason_code) : config.reasonCode,
         reasonText: row.reason_text ? String(row.reason_text) : config.reasonText,
@@ -213,7 +216,9 @@ export function getDashboardActions(db: Database.Database): DashboardAction[] {
         primaryHref:
           status === "needs_code" || status === "needs_review"
             ? `/autofill?jobId=${jobId}`
-            : `/jobs/${jobId}`,
+            : status === "external_lead"
+              ? String(row.url)
+              : `/jobs/${jobId}`,
         priority: config.priority,
       };
     })
