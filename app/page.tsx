@@ -30,6 +30,7 @@ type DashboardAction = {
   location: string | null;
   remote: boolean;
   matchScore: number | null;
+  url: string;
   reasonText: string;
   details: string[];
   updatedAt: string;
@@ -232,6 +233,20 @@ export default function DashboardPage() {
     loadActions();
   }
 
+  const [decidingJobId, setDecidingJobId] = useState<number | null>(null);
+
+  async function decideAction(jobId: number, status: string) {
+    setDecidingJobId(jobId);
+    await fetch(`/api/jobs/${jobId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    setDecidingJobId(null);
+    loadActions();
+    loadJobs(statusFilter, page, showAll);
+  }
+
   async function importLinkedin() {
     if (!linkedinUrl.trim()) return;
     setImporting(true);
@@ -396,18 +411,49 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Link
-                    href={action.primaryHref}
-                    className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
-                  >
-                    {action.primaryLabel}
-                  </Link>
+                  {action.primaryHref.startsWith("http") ? (
+                    <a
+                      href={action.primaryHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                    >
+                      {action.primaryLabel}
+                    </a>
+                  ) : (
+                    <Link
+                      href={action.primaryHref}
+                      className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                    >
+                      {action.primaryLabel}
+                    </Link>
+                  )}
                   <Link
                     href={`/jobs/${action.jobId}`}
                     className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
                     Job details
                   </Link>
+                  {action.status === "external_lead" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => decideAction(action.jobId, "applied")}
+                        disabled={decidingJobId === action.jobId}
+                        className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                      >
+                        I applied
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => decideAction(action.jobId, "rejected")}
+                        disabled={decidingJobId === action.jobId}
+                        className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Not interested
+                      </button>
+                    </>
+                  )}
                 </div>
               </article>
             );
