@@ -1,5 +1,38 @@
 # Session Handoff
 
+## LinkedIn digest title/company HTML-entity decoding fix
+
+Follow-up to the 0-applications fix below: the user asked to also fix the
+literal `&amp;` spotted in job 23's title on the Applications page.
+
+- Root cause: LinkedIn's job-alert email's `text/plain` MIME part is
+  generated from its HTML alternative without decoding entities, so a
+  title/company containing e.g. `&` arrives in the digest body literally
+  as `&amp;`. `lib/sources/gmailLeads.ts`'s `extractLeadsFromDigest()`
+  used the raw lines as-is with no decoding step.
+- Fixed by exporting the existing `decodeEntities()` helper from
+  `lib/sources/html.ts` (previously only used internally by `stripHtml()`
+  for Greenhouse's entity-encoded HTML descriptions) and applying it to
+  the parsed `title`/`company` in `gmailLeads.ts`.
+- A live scan of `data/app.db` (`title`/`company` LIKE '%&%;%') confirmed
+  job 23 was the only affected row (its `company` field happened not to
+  contain the entity, only `title` did). Backed up `data/app.db` again,
+  then corrected job 23's stored title in place with a targeted SQL
+  `replace()`.
+- Added a regression case to `scripts/test-gmail-leads.mjs` covering a
+  digest block with `&amp;` in both title and company lines, asserting
+  the decoded `&` in the returned lead.
+- `npm run test:gmail-leads`, `test:action-center`, `test:applications`,
+  `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+  Live-verified via a real headless-browser screenshot of `/applications`
+  showing "Jack & Jill hiring ..." instead of the literal entity, and via
+  a direct `GET /api/applications` check. Temporary server and script
+  removed afterward.
+- Changed files: `lib/sources/html.ts` (exported `decodeEntities`),
+  `lib/sources/gmailLeads.ts` (applies it), `scripts/test-gmail-leads.mjs`
+  (regression case). The already-staged, unrelated page changes in this
+  worktree were left untouched.
+
 ## Applications page showing 0 applications (ship-feature run)
 
 Requirement: the user reported the `/applications` page showing 0

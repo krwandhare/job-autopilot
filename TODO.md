@@ -2,11 +2,6 @@
 
 ## In Progress
 
-- Job 23's LinkedIn-imported title displays a literal `&amp;` instead of a
-  decoded `&` on the Applications page (found while fixing the
-  0-applications bug on 2026-07-31; unrelated to that fix, not yet
-  addressed).
-
 - **Re-upload the current resume.** Its `file_path` was accidentally
   overwritten during error-handling audit testing (`f56521d`) and had to be
   nulled out rather than left pointing at a fake test file -- the real file
@@ -48,6 +43,18 @@
 
 ## Completed
 
+- Fixed LinkedIn Gmail-alert job titles/companies displaying literal HTML
+  entities (e.g. `&amp;` instead of `&`): LinkedIn's alert-email
+  `text/plain` MIME part is generated from the HTML alternative without
+  decoding entities, and `lib/sources/gmailLeads.ts` used those lines
+  as-is. Exported the existing `decodeEntities()` helper from
+  `lib/sources/html.ts` and applied it to the parsed title/company.
+  Corrected the one already-affected live row (job 23's title) after
+  backing up `data/app.db`. Added a regression case to
+  `scripts/test-gmail-leads.mjs`; `npm run test:gmail-leads`,
+  `test:action-center`, `test:applications`, lint, strict TypeScript, and
+  the production build all passed. Live-verified via a real headless
+  browser screenshot of `/applications` showing the decoded title.
 - Fixed the Applications page showing 0 applications: the Auto-fill &
   submit background confirmation watcher (`startSubmissionWatcher()` in
   `lib/autofill/filler.ts`) marked jobs `applied` via a direct SQL update
