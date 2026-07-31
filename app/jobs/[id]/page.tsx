@@ -164,7 +164,9 @@ export default function JobDetailPage({
   }
 
   async function loadResumeVariant() {
-    const res = await fetch(`/api/jobs/${id}/resume-variant`);
+    const res = await fetch(`/api/jobs/${id}/resume-variant`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     if (res.ok) {
       setResumeVariant(data.variant);
@@ -180,7 +182,9 @@ export default function JobDetailPage({
   }
 
   async function loadArtifacts(variantId: number) {
-    const res = await fetch(`/api/resume-variants/${variantId}/artifacts`);
+    const res = await fetch(`/api/resume-variants/${variantId}/artifacts`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     if (res.ok) {
       setResumeArtifacts(data.artifacts ?? []);
@@ -193,6 +197,23 @@ export default function JobDetailPage({
     load();
     loadResumeAnalysis();
     loadResumeVariant();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    const refreshResumeFiles = () => {
+      if (document.visibilityState === "visible") {
+        void loadResumeVariant();
+      }
+    };
+
+    window.addEventListener("pageshow", refreshResumeFiles);
+    document.addEventListener("visibilitychange", refreshResumeFiles);
+    return () => {
+      window.removeEventListener("pageshow", refreshResumeFiles);
+      document.removeEventListener("visibilitychange", refreshResumeFiles);
+    };
+    // Refresh server-backed file state when a cached tab is restored or resumed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -680,6 +701,8 @@ export default function JobDetailPage({
                         {artifact.downloadUrl && (
                           <a
                             href={artifact.downloadUrl}
+                            target="_blank"
+                            rel="noreferrer"
                             className="mt-2 inline-block text-sm font-medium text-blue-700 underline"
                           >
                             Download {artifact.format.toUpperCase()}

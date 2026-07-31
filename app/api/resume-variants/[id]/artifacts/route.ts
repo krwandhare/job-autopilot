@@ -25,9 +25,16 @@ export async function GET(
   if (!variant) {
     return NextResponse.json({ error: "Variant not found" }, { status: 404 });
   }
-  return NextResponse.json({
-    artifacts: getResumeArtifactSummaries(db, variantId),
-  });
+  return NextResponse.json(
+    {
+      artifacts: getResumeArtifactSummaries(db, variantId),
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    }
+  );
 }
 
 export async function POST(

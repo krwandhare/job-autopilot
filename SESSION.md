@@ -430,3 +430,17 @@ round-trip edge case:
 - Focused assertions cover both the allowed long-line normalization and the
   strict short-token boundary. The full disposable DOCX/PDF artifact suite,
   lint, strict TypeScript, and `git diff --check` passed.
+
+The next real job-detail review exposed a client-state issue rather than an
+artifact-generation failure:
+
+- Job 15442's approved variant and both validated artifacts existed, and a
+  fresh page rendered both download links, while an already-open/restored tab
+  could retain an older empty artifact state.
+- Artifact GET responses now use `Cache-Control: no-store`; client artifact and
+  variant reads bypass caches; restored or newly visible job tabs refresh the
+  current files; and download links open separately so the job page remains
+  available.
+- Live browser verification on the local shared server confirmed visible DOCX
+  and PDF links for variant 10, both targeting a separate tab. Lint, strict
+  TypeScript, production build, and `git diff --check` passed.

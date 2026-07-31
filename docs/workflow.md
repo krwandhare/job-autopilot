@@ -46,6 +46,12 @@ because PDF text extraction can normalize hyphens, dashes, or similar glyphs.
 Short skills and values remain strict so `C`, `C++`, and other compact tokens
 cannot be treated as interchangeable.
 
+Artifact summary reads are explicitly uncached. The job-detail page reloads
+the current variant and its files when a restored or backgrounded tab becomes
+visible again, preventing an old empty artifact state from hiding validated
+downloads. Download links open separately so reviewing a file does not replace
+the job-detail workflow.
+
 ### Incomplete or unverified
 
 - Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.

@@ -28,6 +28,9 @@
 
 ## Completed
 
+- Made job-specific resume download controls resilient to restored/mobile tab
+  state. Artifact reads bypass caches, visible/restored job tabs refresh their
+  file summaries, and downloads open separately from the job-detail page.
 - Made generated-PDF validation robust to punctuation-glyph normalization for
   multi-word narrative lines while preserving strict matching for short skills
   and values. This removes false missing-line failures without weakening
