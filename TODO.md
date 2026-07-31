@@ -39,6 +39,11 @@
 
 ## Completed
 
+- Added the vendor-neutral `ship-feature` requirement-to-handoff workflow,
+  project adapters for Claude Code and Gemini CLI, the universal
+  `SHIP-FEATURE:` trigger, and a personal Codex `$ship-feature` skill with a
+  bundled fallback for repositories that do not define their own workflow.
+
 - Reconciled Claude's Gmail lead intake and application/response tracking with
   Codex's truthful resume-tailoring stack. Both schema families, job/profile/
   autofill UI behavior, and all test commands are preserved; focused model,
