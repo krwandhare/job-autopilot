@@ -174,6 +174,11 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
   returned HTTP 409, owner cleanup made a job reclaimable, structured action
   details round-tripped through `/api/jobs/[id]` and `/api/actions`, and all
   claims were released. The temporary processes and database were removed.
+- Structured blocker outcomes were committed as `0f2c470`; the reusable
+  two-instance route E2E and final handoff updates were committed as
+  `606d5d4`. The guarded `action-outcomes` integration passed lint, strict
+  TypeScript, and the production build and atomically advanced
+  `integration/concurrent-work` to `0a061d2`.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -195,6 +200,6 @@ autofill safety boundaries.
 
 ## Exact next recommended task
 
-Checkpoint and guarded-integrate the passed two-instance route E2E, then update
-the documented integration baseline and hand the next isolated feature to the
-appropriate agent.
+Live-run Claude's rate-limited Gmail-alert LinkedIn lead importer through the
+shared runtime and verify deduplication plus `external_lead` tagging without
+allowing imported alerts into the `new` autofill queue.
