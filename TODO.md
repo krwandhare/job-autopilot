@@ -2,8 +2,8 @@
 
 ## In Progress
 
-- Connect autofill and queue-runner blocker outcomes to structured Action
-  Center reasons after Claude incorporates the shared-runtime baseline.
+- Run combined two-instance route E2E against a disposable shared database,
+  then integrate the structured blocker-outcome checkpoint.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
 - Manually verify the new opt-in "Auto-fill & submit" mode against a real, user-authorized test application before relying on it for real submissions -- static checks and a production build passed, but no live ATS run has confirmed the submit-control detection or confirmation logic yet.
 - Retest Twilio's location autocomplete, grouped referral-source question, the narrowly allowlisted submit-mode policy acknowledgements, and exact manual-blocker messaging in a visible browser; static checks pass, but the live form has not been rerun after the latest fixes.
@@ -28,6 +28,9 @@
 
 ## Completed
 
+- Connected autofill start, verification-code, submission-watcher, and
+  unattended queue outcomes to privacy-bounded Action Center reasons. Added
+  deterministic model and queue-payload checks.
 - Added explicit shared runtime paths, a two-server development launcher,
   SQLite busy handling, and expiring atomic autofill job claims. Queue
   reservation/start/finish now enforce owner-safe selection and cleanup;

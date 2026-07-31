@@ -1,0 +1,12 @@
+# Structured autofill/queue outcomes feeding the dashboard Action Center.
+config/agent-tasks/action-outcomes.allow
+app/api/autofill/**
+lib/autofill/**
+lib/actions.ts
+scripts/queue-runner.sh
+scripts/test-queue-runner.sh
+scripts/test-action-center.mjs
+package.json
+SESSION.md
+TODO.md
+docs/**

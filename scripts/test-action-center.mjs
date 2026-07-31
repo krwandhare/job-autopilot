@@ -5,6 +5,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import {
   getDashboardActions,
+  parkJobWithAction,
   recordJobAction,
   resolveJobActions,
 } from "../lib/actions.ts";
@@ -65,10 +66,26 @@ try {
   assert.deepEqual(actions[0].details, ["Check the inbox used for this application."]);
   assert.equal(actions[0].source, "autofill");
 
+  assert.equal(
+    parkJobWithAction(db, 3, "needs_review", {
+      actionType: "application_review",
+      reasonCode: "unanswered_questions",
+      reasonText: "The application has questions that need your answer.",
+      details: ["Expected salary"],
+      source: "queue_runner",
+    }),
+    true
+  );
+  actions = getDashboardActions(db);
+  assert.equal(actions[1].jobId, 3);
+  assert.equal(actions[1].reasonCode, "unanswered_questions");
+  assert.deepEqual(actions[1].details, ["Expected salary"]);
+
   resolveJobActions(db, 2);
   db.prepare("UPDATE jobs SET status = 'applied' WHERE id = 2").run();
   actions = getDashboardActions(db);
-  assert.deepEqual(actions.map((action) => action.jobId), [1]);
+  assert.deepEqual(actions.map((action) => action.jobId), [3, 1]);
+  assert.equal(actions.some((action) => action.jobId === 2), false);
 
   console.log("Action Center data-model checks passed.");
 } finally {

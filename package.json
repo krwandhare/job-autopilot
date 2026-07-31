@@ -11,6 +11,7 @@
     "dev:shared": "scripts/dev-shared-runtime.sh",
     "test:integration-automation": "bash scripts/test-integration-automation.sh",
     "test:action-center": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-action-center.mjs",
+    "test:queue-runner": "bash scripts/test-queue-runner.sh",
     "test:shared-runtime": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-shared-runtime.mjs"
   },
   "dependencies": {

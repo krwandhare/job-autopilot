@@ -114,8 +114,14 @@ export function recordJobAction(
   jobId: number,
   input: JobActionInput
 ): void {
-  const details = (input.details ?? []).map((detail) => detail.trim()).filter(Boolean).slice(0, 10);
-  const source = input.source?.trim() || "status";
+  const details = (input.details ?? [])
+    .map((detail) => detail.trim().slice(0, 500))
+    .filter(Boolean)
+    .slice(0, 10);
+  const actionType = input.actionType.trim().slice(0, 100);
+  const reasonCode = input.reasonCode.trim().slice(0, 100);
+  const reasonText = input.reasonText.trim().slice(0, 1000);
+  const source = (input.source?.trim() || "status").slice(0, 100);
 
   const write = db.transaction(() => {
     db.prepare(
@@ -129,14 +135,36 @@ export function recordJobAction(
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(
       jobId,
-      input.actionType.trim(),
-      input.reasonCode.trim(),
-      input.reasonText.trim(),
+      actionType,
+      reasonCode,
+      reasonText,
       JSON.stringify(details),
       source
     );
   });
   write();
+}
+
+export function parkJobWithAction(
+  db: Database.Database,
+  jobId: number,
+  status: Extract<ActionableStatus, "needs_code" | "needs_review">,
+  input: JobActionInput,
+  allowedCurrentStatuses: readonly string[] = ["new", "needs_review"]
+): boolean {
+  const park = db.transaction(() => {
+    const current = db.prepare("SELECT status FROM jobs WHERE id = ?").get(jobId) as
+      | { status: string }
+      | undefined;
+    if (!current || !allowedCurrentStatuses.includes(current.status)) return false;
+
+    if (current.status !== status) {
+      db.prepare("UPDATE jobs SET status = ? WHERE id = ?").run(status, jobId);
+    }
+    recordJobAction(db, jobId, input);
+    return true;
+  });
+  return park();
 }
 
 export function resolveJobActions(db: Database.Database, jobId: number): void {
