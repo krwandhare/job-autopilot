@@ -29,6 +29,7 @@ If you change `lib/db.ts` (schema), the running server's cached DB connection wo
 ## This app touches real production data
 
 The shared DB is the user's actual job-search data (real leads, real applications, real Gmail sync). When testing status-changing endpoints:
+- **Check a job's current status before PATCHing it for a "happy path" test, not just after.** Don't grab "the first job the API returns" and assume it's safe -- `GET /api/jobs` sorts by match_score/fetched_at, not by status, so the first result can easily be a real `applied` job. Mistakenly overwrote one to `new` this way once; fixing it required checking whether an `applications` row existed (it predated the tracking feature, so it didn't) and restoring the status via direct SQL rather than through the API, since re-PATCHing to `applied` through the app would create a fresh "applied today" tracking record for an application that actually happened earlier.
 - Prefer picking a fresh `status=new` job and reverting it (`PATCH status back to "new"`, `DELETE FROM applications WHERE job_id=...`) afterward.
 - Check `job_claims` before and after (`SELECT * FROM job_claims`) -- release anything you claimed via `POST /api/autofill/finish {"jobId":...}` so nothing is left locked.
 - A **separate `codex` owner may hold active claims concurrently** -- this is expected (Codex works the same live DB in a sibling worktree), not a bug. Never touch a claim you don't own.

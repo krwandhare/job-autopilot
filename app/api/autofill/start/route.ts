@@ -3,6 +3,7 @@ import { runFiller, type RunFillerResult } from "@/lib/autofill/filler";
 import { getDb } from "@/lib/db";
 import { claimJob } from "@/lib/jobClaims";
 import { getRuntimeInstanceId } from "@/lib/runtimePaths";
+import { parseJsonBody } from "@/lib/apiUtils";
 import { parkJobWithAction, type JobActionInput } from "@/lib/actions";
 
 function fieldLabels(result: Extract<RunFillerResult, { missingFields: unknown }>): string[] {
@@ -71,7 +72,9 @@ function actionForResult(
 }
 
 export async function POST(req: NextRequest) {
-  const { jobId, mode } = await req.json();
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { jobId, mode } = parsed.body as { jobId?: unknown; mode?: unknown };
   if (!jobId) {
     return NextResponse.json({ error: "jobId is required" }, { status: 400 });
   }

@@ -306,11 +306,19 @@ export default function AutofillPage() {
       return;
     }
     setSaving(null);
+    const data = await res.json().catch(() => ({}) as { error?: string; filled?: boolean });
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}) as { error?: string });
       setFieldErrors((e) => ({
         ...e,
         [field.autofillId]: data.error ?? `Could not upload this file (HTTP ${res.status}).`,
+      }));
+      return;
+    }
+    if (data.filled === false) {
+      setFieldErrors((e) => ({
+        ...e,
+        [field.autofillId]:
+          "The file was saved, but couldn't be attached to the live form -- the browser window may have closed. Check it and try again.",
       }));
       return;
     }

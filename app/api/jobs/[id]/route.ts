@@ -8,6 +8,7 @@ import {
   type JobActionInput,
 } from "@/lib/actions";
 import { createApplication, type ApplicationSource } from "@/lib/applications";
+import { parseJsonBody } from "@/lib/apiUtils";
 
 const APPLICATION_SOURCES: ApplicationSource[] = [
   "manual",
@@ -93,7 +94,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body: unknown = await req.json();
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }

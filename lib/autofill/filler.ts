@@ -541,14 +541,16 @@ export async function fillFileField(
   jobId: number,
   field: MissingField,
   filePath: string
-): Promise<void> {
-  await withJobLock(jobId, async () => {
+): Promise<boolean> {
+  return withJobLock(jobId, async () => {
     try {
       const session = await getOrCreateSession(jobId);
       const target = await resolveFillTarget(session);
       await locatorFor(target, field.autofillId).setInputFiles(filePath);
+      return true;
     } catch {
       await closeSession(jobId);
+      return false;
     }
   });
 }

@@ -11,7 +11,12 @@ function sanitizeFilename(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const formData = await req.formData();
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid or malformed form data" }, { status: 400 });
+  }
   const file = formData.get("file");
   const jobId = Number(formData.get("jobId"));
   const autofillId = String(formData.get("autofillId") ?? "");
@@ -26,7 +31,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   // Playwright's setInputFiles() attaches this exact file, and the real
   // application form reports its on-disk *basename* to the employer's ATS
   // as the uploaded filename -- so it must stay the user's original clean
@@ -35,9 +39,17 @@ export async function POST(req: NextRequest) {
   // looks unprofessional and reveals automation was used. Uniqueness on
   // disk comes from a per-upload subfolder instead of mangling the filename.
   const uploadDir = path.join(getResumesDir(), `autofill-${jobId}-${Date.now()}`);
-  fs.mkdirSync(uploadDir, { recursive: true });
   const filePath = path.join(uploadDir, sanitizeFilename(file.name));
-  fs.writeFileSync(filePath, buffer);
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    fs.mkdirSync(uploadDir, { recursive: true });
+    fs.writeFileSync(filePath, buffer);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to save the uploaded file" },
+      { status: 500 }
+    );
+  }
 
   // Picking a file for the resume field here also saves it as the app's
   // canonical stored resume, so every future job auto-attaches it without
@@ -52,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await fillFileField(jobId, { autofillId, key, label, kind }, filePath);
+  const filled = await fillFileField(jobId, { autofillId, key, label, kind }, filePath);
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, filled });
 }

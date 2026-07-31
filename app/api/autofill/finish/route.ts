@@ -3,9 +3,12 @@ import { closeSession } from "@/lib/autofill/session";
 import { getDb } from "@/lib/db";
 import { releaseJobClaimByOwner } from "@/lib/jobClaims";
 import { getRuntimeInstanceId } from "@/lib/runtimePaths";
+import { parseJsonBody } from "@/lib/apiUtils";
 
 export async function POST(req: NextRequest) {
-  const { jobId } = await req.json();
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { jobId } = parsed.body as { jobId?: unknown };
   if (!jobId) {
     return NextResponse.json({ error: "jobId is required" }, { status: 400 });
   }

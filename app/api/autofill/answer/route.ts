@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { fillAnsweredField, type MissingField } from "@/lib/autofill/filler";
+import { parseJsonBody } from "@/lib/apiUtils";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { jobId, autofillId, key, label, kind, answer, options, isCombobox, isOptionGroup } = body as {
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { jobId, autofillId, key, label, kind, answer, options, isCombobox, isOptionGroup } = parsed.body as {
     jobId: number;
     autofillId: string;
     key: string;

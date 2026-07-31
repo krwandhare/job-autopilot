@@ -47,6 +47,8 @@ yarn-error.log*
 # background queue runner
 /data/queue-runner.log
 /data/queue-runner.pid
+/data/gmail-sync-runner.log
+/data/gmail-sync-runner.pid
 
 # typescript
 *.tsbuildinfo
