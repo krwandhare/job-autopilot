@@ -659,3 +659,15 @@ Follow-up review found that the first hierarchy rule recognized Oracle's
   `npx tsc --noEmit`, `npm run build`, and `git diff --check` passed. The first
   sandboxed browser run could not bind its local test port; the approved local
   rerun passed.
+
+Follow-up runner compatibility fix:
+
+- Declared the package as ESM with `"type": "module"` so Node and external
+  TypeScript runners consistently parse the test's imports and
+  `import.meta.dirname` instead of treating the file as CommonJS.
+- The repository contains no CommonJS `.js` modules; existing executable test
+  helpers already use `.mjs`, so the package declaration matches the current
+  source and script conventions.
+- The retest also replaced the fixed default port with a per-process port and
+  waits for the child server to exit before deleting its runtime directory,
+  preventing stale-server readiness from racing a new disposable database.

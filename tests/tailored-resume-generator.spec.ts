@@ -15,16 +15,22 @@ const fixturePath = path.join(
 const runtimeDir = fs.mkdtempSync(
   path.join(os.tmpdir(), "job-autopilot-tailored-resume-e2e-")
 );
-const port = Number(process.env.JOB_AUTOPILOT_TAILORED_RESUME_PORT ?? "43106");
+const port = Number(
+  process.env.JOB_AUTOPILOT_TAILORED_RESUME_PORT ?? 43_000 + (process.pid % 1_000)
+);
 const baseUrl = `http://127.0.0.1:${port}`;
 const serverLogPath = path.join(runtimeDir, "server.log");
 
 let browser: Browser | undefined;
 let server: ChildProcess | undefined;
 
-function stopServer(): void {
+async function stopServer(): Promise<void> {
   if (!server || server.killed) return;
   server.kill("SIGTERM");
+  await Promise.race([
+    new Promise<void>((resolve) => server?.once("exit", () => resolve())),
+    delay(5_000).then(() => undefined),
+  ]);
 }
 
 async function waitForServer(): Promise<void> {
@@ -217,6 +223,6 @@ run()
   })
   .finally(async () => {
     await browser?.close();
-    stopServer();
+    await stopServer();
     fs.rmSync(runtimeDir, { recursive: true, force: true });
   });
