@@ -2,14 +2,8 @@
 
 ## In Progress
 
-- Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
-  asked for both on-demand (done, live) and scheduled; only the on-demand
-  button has actually been run so far.
 - Extend the error-handling audit (`3128abf` covered the four client pages)
   to API route handlers and `lib/autofill/filler.ts`'s Playwright internals.
-- Decide on the Gmail-sync summary message wording when a digest email's
-  leads exceed the rate limit mid-thread (currently reads "Imported 5
-  lead(s) from 0 alert email(s)", accurate but confusing).
 - Decide whether to delete the untracked `data/watch-and-integrate.sh`
   scratch file (abandoned background-merge-watcher, never used).
 - Tune the fit-scoring formula in `lib/matching.ts` per user judgment on
@@ -39,6 +33,17 @@
 
 ## Completed
 
+- Started `scripts/gmail-sync-runner.sh` (30 min interval) against the live
+  instance -- both on-demand and scheduled Gmail sync are now actually
+  running, not just built. Found and fixed a real bug while starting it:
+  the script was committed non-executable (`100644`, "permission denied"
+  on launch) -- the other direct-invocation shell scripts were already
+  `100755`; this one was missed (`16e607b`). First scheduled tick fired
+  immediately and imported 5 more real leads.
+- Clarified the Gmail-sync summary message (`b82c514`): the confusing
+  "Imported 5 lead(s) from 0 alert email(s)" case (rate limit hit partway
+  through the first thread) now gets its own accurate message instead of
+  reusing the normal-case template. Live-verified via the dashboard button.
 - Gave the app independent Gmail access (no agent session required):
   `lib/gmail.ts` REST client, digest-email parser, shared import/tag helper,
   `POST /api/jobs/sync-gmail`, an on-demand dashboard button, a scheduled-run

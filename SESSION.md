@@ -300,6 +300,21 @@ added:
   shared files (`lib/db.ts`, both `app/api/jobs/**` routes).
 - `feature/claude-autofill` was pushed to `origin` at the user's request
   (new remote branch, upstream tracking set); no PR opened.
+- Added two skills for future sessions: `.claude/skills/run-job-autopilot/`
+  (build/launch/drive instructions plus a minimal Playwright REPL driver,
+  since `chromium-cli` isn't installed here) and `.claude/skills/verify/`
+  (operational notes from this session's verification pass). Every command
+  in both was actually run; a literal re-verification pass of the first one
+  caught a real gap (single-instance-per-directory lock, documented with
+  the exact error text) (`e029e06`).
+- Started `scripts/gmail-sync-runner.sh` (30 min interval) against the live
+  instance -- both on-demand and scheduled Gmail sync now actually run, not
+  just built. Found the script had been committed non-executable
+  (`100644`), which the other direct-invocation shell scripts weren't;
+  fixed (`16e607b`). First scheduled tick fired immediately and imported 5
+  more real leads.
+- Clarified the Gmail-sync summary message for the rate-limited-mid-thread
+  case (`b82c514`), live-verified via the dashboard button.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -333,18 +348,12 @@ the open items below, per user direction.
 Several independent threads are open, not yet prioritized by the user as of
 this handoff:
 
-1. `scripts/gmail-sync-runner.sh` (scheduled Gmail sync) was built but never
-   started -- only the on-demand button has actually run. The user asked
-   for both.
-2. The error-handling audit covered the four client pages only; API route
+1. The error-handling audit covered the four client pages only; API route
    handlers and `lib/autofill/filler.ts`'s Playwright internals are
    unaudited.
-3. A cosmetic wording issue in the Gmail-sync summary message ("Imported 5
-   lead(s) from 0 alert email(s)" when a digest email exceeds the rate limit
-   mid-thread) was flagged but never fixed or explicitly deferred.
-4. An untracked scratch file, `data/watch-and-integrate.sh` (an abandoned
+2. An untracked scratch file, `data/watch-and-integrate.sh` (an abandoned
    background-merge-watcher from earlier in the session, never used since
    `git merge` got blocked by the auto-mode classifier), is still sitting in
    the worktree -- harmless, but the user hasn't said whether to delete it.
-5. Fit-scoring formula tuning was explicitly deferred pending the user's
+3. Fit-scoring formula tuning was explicitly deferred pending the user's
    judgment on what should weigh more (skills vs. salary vs. location, etc).
