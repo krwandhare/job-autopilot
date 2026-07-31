@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, type JobRow } from "@/lib/db";
+import { getDb, type JobRow, type ResumeRow } from "@/lib/db";
 import type { MatchResult } from "@/lib/matching";
 import { extractJobSections } from "@/lib/jobSections";
 import { claimJob, claimNextJob, QUEUE_RESERVATION_LEASE_MS } from "@/lib/jobClaims";
 import { getRuntimeInstanceId } from "@/lib/runtimePaths";
+import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
 
 export async function GET(req: NextRequest) {
   const db = getDb();
@@ -54,6 +55,10 @@ export async function GET(req: NextRequest) {
   }
 
   const sections = extractJobSections(job.description);
+  const resume = db
+    .prepare("SELECT * FROM resumes ORDER BY uploaded_at DESC, id DESC LIMIT 1")
+    .get() as ResumeRow | undefined;
+  const resumeAttachment = selectResumeAttachmentForJob(db, job, resume);
 
   return NextResponse.json({
     job: {
@@ -70,6 +75,14 @@ export async function GET(req: NextRequest) {
       responsibilities: sections.responsibilities,
       qualifications: sections.qualifications,
       status: job.status,
+      resumeAttachment: resumeAttachment
+        ? {
+            source: resumeAttachment.source,
+            filename: resumeAttachment.filename,
+            format: resumeAttachment.format,
+            variantId: resumeAttachment.variantId,
+          }
+        : null,
     },
   });
 }

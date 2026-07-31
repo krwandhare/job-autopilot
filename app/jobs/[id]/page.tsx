@@ -30,6 +30,83 @@ type Draft = {
   generatedAt: string;
 };
 
+type ResumeAnalysis = {
+  analyzedAt: string;
+  counts: {
+    required: number;
+    preferred: number;
+    context: number;
+    supported: number;
+    partial: number;
+    notEvidenced: number;
+    needsReview: number;
+  };
+  coverage: Array<{
+    requirement: {
+      id: number;
+      kind: string;
+      priority: "required" | "preferred" | "context";
+      text: string;
+      terms: string[];
+    };
+    status: "supported" | "partial" | "not_evidenced" | "needs_review";
+    matchedTerms: string[];
+    missingTerms: string[];
+    evidence: Array<{ id: number; text: string; kind: string }>;
+  }>;
+};
+
+type ResumeVariant = {
+  id: number;
+  jobId: number;
+  resumeId: number;
+  status: "draft" | "approved" | "superseded" | "rejected";
+  preferredFormat: "docx" | "pdf";
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  items: Array<{
+    id: number;
+    evidenceId: number;
+    evidenceKind: string;
+    section: string;
+    position: number;
+    originalText: string;
+    tailoredText: string;
+    rationale: string;
+    changeType: string;
+    matchedTerms: string[];
+    included: boolean;
+  }>;
+};
+
+type ResumeArtifact = {
+  format: "docx" | "pdf";
+  filename: string;
+  validationStatus: "passed" | "failed";
+  validation: {
+    expectedItemCount: number;
+    missingItemCount: number;
+    parsedCharacterCount: number;
+  };
+  downloadUrl: string | null;
+  createdAt: string;
+};
+
+const COVERAGE_LABELS = {
+  supported: "Evidence found",
+  partial: "Partial evidence",
+  not_evidenced: "Not evidenced",
+  needs_review: "Needs your review",
+};
+
+const COVERAGE_STYLES = {
+  supported: "bg-green-50 text-green-800",
+  partial: "bg-amber-50 text-amber-800",
+  not_evidenced: "bg-red-50 text-red-800",
+  needs_review: "bg-blue-50 text-blue-800",
+};
+
 const STATUS_OPTIONS = [
   "new",
   "drafted",
@@ -53,6 +130,15 @@ export default function JobDetailPage({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [resumeVariant, setResumeVariant] = useState<ResumeVariant | null>(null);
+  const [variantLoading, setVariantLoading] = useState(false);
+  const [variantError, setVariantError] = useState<string | null>(null);
+  const [savingVariantItem, setSavingVariantItem] = useState<number | null>(null);
+  const [resumeArtifacts, setResumeArtifacts] = useState<ResumeArtifact[]>([]);
+  const [artifactLoading, setArtifactLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function load() {
@@ -75,10 +161,68 @@ export default function JobDetailPage({
     }
   }
 
+  async function loadResumeAnalysis() {
+    const res = await fetch(`/api/jobs/${id}/resume-analysis`);
+    const data = await res.json();
+    if (res.ok) {
+      setResumeAnalysis(data.analysis);
+      setAnalysisError(null);
+    } else {
+      setAnalysisError(data.error ?? "Could not load resume analysis");
+    }
+  }
+
+  async function loadResumeVariant() {
+    const res = await fetch(`/api/jobs/${id}/resume-variant`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setResumeVariant(data.variant);
+      setVariantError(null);
+      if (data.variant?.id) {
+        await loadArtifacts(data.variant.id);
+      } else {
+        setResumeArtifacts([]);
+      }
+    } else {
+      setVariantError(data.error ?? "Could not load tailored resume");
+    }
+  }
+
+  async function loadArtifacts(variantId: number) {
+    const res = await fetch(`/api/resume-variants/${variantId}/artifacts`, {
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setResumeArtifacts(data.artifacts ?? []);
+    }
+  }
+
   useEffect(() => {
     // Data load on mount/id change, not synchronous render-derived state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+    loadResumeAnalysis();
+    loadResumeVariant();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    const refreshResumeFiles = () => {
+      if (document.visibilityState === "visible") {
+        void loadResumeVariant();
+      }
+    };
+
+    window.addEventListener("pageshow", refreshResumeFiles);
+    document.addEventListener("visibilitychange", refreshResumeFiles);
+    return () => {
+      window.removeEventListener("pageshow", refreshResumeFiles);
+      document.removeEventListener("visibilitychange", refreshResumeFiles);
+    };
+    // Refresh server-backed file state when a cached tab is restored or resumed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -124,6 +268,142 @@ export default function JobDetailPage({
       );
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function analyzeResume() {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const res = await fetch(`/api/jobs/${id}/resume-analysis`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not analyze this job");
+      setResumeAnalysis(data.analysis);
+    } catch (analysisFailure) {
+      setAnalysisError(
+        analysisFailure instanceof Error
+          ? analysisFailure.message
+          : "Could not analyze this job"
+      );
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }
+
+  async function generateResumeVariant() {
+    setVariantLoading(true);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/jobs/${id}/resume-variant`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not create tailored resume");
+      setResumeVariant(data.variant);
+      setResumeArtifacts([]);
+      await loadResumeAnalysis();
+    } catch (variantFailure) {
+      setVariantError(
+        variantFailure instanceof Error
+          ? variantFailure.message
+          : "Could not create tailored resume"
+      );
+    } finally {
+      setVariantLoading(false);
+    }
+  }
+
+  async function setVariantItemIncluded(itemId: number, included: boolean) {
+    if (!resumeVariant) return;
+    setSavingVariantItem(itemId);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, included }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not update tailored resume");
+      setResumeVariant(data.variant);
+      await loadArtifacts(data.variant.id);
+    } catch (variantFailure) {
+      setVariantError(
+        variantFailure instanceof Error
+          ? variantFailure.message
+          : "Could not update tailored resume"
+      );
+    } finally {
+      setSavingVariantItem(null);
+    }
+  }
+
+  async function generateArtifacts() {
+    if (!resumeVariant) return;
+    setArtifactLoading(true);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}/artifacts`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.error ??
+            "The generated files did not pass round-trip text validation"
+        );
+      }
+      setResumeArtifacts(data.artifacts ?? []);
+    } catch (artifactFailure) {
+      setVariantError(
+        artifactFailure instanceof Error
+          ? artifactFailure.message
+          : "Could not generate resume files"
+      );
+      await loadArtifacts(resumeVariant.id);
+    } finally {
+      setArtifactLoading(false);
+    }
+  }
+
+  async function setPreferredFormat(format: "docx" | "pdf") {
+    if (!resumeVariant) return;
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferredFormat: format }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not save resume format");
+      setResumeVariant(data.variant);
+    } catch (formatFailure) {
+      setVariantError(
+        formatFailure instanceof Error
+          ? formatFailure.message
+          : "Could not save resume format"
+      );
+    }
+  }
+
+  async function approveVariant() {
+    if (!resumeVariant) return;
+    setVariantLoading(true);
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/resume-variants/${resumeVariant.id}/approve`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not approve tailored resume");
+      setResumeVariant(data.variant);
+    } catch (variantFailure) {
+      setVariantError(
+        variantFailure instanceof Error
+          ? variantFailure.message
+          : "Could not approve tailored resume"
+      );
+    } finally {
+      setVariantLoading(false);
     }
   }
 
@@ -206,6 +486,329 @@ export default function JobDetailPage({
           </p>
         </div>
       )}
+
+      <section className="border rounded-lg p-4 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-medium">Resume requirement coverage</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Compares the posting with evidence you verified on your Profile. This is not an
+              employer ATS score or a guarantee of review.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={analyzeResume}
+            disabled={analysisLoading || !job.description}
+            className="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {analysisLoading
+              ? "Analyzing…"
+              : resumeAnalysis
+                ? "Refresh analysis"
+                : "Analyze requirements"}
+          </button>
+        </div>
+
+        {analysisError && (
+          <div className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+            {analysisError}{" "}
+            {analysisError.toLowerCase().includes("evidence") && (
+              <Link href="/profile" className="underline">
+                Review evidence
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!resumeAnalysis && !analysisError && (
+          <p className="text-sm text-gray-500">
+            Analyze this posting to separate required, preferred, and contextual expectations.
+          </p>
+        )}
+
+        {resumeAnalysis && (
+          <>
+            <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+              <div className="rounded bg-gray-50 p-2">
+                <span className="block text-xs text-gray-500">Required</span>
+                <span className="font-semibold">{resumeAnalysis.counts.required}</span>
+              </div>
+              <div className="rounded bg-gray-50 p-2">
+                <span className="block text-xs text-gray-500">Preferred</span>
+                <span className="font-semibold">{resumeAnalysis.counts.preferred}</span>
+              </div>
+              <div className="rounded bg-green-50 p-2">
+                <span className="block text-xs text-green-700">Evidence found</span>
+                <span className="font-semibold text-green-900">
+                  {resumeAnalysis.counts.supported}
+                </span>
+              </div>
+              <div className="rounded bg-red-50 p-2">
+                <span className="block text-xs text-red-700">Not evidenced</span>
+                <span className="font-semibold text-red-900">
+                  {resumeAnalysis.counts.notEvidenced}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {resumeAnalysis.coverage.map((item) => (
+                <article key={item.requirement.id} className="rounded border p-3 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded bg-gray-100 px-2 py-1 capitalize text-gray-700">
+                      {item.requirement.priority}
+                    </span>
+                    <span className="rounded bg-gray-100 px-2 py-1 capitalize text-gray-700">
+                      {item.requirement.kind}
+                    </span>
+                    <span
+                      className={`rounded px-2 py-1 ${COVERAGE_STYLES[item.status]}`}
+                    >
+                      {COVERAGE_LABELS[item.status]}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-800">{item.requirement.text}</p>
+                  {item.matchedTerms.length > 0 && (
+                    <p className="text-xs text-green-700">
+                      Matched verified terms: {item.matchedTerms.join(", ")}
+                    </p>
+                  )}
+                  {item.missingTerms.length > 0 && (
+                    <p className="text-xs text-red-700">
+                      Terms not found in verified evidence: {item.missingTerms.join(", ")}
+                    </p>
+                  )}
+                  {item.evidence.length > 0 && (
+                    <div className="rounded bg-gray-50 p-2">
+                      <p className="text-xs font-medium text-gray-600">Related verified evidence</p>
+                      <ul className="mt-1 list-disc pl-4 text-xs text-gray-600">
+                        {item.evidence.map((evidenceItem) => (
+                          <li key={evidenceItem.id}>{evidenceItem.text}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="border rounded-lg p-4 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-medium">Tailored resume draft</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Reorders and lightly reformats only verified evidence. No new skills,
+              achievements, dates, titles, or metrics are generated.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={generateResumeVariant}
+            disabled={variantLoading || !job.description}
+            className="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {variantLoading
+              ? "Working…"
+              : resumeVariant
+                ? "Create new draft"
+                : "Create tailored draft"}
+          </button>
+        </div>
+
+        {variantError && (
+          <div className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+            {variantError}{" "}
+            {variantError.toLowerCase().includes("evidence") && (
+              <Link href="/profile" className="underline">
+                Review evidence
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!resumeVariant && !variantError && (
+          <p className="text-sm text-gray-500">
+            Create a reviewable version after verifying your career evidence.
+          </p>
+        )}
+
+        {resumeVariant && (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded bg-gray-50 p-3">
+              <div className="text-sm">
+                <span className="font-medium capitalize">{resumeVariant.status}</span>
+                <span className="text-gray-500">
+                  {" "}
+                  · {resumeVariant.items.filter((item) => item.included).length} of{" "}
+                  {resumeVariant.items.length} verified items included
+                </span>
+              </div>
+              {resumeVariant.status === "draft" && (
+                <button
+                  type="button"
+                  onClick={approveVariant}
+                  disabled={
+                    variantLoading ||
+                    resumeVariant.items.every((item) => !item.included)
+                  }
+                  className="rounded bg-green-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+                >
+                  Approve this variant
+                </button>
+              )}
+              {resumeVariant.status === "approved" && (
+                <span className="rounded bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                  Approved for this job
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-500">
+              Approval is job-specific and auditable. Approval alone does not submit or transmit
+              anything.
+            </p>
+
+            {resumeVariant.status === "approved" && (
+              <div className="rounded border border-green-200 bg-green-50 p-3 space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-900">ATS-safe files</p>
+                    <p className="text-xs text-green-800">
+                      Simple single-column DOCX and text-based PDF. Downloads appear only after
+                      every included line survives reparsing.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={generateArtifacts}
+                    disabled={artifactLoading}
+                    className="shrink-0 rounded bg-green-800 px-4 py-2 text-sm text-white disabled:opacity-50"
+                  >
+                    {artifactLoading
+                      ? "Generating & validating…"
+                      : resumeArtifacts.length > 0
+                        ? "Regenerate files"
+                        : "Generate files"}
+                  </button>
+                </div>
+
+                {resumeArtifacts.length > 0 && (
+                  <label className="flex items-center gap-2 text-xs text-green-900">
+                    <span className="font-medium">Use in autofill:</span>
+                    <select
+                      value={resumeVariant.preferredFormat}
+                      onChange={(event) =>
+                        setPreferredFormat(event.target.value as "docx" | "pdf")
+                      }
+                      className="rounded border border-green-300 bg-white px-2 py-1"
+                      suppressHydrationWarning
+                    >
+                      <option value="docx">DOCX (default)</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                  </label>
+                )}
+
+                {resumeArtifacts.length > 0 && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {resumeArtifacts.map((artifact) => (
+                      <div key={artifact.format} className="rounded bg-white p-3 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium uppercase">{artifact.format}</span>
+                          <span
+                            className={
+                              artifact.validationStatus === "passed"
+                                ? "text-green-700"
+                                : "text-red-700"
+                            }
+                          >
+                            {artifact.validationStatus === "passed"
+                              ? "Parsing passed"
+                              : "Validation failed"}
+                          </span>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-gray-500">
+                          {artifact.filename}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {artifact.validation.expectedItemCount} expected items ·{" "}
+                          {artifact.validation.missingItemCount} missing
+                        </p>
+                        {artifact.downloadUrl && (
+                          <a
+                            href={artifact.downloadUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-block text-sm font-medium text-blue-700 underline"
+                          >
+                            Download {artifact.format.toUpperCase()}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {resumeVariant.items.map((item) => (
+                <article
+                  key={item.id}
+                  className={`rounded border p-3 space-y-3 ${
+                    item.included ? "" : "bg-gray-50 opacity-70"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs text-gray-500">
+                      <span className="font-medium text-gray-700">{item.section}</span>
+                      {" · "}
+                      {item.changeType}
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={item.included}
+                        disabled={
+                          resumeVariant.status !== "draft" ||
+                          savingVariantItem === item.id
+                        }
+                        onChange={(event) =>
+                          setVariantItemIncluded(item.id, event.target.checked)
+                        }
+                        suppressHydrationWarning
+                      />
+                      Include
+                    </label>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded bg-gray-50 p-2">
+                      <p className="text-xs font-medium text-gray-500">Verified source</p>
+                      <p className="mt-1 text-sm text-gray-700">{item.originalText}</p>
+                    </div>
+                    <div className="rounded bg-blue-50 p-2">
+                      <p className="text-xs font-medium text-blue-700">Tailored version</p>
+                      <p className="mt-1 text-sm text-gray-800">{item.tailoredText}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-gray-500">{item.rationale}</p>
+                  {item.matchedTerms.length > 0 && (
+                    <p className="text-xs text-green-700">
+                      Evidence-backed terms: {item.matchedTerms.join(", ")}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
 
       {job.description && (
         <div>
