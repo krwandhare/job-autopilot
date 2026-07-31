@@ -22,7 +22,9 @@
 
 ## Next
 
-- Add an automated test framework, an `npm test` script, and deterministic fixtures for matching, skill extraction, TXT resume parsing, draft generation, and source normalization.
+- Add deterministic fixtures for matching, skill extraction, TXT resume
+  parsing, draft generation, HTML cleanup, and source normalization to the
+  standard `npm test` suite.
 - Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
 - Add server-side upload limits and content/type validation for resume and autofill file uploads.
@@ -38,6 +40,11 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Added a standard `npm test` command that runs all 14 existing deterministic
+  suites sequentially with a disposable default runtime directory, isolated
+  SQLite data, and temporary Playwright output. The complete suite, lint,
+  strict TypeScript, and production build passed without accessing live data.
 
 - Added the vendor-neutral `ship-feature` requirement-to-handoff workflow,
   project adapters for Claude Code and Gemini CLI, the universal

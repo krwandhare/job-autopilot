@@ -83,6 +83,13 @@ verification, evidence-constrained tailoring for a synthetic job, approval,
 round-trip DOCX/PDF generation, and both browser download actions. The script
 never opens the default `data/app.db` or an employer page.
 
+`npm test` runs every deterministic model, route, workflow, integration, and
+browser suite in sequence. The aggregate runner exports a disposable runtime
+directory as the default for application storage, while database-backed suites
+also create their own isolated SQLite files. Playwright output is written under
+the same temporary root, which is removed when the run finishes. The command
+never reads or writes the live `data/app.db`.
+
 ### Incomplete or unverified
 
 - Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.

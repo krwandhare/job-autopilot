@@ -53,7 +53,8 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 
 ## Stabilization work
 
-- Add an automated test framework and `npm test` script. Start with pure modules: matching, skill extraction, TXT parsing, drafts, HTML cleanup, and source normalization.
+- Expand the standard `npm test` suite with focused fixtures for matching,
+  skill extraction, TXT parsing, drafts, HTML cleanup, and source normalization.
 - Add isolated SQLite/route integration tests that never touch the user's `data/app.db`.
 - Expand controlled Playwright coverage beyond the tailored-resume generator
   to field matching, native selects, React-style comboboxes, embedded forms,

@@ -1,5 +1,23 @@
 # Session Handoff
 
+## Standard deterministic test command
+
+On 2026-07-31, `npm test` was added as the single fail-fast entry point for
+all 14 existing deterministic suites. `scripts/test-all.sh` exports a fresh
+temporary `JOB_AUTOPILOT_DATA_DIR` before running model, workflow, route,
+guarded-integration, shared-runtime, artifact, and headless browser checks in
+sequence. Suites that use SQLite continue to create their own isolated files,
+and Playwright output now goes under the aggregate temporary root, which is
+removed on exit. The command never reads or writes the live `data/app.db`.
+
+Validation passed: `npm test`, `npm run lint`, `npx tsc --noEmit`,
+`npm run build`, `bash -n scripts/test-all.sh`, and `git diff --check`. The
+first sandboxed aggregate run reached the artifact suite but macOS denied the
+installed Chromium process its Mach port; the approved unsandboxed rerun
+passed every suite, including the tailored-resume browser flow and disposable
+two-server route test. No live database, resume, mailbox, employer page, or
+application submission was accessed.
+
 ## Latest workflow tooling update
 
 On 2026-07-31, a vendor-neutral feature-delivery workflow was added at
