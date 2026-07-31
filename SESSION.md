@@ -1,5 +1,82 @@
 # Session Handoff
 
+## Applications page UI overhaul (senior UI/UX design pass, ship-feature run)
+
+Requirement: "act as a senior UI/UX designer... comprehensive UI overhaul"
+for the Applications page (`/applications`) -- better data visualization,
+whitespace/hierarchy, a more intuitive status-card layout, backed by
+specific Tailwind patterns, professional enough for managing a large
+volume of applications.
+
+- Used the `dataviz` skill (`references/choosing-a-form.md`,
+  `color-formula.md`, `marks-and-anatomy.md`, `palette.md`) rather than
+  eyeballing colors. Ran `validate_palette.js` against the chosen
+  accent/status hex set; the only FAIL/WARN it reported (amber `#fab219`
+  sub-3:1 on white) is the palette's own documented, accepted tradeoff for
+  the "warning" role, mitigated the way the doc prescribes: an icon/dot
+  plus a mandatory text label, never color alone.
+- Added six CSS custom-property tokens to `app/globals.css`'s `@theme`
+  block (`--color-accent`, `--color-accent-muted`, `--color-status-good
+  /-warning/-serious/-critical`), which Tailwind v4 turns into real
+  utilities (`bg-status-good`, `text-accent`, etc.) -- additive only,
+  nothing existing changed, so every other page is unaffected.
+- Rewrote `app/applications/page.tsx`:
+  - Three KPI stat tiles (total / response rate / this week) with small
+    inline SVG icons (no new icon dependency) replace the old bare 3-up
+    number grid.
+  - New "Applications per week" chart: the already-fetched but previously
+    unused `stats.perWeek` (up to 12 weeks) now renders as a real thin-column
+    bar chart (accent hue for the current week, a lighter step of the same
+    ramp for prior weeks, per the stat-tile "trend" spec), each bar a
+    focusable/aria-labeled `<button>` with a hover + keyboard-focus
+    tooltip -- not just a decorative sparkline.
+  - Response-type buttons (Interview/Offer/Rejected/Ghosted) now carry
+    status color (a dot + tinted selected background), chosen by outcome
+    semantics: Offer/Rejected map to the reserved good/critical status
+    colors (terminal outcomes), Ghosted maps to warning (an ambiguous
+    non-response that wants follow-up), and Interview gets the brand accent
+    (active-but-not-final progress) rather than borrowing a status color.
+    Text label is always present alongside the color, per the skill's
+    never-color-alone rule.
+  - Application cards gained a neutral initials avatar, clearer
+    title/company/source/match hierarchy, a relative "Applied N days ago"
+    with the exact date on hover/title, and `aria-pressed` +
+    `focus-visible` rings on every interactive control.
+  - Loading skeletons now cover the KPI/chart region too, not just the list.
+  - Section headers standardized to a small uppercase tracking-wide label
+    pattern; cards moved from tight `p-3`/`rounded-lg` boxes to
+    `rounded-xl`/`shadow-sm`/`p-5` with explicit `border-gray-200` (Tailwind
+    v4 changed the unqualified `border` utility's color default to
+    `currentColor`, so borders are now colored explicitly everywhere they're
+    used on this page).
+- This request specifically targeted `app/applications/page.tsx`, which
+  already had unrelated in-progress staged edits (better error-message
+  text, a loading skeleton) from an earlier session. Read the current
+  staged content first and preserved both changes' substance inside the
+  rewrite rather than discarding them -- nothing from that earlier pass was
+  lost. The other four still-staged, unrelated page files
+  (`app/autofill/page.tsx`, `app/jobs/[id]/page.tsx`, `app/page.tsx`,
+  `app/profile/page.tsx`) were left completely untouched.
+- Verified with synthetic data only: seeded a disposable SQLite database
+  (`JOB_AUTOPILOT_DATA_DIR` pointed at a temp dir, deleted afterward) with
+  7 varied applications across multiple weeks/response types/sources plus
+  2 unapplied high-match jobs, since the real database only has 1 row and
+  couldn't exercise the redesign. A real headless-browser pass covered
+  desktop (1280px) and mobile (390px) layouts, the chart's hover tooltip,
+  a component's keyboard-focus ring, and the "No response in 14+ days"
+  filter -- zero console errors in every state. Screenshots inspected
+  directly; temporary server, seed/verification scripts, and the disposable
+  data directory were all removed afterward. No live personal data was
+  read or changed for this piece of work.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` passed.
+- Scope decision (not asked back, low-risk/reversible/UI-only): kept the
+  overhaul to the Applications page itself, not the whole app (dashboard,
+  autofill, profile) -- that's available as a follow-up if wanted, noted in
+  `TODO.md`.
+- Known limitation not addressed here: the root layout's nav
+  (`app/layout.tsx`) wraps awkwardly at 390px (pre-existing, outside this
+  page's scope).
+
 ## LinkedIn digest title/company HTML-entity decoding fix
 
 Follow-up to the 0-applications fix below: the user asked to also fix the

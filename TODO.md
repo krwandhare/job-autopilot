@@ -2,6 +2,14 @@
 
 ## In Progress
 
+- Extend the 2026-07-31 Applications-page UI overhaul (stat tiles, weekly
+  trend chart, status-colored response pills, `--color-accent`/
+  `--color-status-*` tokens in `app/globals.css`) to the rest of the app
+  (main dashboard, Auto-fill, job detail, Profile) for a consistent look --
+  explicitly scoped out of that pass, not started.
+- The root layout's nav (`app/layout.tsx`) wraps awkwardly at a 390px
+  viewport (found while verifying the Applications-page redesign;
+  pre-existing, unrelated to that change).
 - **Re-upload the current resume.** Its `file_path` was accidentally
   overwritten during error-handling audit testing (`f56521d`) and had to be
   nulled out rather than left pointing at a fake test file -- the real file
@@ -43,6 +51,17 @@
 
 ## Completed
 
+- Redesigned the Applications page UI (senior UI/UX pass, `app/applications
+  /page.tsx` + new `--color-accent`/`--color-status-*` tokens in
+  `app/globals.css`): KPI stat tiles with icons, a real "Applications per
+  week" bar chart from previously-unused `stats.perWeek` data (hover +
+  keyboard-focus tooltips, dataviz-skill-validated accent/de-emphasis
+  coloring), status-colored response-type pills (good/warning/critical by
+  outcome semantics, accent for in-progress), redesigned application cards
+  with initials avatars and clearer hierarchy, and focus-visible rings
+  throughout. Verified with a disposable synthetic database (7 varied
+  applications) at 1280px and 390px in a real headless browser with zero
+  console errors; lint, strict TypeScript, and the production build passed.
 - Fixed LinkedIn Gmail-alert job titles/companies displaying literal HTML
   entities (e.g. `&amp;` instead of `&`): LinkedIn's alert-email
   `text/plain` MIME part is generated from the HTML alternative without

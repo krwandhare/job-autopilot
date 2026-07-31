@@ -12,6 +12,19 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Status/accent tokens (validated for light-mode contrast + CVD separation
+   via the dataviz palette). Status colors are reserved for outcome states
+   (good/warning/serious/critical) and are always paired with an icon/dot
+   plus a text label -- never used as the only signal. */
+@theme {
+  --color-accent: #2a78d6;
+  --color-accent-muted: #86b6ef;
+  --color-status-good: #0ca30c;
+  --color-status-warning: #fab219;
+  --color-status-serious: #ec835a;
+  --color-status-critical: #d03b3b;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
