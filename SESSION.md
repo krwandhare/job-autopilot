@@ -396,9 +396,14 @@ tailored attachments in a real application.
   fragments decrease from 33 to 24 without printing resume text.
 - `npm run test:resume-layout`, `npm run test:resume-evidence`, lint, strict
   TypeScript, `git diff --check`, and the production build passed.
-- The live resume has not been reprocessed automatically. Next action: use the
-  Profile repair action, then create, approve, and export a new job-specific
-  variant.
+- After a recoverable SQLite backup, the live master PDF was reprocessed into
+  a new local resume revision at the user's request. The prior resume,
+  evidence, approved variants, and files remain unchanged. Because every prior
+  evidence row was verified, verification carried forward to the reconstructed
+  evidence. A fresh job-specific draft was created but deliberately left
+  unapproved; the user must review and approve it before file generation.
+- Next action: reload the job page, review the current draft, approve it, and
+  generate new DOCX/PDF files. Do not reuse variant 6 or earlier artifacts.
 
 Follow-up validation found two distinct states in the user's next variant:
 
