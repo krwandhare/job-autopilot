@@ -1,0 +1,9 @@
+# Cross-agent ship-feature workflow and thin command adapters.
+config/agent-tasks/ship-feature.allow
+.claude/skills/ship-feature/**
+.gemini/commands/ship-feature.toml
+AGENTS.md
+SESSION.md
+TODO.md
+docs/workflow.md
+docs/workflows/ship-feature.md
