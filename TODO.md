@@ -2,8 +2,8 @@
 
 ## In Progress
 
-- Guarded-integrate the validated structured blocker-outcome and two-instance
-  route-E2E checkpoint.
+- Live-run and verify Claude's Gmail-alert LinkedIn lead importer through the
+  shared runtime, using its existing rate limit and `external_lead` boundary.
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
 - Manually verify the new opt-in "Auto-fill & submit" mode against a real, user-authorized test application before relying on it for real submissions -- static checks and a production build passed, but no live ATS run has confirmed the submit-control detection or confirmation logic yet.
 - Retest Twilio's location autocomplete, grouped referral-source question, the narrowly allowlisted submit-mode policy acknowledgements, and exact manual-blocker messaging in a visible browser; static checks pass, but the live form has not been rerun after the latest fixes.
@@ -28,6 +28,9 @@
 
 ## Completed
 
+- Guarded-integrated structured blocker outcomes (`0f2c470`) and the disposable
+  two-instance route E2E (`606d5d4`) as integration baseline `0a061d2`; lint,
+  TypeScript, and production build passed in the trial merge.
 - Added and passed a disposable two-server route E2E covering distinct atomic
   claims, cross-owner conflict, release/reclaim, structured action persistence,
   and cleanup without touching the live database.
