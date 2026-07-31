@@ -134,6 +134,19 @@ Later on 2026-07-30, concurrent-agent integration foundations were added on
   390px mobile rendering, all five action groups, exact blocker details,
   summary-to-pipeline filtering, and structured reason persistence through the
   real route. No live database, resume, employer page, or application was used.
+- The shared-runtime foundation now resolves database and resume storage
+  through `JOB_AUTOPILOT_DATA_DIR`. `npm run dev:shared -- <instance> <port>`
+  gives Codex and Claude distinct identities while pointing both worktrees at
+  the primary worktree's ignored runtime data.
+- `job_claims` provides expiring per-job and per-owner SQLite leases. Queue
+  selection and specific-job resumption reserve for five minutes, autofill
+  start extends the owning runtime's lease to two hours, and finish releases
+  only that owner's claim. A second runtime receives HTTP 409 for a currently
+  claimed job.
+- A disposable SQLite test using two independent connections verified
+  deterministic queue separation, conflict refusal, renewal, token/owner-safe
+  release, one active job per runtime, expiry takeover, and shared path
+  resolution. No live application data was inspected or changed.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -155,6 +168,6 @@ autofill safety boundaries.
 
 ## Exact next recommended task
 
-Connect autofill and queue-runner blocker outcomes to the structured Action
-Center context in coordination with Claude, using the shared-runtime/claim
-foundation before overlapping application behavior.
+Integrate the shared-runtime checkpoint, update Claude's feature branch to that
+validated baseline, then connect autofill and queue-runner blocker outcomes to
+structured Action Center reasons.

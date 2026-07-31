@@ -54,7 +54,11 @@ Browser UI
 
 ## SQLite persistence
 
-`lib/db.ts` opens `data/app.db` through `better-sqlite3`, sets WAL mode, caches the connection on `global.__db`, and initializes:
+`lib/runtimePaths.ts` resolves the runtime directory. It defaults to the
+current worktree's `data/`, while `JOB_AUTOPILOT_DATA_DIR` points concurrent
+worktrees at one shared directory. `lib/db.ts` opens `app.db` there through
+`better-sqlite3`, sets WAL mode and a five-second busy timeout, caches the
+connection on `global.__db`, and initializes:
 
 - `resumes`: original filename, extracted text, detected/editable skills JSON, upload time, and migrated `file_path`.
 - `filters`: a single currently used row containing title/location/remote/salary/skill/company rules.
@@ -64,6 +68,8 @@ Browser UI
 - `profile_answers`: one remembered answer per semantic field key.
 - `job_actions`: structured unresolved/resolved manual-action reasons, details,
   source, and timestamps associated with jobs.
+- `job_claims`: one expiring autofill lease per job and per runtime owner,
+  including an unguessable token, heartbeat, and expiry timestamps.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
@@ -74,6 +80,14 @@ job to a non-actionable status resolves its open action records; callers may
 attach validated structured action context when patching an actionable status.
 
 Synchronization and URL import use upserts. They update normalized fields and scores without deleting stale jobs or overwriting the job's local status.
+
+`lib/jobClaims.ts` acquires leases inside SQLite `BEGIN IMMEDIATE`
+transactions. Queue selection excludes active leases, so two database
+connections cannot select the same job. Queue display uses a five-minute
+reservation; starting autofill renews it to two hours. Finishing deletes only
+the current runtime owner's lease. Expired leases can be reclaimed after a
+server crash. `JOB_AUTOPILOT_INSTANCE_ID` should be stable and unique for each
+simultaneous server; otherwise a hostname/process-ID fallback is used.
 
 ## Resume processing
 
@@ -125,7 +139,11 @@ Draft generation never interprets a target skill omitted from the posting as a s
 
 ## Autofill pipeline
 
-`lib/autofill/session.ts` keeps visible Playwright Chromium sessions in a process-global map keyed by job ID. Sessions are ephemeral and unsuitable for serverless/multi-process deployment.
+`lib/autofill/session.ts` keeps visible Playwright Chromium sessions in a
+process-global map keyed by job ID. Sessions remain ephemeral, but SQLite job
+claims stop a second local server from starting the same job while the first
+lease is active. This is local coordination, not a distributed browser-session
+store, and remains unsuitable for serverless deployment.
 
 `lib/autofill/filler.ts`:
 
@@ -146,6 +164,8 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 | Module | Responsibility |
 | --- | --- |
 | `lib/db.ts` | Connection, schema, compatibility alteration, and database row types. |
+| `lib/runtimePaths.ts` | Shared/default data paths and validated runtime identity. |
+| `lib/jobClaims.ts` | Atomic claim, renewal, expiry, and owner-safe release primitives. |
 | `lib/resume.ts` | File-format-specific text extraction. |
 | `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
