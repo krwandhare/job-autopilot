@@ -1,5 +1,95 @@
 # Session Handoff
 
+## Cross-branch investigation: 11 orphaned live applications (ship-feature run)
+
+Requirement: "the submitted applications list is empty despite the
+dashboard being live" -- investigate the data-ingestion flow and identify
+the root cause.
+
+- Live-inspected (read-only, then with explicit approval, read/write) the
+  actual database backing the running dashboard rather than assuming the
+  bug from the 2026-07-31 SESSION.md entry was already fully resolved.
+  Traced the running `next dev` process on port 3003 to its actual cwd
+  (`job-autopilot-claude`, this worktree, `feature/claude-autofill`) and
+  its actual data directory (resolved via `npm run dev:shared`'s dynamic
+  `git rev-parse --path-format=absolute --git-common-dir` lookup to the
+  *primary* worktree's `data/`, `/Users/kamleshwandhare/projects/
+  job-autopilot/data`) -- confirming the live dashboard's real data lives
+  outside this worktree's own local `data/`, which is a separate,
+  long-stale 163KB file this worktree only ever touches via a plain
+  `npm run dev` (no `dev:shared`).
+- Root cause, confirmed with certainty: the shared live database had 11
+  jobs at `status = 'applied'` (Airbnb, Gusto, Twilio x2, Affirm x2,
+  MongoDB, Reddit, Scale AI, Fivetran, SuprAIJobs) with zero matching
+  `applications` rows. `lib/autofill/filler.ts`'s `startSubmissionWatcher()`
+  is the only "mark applied" path that writes `jobs.status` directly via
+  raw SQL instead of going through `createApplication()` -- exactly the bug
+  already found and fixed on this branch (`feature/claude-autofill`) on
+  2026-07-31 for one earlier job (23). This worktree's own `filler.ts`
+  already has that fix (confirmed by reading it, not assumed); the
+  *primary* worktree -- checked out on **Codex's `feature/codex-work`**,
+  the branch that actually creates commits there -- did not. No Codex dev
+  server was found currently running (`pgrep`/`lsof` for port 3002 came up
+  empty), so these 11 are historical: almost certainly created by an
+  earlier Codex session against the shared database before this branch's
+  July 31 fix landed, then never discovered/backfilled the way job 23 was
+  that day.
+- User-directed resolution (asked via three clarifying rounds before
+  touching anything, since this crosses into another agent's branch and
+  real personal application data):
+  1. **Code fix ported to the primary worktree**, `/Users/kamleshwandhare/
+     projects/job-autopilot/lib/autofill/filler.ts` -- the identical,
+     already-proven fix (read job's prior status/company inside the same
+     transaction, call `createApplication()` with `source:
+     "autofill_submit"` on a real `new -> applied` transition), plus the
+     matching `createApplication` import. Lint, strict TypeScript, and
+     `npm run build` all passed there. **Left uncommitted** in that
+     worktree at the user's explicit direction -- `feature/codex-work` is
+     Codex's branch, not mine to commit to; `git status` there shows only
+     this one modified file plus the gitignored backup/`test-results/`
+     noise.
+  2. **Backfilled the 11 orphaned applications** in the shared live
+     database, after backing it up first
+     (`data/app.db.bak.20260801083502` in the primary worktree). Used
+     `createApplication()` itself (not a raw INSERT) so company
+     lookup/creation and the idempotent-per-job guarantee matched the real
+     code path exactly, `source: "autofill_submit"`, then corrected
+     `applied_at` (which `createApplication()` always defaults to "now")
+     to `2026-07-31 00:19:00` -- confirmed via an older pre-repair backup
+     snapshot that all 11 were already `applied` by that point, and no
+     more precise per-job timestamp exists anywhere in the schema (no
+     applied-at column on `jobs`, no matching `job_actions`/
+     `queue-runner.log` entries for 10 of the 11). Documented as an
+     explicit approximation in each row's `notes` field rather than
+     silently backdating without a record. Backdating to "now" instead
+     would have been worse: it would have misattributed all 11 to today in
+     this session's own new weekly funnel/trend metrics. Verified
+     afterward with a fresh read-only pass: every previously-orphaned
+     `applied` job now has exactly one matching `applications` row, and no
+     `applications` row references a nonexistent job (both directions of
+     the join checked empty).
+  3. **This worktree's `.env.local`** now sets `JOB_AUTOPILOT_DATA_DIR` to
+     the primary worktree's `data/` explicitly, so a plain `npm run dev`
+     here (without `dev:shared`) can no longer silently diverge onto its
+     own separate local database the way it evidently already had.
+     Verified the resolution logic directly (`resolveDataDir()`'s exact
+     env-var-read behavior) rather than fighting Next.js's expected
+     single-dev-server-per-directory lock, which correctly refused a
+     second `next dev` in this same directory while port 3003's instance
+     was already running. Not added to `.env.local.example` -- the
+     absolute path is specific to this machine's worktree layout, not a
+     portable template default.
+- This worktree's own `filler.ts` needed no change (already fixed); the
+  only file this produced here is the gitignored `.env.local` edit, so
+  there is nothing new to commit on `feature/claude-autofill` for the code
+  itself -- only this documentation update.
+- Not yet done, deliberately left for the user/a Codex session: reviewing
+  and committing the `filler.ts` fix on `feature/codex-work` in the
+  primary worktree. The live dashboard (port 3003, this worktree's already
+  -fixed code) is unaffected either way and does not need a restart.
+- No live secrets were printed, copied, or committed while inspecting
+  `.env.local` for this change.
+
 ## Applications page hydration-mismatch fix (ship-feature run)
 
 Requirement: fix a reported hydration console error on `/applications` --

@@ -61,6 +61,27 @@
 
 ## Completed
 
+- Root-caused and fixed the empty "submitted applications" list on the live
+  dashboard: 11 real jobs were `status = 'applied'` in the shared database
+  with zero matching `applications` rows, because the primary worktree
+  (Codex's `feature/codex-work`, which the live server's data directory
+  resolves to) never received the 2026-07-31 fix to
+  `lib/autofill/filler.ts`'s `startSubmissionWatcher()` that this branch
+  already had. Ported the identical fix into the primary worktree
+  (left uncommitted there -- not this agent's branch to commit),
+  backfilled the 11 missing `applications` rows in the shared live
+  database (backed up first; `applied_at` approximated from an older
+  backup snapshot boundary and documented as such per row, not silently
+  guessed), and set `JOB_AUTOPILOT_DATA_DIR` in this worktree's
+  `.env.local` so a plain `npm run dev` here can no longer silently
+  diverge onto its own separate local database. Lint, strict TypeScript,
+  and the production build all passed in the primary worktree; verified
+  live that the join between `jobs` and `applications` is now clean in
+  both directions.
+- **Needs follow-up (not done by this agent):** review and commit the
+  `filler.ts` fix on `feature/codex-work` in the primary worktree
+  (`/Users/kamleshwandhare/projects/job-autopilot`) -- currently sitting
+  there uncommitted.
 - Fixed a reported hydration-mismatch console error on `/applications`
   (the new Sort-by `<select>`, plus the no-response checkbox and follow-up
   date input): added `suppressHydrationWarning`, the same fix already
