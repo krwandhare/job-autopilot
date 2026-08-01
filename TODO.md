@@ -61,6 +61,28 @@
 
 ## Completed
 
+- Fixed a real backend bug in resume-artifact regeneration, found via a
+  requested diagnostic log-check rather than assumed:
+  `generateResumeArtifacts()` never returned `downloadUrl`/`createdAt`, so
+  the POST `/api/resume-variants/[id]/artifacts` route's direct response
+  left every artifact's download link `undefined` right after a successful
+  generation (only self-healing later via an unrelated GET refresh). Fixed
+  by having the route re-read via `getResumeArtifactSummaries()` after
+  generation. Also fixed the frontend (`app/jobs/[id]/page.tsx`) to clear
+  stale artifacts immediately when regeneration starts (previously old,
+  soon-to-be-overwritten download links stayed visible/clickable for the
+  whole in-flight window) and to stop discarding the POST response's
+  artifacts on partial validation failure. Added console tracing of each
+  format's before/after downloadUrl plus an explicit warning for a
+  "passed but null URL" contract violation. Overhauled the "Tailored
+  resume draft" UI: verified-source/tailored-version cards merged into one
+  block per item with a single top-level toggle switch, "Parsing passed"
+  became a small green pill next to the filename, and artifact cards
+  tightened with a proper button-styled download link. Verified live
+  end-to-end (real evidence verification, draft creation, approval,
+  generation, and regeneration via actual UI clicks): reproduced the bug's
+  warning trace before the fix, confirmed it no longer fires after: lint,
+  strict TypeScript, and the production build all passed.
 - Optimized the job detail "Resume requirement coverage" section for
   mobile (`app/jobs/[id]/page.tsx`): the always-expanded list of full
   requirement cards is now a bounded, internally-scrolling summary widget

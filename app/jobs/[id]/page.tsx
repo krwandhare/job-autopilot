@@ -155,6 +155,7 @@ export default function JobDetailPage({
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [coverageDrawerOpen, setCoverageDrawerOpen] = useState(false);
   const [coverageDrawerVisible, setCoverageDrawerVisible] = useState(false);
+  const [tailoredViewMode, setTailoredViewMode] = useState<"source" | "tailored">("tailored");
 
   async function load() {
     setError(null);
@@ -393,25 +394,63 @@ export default function JobDetailPage({
     if (!resumeVariant) return;
     setArtifactLoading(true);
     setVariantError(null);
+    // Clear stale artifacts immediately: regeneration overwrites the same
+    // on-disk file path each time (the filename is deterministic, not
+    // timestamped), so leaving the previous downloadUrls visible/clickable
+    // while a new generation is in flight risks serving a file mid-rewrite
+    // or one about to be replaced. Repopulated below once the request
+    // actually settles; the trigger button itself is re-enabled only in
+    // `finally`, after parsing/validation has fully completed either way.
+    setResumeArtifacts([]);
+    const previousDownloadUrls = new Map(
+      resumeArtifacts.map((artifact) => [artifact.format, artifact.downloadUrl])
+    );
+
     try {
       const res = await fetch(`/api/resume-variants/${resumeVariant.id}/artifacts`, {
         method: "POST",
       });
       const data = await res.json();
+
+      if (Array.isArray(data.artifacts)) {
+        // The route persists whatever it generated (including a partially
+        // failed regeneration) before responding, on both 200 and the
+        // partial-validation-failure 422 -- so this is authoritative and
+        // an extra GET round trip isn't needed to pick it up.
+        const artifacts: ResumeArtifact[] = data.artifacts;
+        setResumeArtifacts(artifacts);
+        for (const artifact of artifacts) {
+          if (artifact.validationStatus === "passed" && !artifact.downloadUrl) {
+            console.warn(
+              `[resume-artifacts] variant ${resumeVariant.id} ${artifact.format}: reports "passed" but downloadUrl is null -- stale/broken link risk, check getResumeArtifactSummaries().`
+            );
+          }
+          console.info(
+            `[resume-artifacts] variant ${resumeVariant.id} ${artifact.format}: downloadUrl before=${
+              previousDownloadUrls.get(artifact.format) ?? "(none)"
+            } after=${artifact.downloadUrl ?? "null"}`
+          );
+        }
+      } else {
+        // No generation attempt was made at all (variant not approved, no
+        // included evidence, unusable header) -- nothing on disk changed,
+        // so restore the database's actual current state instead of
+        // leaving the UI on the empty array set above.
+        await loadArtifacts(resumeVariant.id);
+      }
+
       if (!res.ok) {
         throw new Error(
           data.error ??
             "The generated files did not pass round-trip text validation"
         );
       }
-      setResumeArtifacts(data.artifacts ?? []);
     } catch (artifactFailure) {
       setVariantError(
         artifactFailure instanceof Error
           ? artifactFailure.message
           : "Could not generate resume files"
       );
-      await loadArtifacts(resumeVariant.id);
     } finally {
       setArtifactLoading(false);
     }
@@ -918,24 +957,30 @@ export default function JobDetailPage({
                 {resumeArtifacts.length > 0 && (
                   <div className="grid gap-2 sm:grid-cols-2">
                     {resumeArtifacts.map((artifact) => (
-                      <div key={artifact.format} className="rounded bg-white p-3 text-sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium uppercase">{artifact.format}</span>
+                      <div key={artifact.format} className="rounded bg-white p-2.5 text-sm">
+                        <span className="font-medium uppercase">{artifact.format}</span>
+                        <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                          <p className="min-w-0 truncate text-xs text-gray-500">
+                            {artifact.filename}
+                          </p>
                           <span
-                            className={
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                               artifact.validationStatus === "passed"
-                                ? "text-green-700"
-                                : "text-red-700"
-                            }
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
                           >
-                            {artifact.validationStatus === "passed"
-                              ? "Parsing passed"
-                              : "Validation failed"}
+                            <span
+                              aria-hidden="true"
+                              className={`h-1 w-1 rounded-full ${
+                                artifact.validationStatus === "passed"
+                                  ? "bg-green-600"
+                                  : "bg-red-600"
+                              }`}
+                            />
+                            {artifact.validationStatus === "passed" ? "Passed" : "Failed"}
                           </span>
                         </div>
-                        <p className="mt-1 truncate text-xs text-gray-500">
-                          {artifact.filename}
-                        </p>
                         <p className="mt-1 text-xs text-gray-500">
                           {artifact.validation.expectedItemCount} expected items ·{" "}
                           {artifact.validation.missingItemCount} missing
@@ -945,7 +990,7 @@ export default function JobDetailPage({
                             href={artifact.downloadUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="mt-2 inline-block text-sm font-medium text-blue-700 underline"
+                            className="mt-2 inline-flex items-center gap-1 rounded bg-blue-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-800"
                           >
                             Download {artifact.format.toUpperCase()}
                           </a>
@@ -957,11 +1002,52 @@ export default function JobDetailPage({
               </div>
             )}
 
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">
+                {resumeVariant.items.length} item{resumeVariant.items.length === 1 ? "" : "s"}
+              </p>
+              <div className="flex items-center gap-2 text-xs">
+                <span
+                  className={
+                    tailoredViewMode === "source" ? "font-medium text-gray-900" : "text-gray-400"
+                  }
+                >
+                  Verified source
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={tailoredViewMode === "tailored"}
+                  aria-label="Toggle between verified source and tailored version"
+                  onClick={() =>
+                    setTailoredViewMode((mode) => (mode === "source" ? "tailored" : "source"))
+                  }
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    tailoredViewMode === "tailored" ? "bg-blue-700" : "bg-gray-300"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      tailoredViewMode === "tailored" ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+                <span
+                  className={
+                    tailoredViewMode === "tailored" ? "font-medium text-blue-700" : "text-gray-400"
+                  }
+                >
+                  Tailored version
+                </span>
+              </div>
+            </div>
+
             <div className="space-y-3">
               {resumeVariant.items.map((item) => (
                 <article
                   key={item.id}
-                  className={`rounded border p-3 space-y-3 ${
+                  className={`rounded border p-3 space-y-2 ${
                     item.included ? "" : "bg-gray-50 opacity-70"
                   }`}
                 >
@@ -988,15 +1074,21 @@ export default function JobDetailPage({
                     </label>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded bg-gray-50 p-2">
-                      <p className="text-xs font-medium text-gray-500">Verified source</p>
-                      <p className="mt-1 text-sm text-gray-700">{item.originalText}</p>
-                    </div>
-                    <div className="rounded bg-blue-50 p-2">
-                      <p className="text-xs font-medium text-blue-700">Tailored version</p>
-                      <p className="mt-1 text-sm text-gray-800">{item.tailoredText}</p>
-                    </div>
+                  <div
+                    className={`rounded p-2 ${
+                      tailoredViewMode === "tailored" ? "bg-blue-50" : "bg-gray-50"
+                    }`}
+                  >
+                    <p
+                      className={`text-xs font-medium ${
+                        tailoredViewMode === "tailored" ? "text-blue-700" : "text-gray-500"
+                      }`}
+                    >
+                      {tailoredViewMode === "tailored" ? "Tailored version" : "Verified source"}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-800">
+                      {tailoredViewMode === "tailored" ? item.tailoredText : item.originalText}
+                    </p>
                   </div>
 
                   <p className="text-xs text-gray-500">{item.rationale}</p>

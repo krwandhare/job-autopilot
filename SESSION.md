@@ -1,5 +1,98 @@
 # Session Handoff
 
+## Tailored resume draft: download state-management fix + UI overhaul (ship-feature run)
+
+Requirement (dual persona): as a senior backend engineer, debug the
+download button's state management -- ensure regenerate-files triggers a
+clean UI reset, only re-enable the button once parsing completes, and add
+a log-check to trace stale/null download URLs post-regeneration. As a
+senior UI engineer, overhaul the "Tailored resume draft" section: merge
+the verified-source/tailored-version cards into one block with a
+top-level toggle, turn "Parsing passed" into a small green pill next to
+the filename, and keep the layout tight so the download button stays
+visible.
+
+- **Found a real, pre-existing backend bug via the requested log-check,
+  not a hypothetical one.** `generateResumeArtifacts()`
+  (`lib/resumeArtifacts.ts`) returns
+  `{format, filename, validationStatus, validation}` -- it never included
+  `downloadUrl` or `createdAt`. The POST
+  `/api/resume-variants/[id]/artifacts` route returned that raw shape
+  directly as the response body. The frontend's `ResumeArtifact` type
+  claims both fields are always present (TypeScript couldn't catch this --
+  `res.json()` is untyped, so the mismatch was invisible at compile time),
+  so on the *original* success path (all formats pass first try),
+  `setResumeArtifacts(data.artifacts)` populated state with
+  `downloadUrl: undefined` for every artifact -- no working download link
+  right after a successful "Generate files" click, until something
+  unrelated (a tab-visibility refresh, navigating away and back) happened
+  to trigger `loadArtifacts()`, which *does* build the correct shape via
+  `getResumeArtifactSummaries()`. That incidental self-healing masked the
+  bug in normal use. Fixed at the source: the POST route now re-reads via
+  `getResumeArtifactSummaries(db, variantId)` after generation, for both
+  the 200 (all passed) and 422 (partial failure) responses, so the
+  response is always correctly shaped -- confirmed by first reproducing
+  the bug live via the new log-check (a `console.warn` fired for both
+  formats: "reports passed but downloadUrl is null"), then confirming
+  after the fix that the exact same warning no longer fires, only the
+  informational before/after trace line.
+- `generateArtifacts()` in `app/jobs/[id]/page.tsx`: `setResumeArtifacts([])`
+  now runs immediately when regeneration starts, before the fetch -- the
+  previous code left the *old* artifacts (including their downloadUrls)
+  visible and clickable for the entire in-flight window, which matters
+  because regeneration overwrites the same deterministic on-disk file path
+  each time (not timestamped), so a stale link during that window could
+  point at a file mid-rewrite. The trigger button itself was already only
+  re-enabled in `finally` (after parsing/validation genuinely completes,
+  success or failure) -- that part wasn't broken, just left as-is and
+  reconfirmed live. Also stopped discarding the POST response's
+  `data.artifacts` on the partial-failure (422) path and re-fetching via a
+  separate GET -- the route already persists and returns the fresh state
+  before responding, so applying `data.artifacts` directly (now correctly
+  shaped per the backend fix) removes an unnecessary round trip; the GET
+  fallback (`loadArtifacts()`) is kept only for the genuine
+  no-attempt-made case (variant not approved, no included evidence, bad
+  header -- nothing on disk changed, so restore rather than assume empty).
+  Added `console.info`/`console.warn` tracing of each format's
+  before/after `downloadUrl` and an explicit warning when a "passed"
+  artifact has a null URL -- the literal "log-check" asked for, which is
+  what surfaced the real bug above.
+- UI: the four-line `grid-cols-2` "Verified source"/"Tailored version"
+  cards per item became one block, with a single top-level `role="switch"`
+  toggle (reusing the exact toggle sizing already established on the
+  Profile page's "Remote only" control) above the whole items list --
+  toggling flips every item's displayed text between source and tailored
+  simultaneously, not per item. "Parsing passed"/"Validation failed" moved
+  from a top-row label next to the format name to a small
+  dot+text rounded-full pill directly beside the filename (green for
+  passed, red for failed -- the request only specified green for the
+  passed case, red for failed is a direct, low-risk extension of the same
+  pill treatment, not a new color choice). Artifact cards tightened
+  (`p-3`→`p-2.5`, fewer intermediate margins) and the download link
+  restyled from a plain underlined text link into a small solid button, so
+  it reads as a clear, always-visible primary action rather than something
+  that could be scrolled past.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium against a disposable database driven
+  through the *real* end-to-end flow via actual UI clicks (not mocked):
+  extracted and bulk-verified evidence through the real API, clicked
+  "Create tailored draft", toggled source/tailored on an item with a
+  genuine difference ("...Present." vs "...Present", confirming the
+  toggle truly swaps content, not coincidentally-identical text from an
+  earlier check), approved the variant, generated files, then clicked
+  "Regenerate files" and captured state 50ms after the click: confirmed
+  zero download links present and the button showing "Generating…" during
+  the in-flight window (the state-reset fix), and after completion
+  confirmed both download links returned with real, non-null URLs and the
+  button re-enabled -- with the diagnostic trace showing no "passed but
+  null" warning, unlike the first (pre-fix) run against the same data,
+  which did fire it for both formats. Screenshots at 390px and 1280px
+  confirmed the merged single-column toggle view, the green "Passed" pills
+  beside each filename, and tight, always-visible download buttons. Zero
+  console/page errors throughout. The temporary server, disposable data
+  directory, and verification scripts were all removed afterward; no live
+  personal data was read or changed.
+
 ## Job detail "Resume requirement coverage" mobile overhaul (ship-feature run)
 
 Requirement: "act as a senior UI engineer... optimize the resume
