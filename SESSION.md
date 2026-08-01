@@ -1,5 +1,42 @@
 # Session Handoff
 
+## Applications page hydration-mismatch fix (ship-feature run)
+
+Requirement: fix a reported hydration console error on `/applications` --
+`select` (the new "Sort by" control) had a server/client attribute
+mismatch (`__gcruniqueid`), matching the exact "browser extension messes
+with the HTML before React loads" case named in React's own hydration
+error message.
+
+- This is a known, already-solved class of issue in this exact repo:
+  `AGENTS.md`/prior sessions established `suppressHydrationWarning` as the
+  fix for form controls a browser extension (password manager, form-fill
+  tool, etc.) tags with its own attribute before hydration, and it's
+  already applied to essentially every `<input>`/`<select>` on every other
+  page (`app/page.tsx`, `app/profile/page.tsx`, `app/autofill/page.tsx`,
+  `app/jobs/[id]/page.tsx`). `app/applications/page.tsx` -- rewritten this
+  session as part of the analytical-hub overhaul -- was the one page that
+  had never gotten it, because its form controls (the follow-up date
+  input, and the new Sort-by select and no-response checkbox) are all new
+  or newly relocated this session.
+- Added `suppressHydrationWarning` to all three: the per-application
+  follow-up `<input type="date">`, the new Sort-by `<select>` (the one in
+  the reported error), and the no-response-in-14+-days `<input
+  type="checkbox">`. No behavior change -- this prop only tells React to
+  skip warning about a text/attribute mismatch on that one element during
+  hydration, it doesn't change what renders or how the controls behave.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- The actual root cause (a real browser extension injecting an attribute)
+  can't be reproduced in headless Chromium, which has no extensions
+  installed -- so this couldn't be verified by reproducing the original
+  error. Instead verified live against a disposable database that the page
+  still renders correctly and both the Sort-by select and the no-response
+  checkbox still function normally (selecting "Status", checking the
+  filter, reading back the resulting values) with zero console errors,
+  confirming the fix didn't regress functionality. Temporary server and
+  disposable data directory removed afterward.
+- Changed file: `app/applications/page.tsx` only.
+
 ## Applications view overhaul into an analytical hub (ship-feature run)
 
 Requirement: "act as a senior product designer... overhaul the applications

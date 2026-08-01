@@ -61,6 +61,13 @@
 
 ## Completed
 
+- Fixed a reported hydration-mismatch console error on `/applications`
+  (the new Sort-by `<select>`, plus the no-response checkbox and follow-up
+  date input): added `suppressHydrationWarning`, the same fix already
+  applied to form controls on every other page in this repo for
+  browser-extension-injected attributes. Lint, strict TypeScript, and the
+  production build passed; live-verified the Sort-by select and
+  no-response checkbox still function correctly with zero console errors.
 - Overhauled the Applications view into an analytical hub
   (`app/applications/page.tsx`, `lib/applications.ts`): a compact
   3-column metric bar with week-over-week trend arrows (Applications,

@@ -499,6 +499,7 @@ function ApplicationCard({
           value={followUpDraft ?? formatDate(app.follow_up_at)}
           onChange={(e) => onFollowUpChange(app.job_id, e.target.value)}
           className="rounded border border-gray-300 px-2 py-1 text-xs focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          suppressHydrationWarning
         />
         <button
           type="button"
@@ -689,6 +690,7 @@ export default function ApplicationsPage() {
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortBy)}
             className="rounded border border-gray-300 px-2 py-1 text-xs focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            suppressHydrationWarning
           >
             <option value="date">Application date</option>
             <option value="status">Status</option>
@@ -701,6 +703,7 @@ export default function ApplicationsPage() {
             checked={noResponseOnly}
             onChange={(e) => setNoResponseOnly(e.target.checked)}
             className="h-4 w-4 rounded border-gray-300 text-accent focus-visible:ring-2 focus-visible:ring-accent"
+            suppressHydrationWarning
           />
           No response in 14+ days
         </label>
