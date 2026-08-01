@@ -722,7 +722,7 @@ export async function inspectField(
 
 export type SubmitResult =
   | { status: "submitted" }
-  | { status: "unconfirmed"; reason: string; needsVerificationCode?: boolean }
+  | { status: "unconfirmed"; reason: string; needsVerificationCode?: boolean; needsConsent?: boolean }
   | { status: "error"; reason: string };
 
 // Opt-in escape hatch from the no-auto-submit boundary described in
@@ -846,6 +846,27 @@ function handleUnconfirmedSubmit(jobId: number, result: SubmitResult): void {
       },
       ["new", "needs_review", "needs_code"]
     );
+  } else if (result.needsConsent) {
+    // No dedicated queue (unlike needs_code): the fix is checking a box in
+    // the still-open browser window and resubmitting there, not typing
+    // anything the API needs to relay, so this just surfaces through the
+    // existing needs_review human-in-the-loop queue instead of adding a new
+    // status/dashboard entry for a one-click fix.
+    const db = getDb();
+    parkJobWithAction(
+      db,
+      jobId,
+      "needs_review",
+      {
+        actionType: "consent",
+        reasonCode: "consent_checkbox_required",
+        reasonText:
+          "The employer requires accepting a consent/terms checkbox that must be checked manually before resubmitting.",
+        details: [result.reason],
+        source: "autofill",
+      },
+      ["new", "needs_review"]
+    );
   }
 }
 
@@ -877,6 +898,7 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
       status: "unconfirmed",
       reason: `${captcha.reason} -- finish this one manually in the browser window that's open.`,
       needsVerificationCode: captcha.isVerificationCode,
+      needsConsent: captcha.isConsentRequired,
     };
   }
 
@@ -982,6 +1004,7 @@ async function attemptSubmitClick(session: AutofillSession): Promise<SubmitResul
         status: "unconfirmed",
         reason: `${postClickCheck.reason} -- this step can't be automated, finish it manually in the open browser window.`,
         needsVerificationCode: postClickCheck.isVerificationCode,
+        needsConsent: postClickCheck.isConsentRequired,
       };
     }
     return {
