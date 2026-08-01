@@ -2,6 +2,12 @@
 
 ## In Progress
 
+- Live-test the submission-guard field-validation audit and consent-phrase
+  detection against a real, user-authorized employer form -- only verified
+  so far against a synthetic local HTML fixture (native HTML5 constraint
+  validation path) in an isolated worktree; the ARIA
+  `aria-invalid`/`aria-describedby` detection branch has not been exercised
+  against any real posting.
 - **Add your own `ANTHROPIC_API_KEY` to `.env.local` to activate LLM
   resume tailoring** -- the pipeline wiring (`lib/llmTailoring.ts`,
   `POST /api/jobs/[id]/resume-variant`) is done and validated, but with
@@ -61,6 +67,27 @@
 
 ## Completed
 
+- Added a generic post-submit field-validation audit ("submission-guard"):
+  `lib/autofill/fieldValidation.ts` detects the first visible invalid
+  required field (native HTML5 constraint validation, covering a plain
+  `required` consent checkbox with no extra logic, plus the ARIA
+  `aria-invalid`/`aria-describedby` pattern) after a submit click that
+  didn't confirm and neither known captcha/verification-code/consent-phrase
+  pattern matched. Surfaces the exact captured label/message through a new
+  `needs_field_fix` UI phase (red banner, mirrors the existing
+  verification-code banner) and parks the job in the existing `needs_review`
+  queue. Never auto-fills or auto-checks anything. Verified live end-to-end
+  in a disposable worktree/temp-DB/dev-server against a self-authored HTML
+  fixture with a consent checkbox injected only on submit-click (so the
+  initial scan sees it as zero manual fields); confirmed the exact scraped
+  error text reached both the API response and the `job_actions` row. Lint
+  and strict TypeScript passed.
+- Added post-submit consent-checkbox-required detection following the
+  verification-code pattern: `lib/autofill/captcha.ts` gained a dedicated
+  `consentRequiredPhrases` check distinct from generic bot-detection and
+  verification-code phrases; `handleUnconfirmedSubmit()` parks matching jobs
+  into `needs_review` (actionType `consent`). Detection/reporting only,
+  never auto-checks the box. Lint and strict TypeScript passed.
 - Investigated a reported "silent submission instead of visible browser"
   issue: confirmed the autofill browser is already `headless: false` (not
   the cause; the only `headless: true` launch in the codebase is

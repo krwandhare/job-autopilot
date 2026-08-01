@@ -15,6 +15,7 @@ import {
 } from "./session";
 import { detectCaptcha } from "./captcha";
 import { findVerificationCodeField } from "./verificationCode";
+import { findFieldValidationError, type FieldValidationError } from "./fieldValidation";
 import {
   scanFields,
   locatorFor,
@@ -722,7 +723,13 @@ export async function inspectField(
 
 export type SubmitResult =
   | { status: "submitted" }
-  | { status: "unconfirmed"; reason: string; needsVerificationCode?: boolean; needsConsent?: boolean }
+  | {
+      status: "unconfirmed";
+      reason: string;
+      needsVerificationCode?: boolean;
+      needsConsent?: boolean;
+      fieldValidationError?: FieldValidationError;
+    }
   | { status: "error"; reason: string };
 
 // Opt-in escape hatch from the no-auto-submit boundary described in
@@ -862,6 +869,25 @@ function handleUnconfirmedSubmit(jobId: number, result: SubmitResult): void {
         reasonCode: "consent_checkbox_required",
         reasonText:
           "The employer requires accepting a consent/terms checkbox that must be checked manually before resubmitting.",
+        details: [result.reason],
+        source: "autofill",
+      },
+      ["new", "needs_review"]
+    );
+  } else if (result.fieldValidationError) {
+    // Same reasoning as the consent branch above -- fixing an invalid field
+    // is a direct fix in the still-open browser window, not something with
+    // reusable value, so this surfaces through the existing needs_review
+    // queue rather than adding a new status for it.
+    const db = getDb();
+    parkJobWithAction(
+      db,
+      jobId,
+      "needs_review",
+      {
+        actionType: "validation",
+        reasonCode: "field_validation_error",
+        reasonText: `The employer's form rejected "${result.fieldValidationError.label}": ${result.fieldValidationError.message}`,
         details: [result.reason],
         source: "autofill",
       },
@@ -1007,6 +1033,22 @@ async function attemptSubmitClick(session: AutofillSession): Promise<SubmitResul
         needsConsent: postClickCheck.isConsentRequired,
       };
     }
+
+    // Neither known bot-check pattern matched -- before falling back to the
+    // fully generic message below, audit the live DOM for a specific
+    // invalid-field signal (native HTML5 constraint validation or the ARIA
+    // aria-invalid/aria-describedby pattern) so the human gets the exact
+    // field and error text instead of just "couldn't confirm." Still never
+    // corrects anything itself.
+    const fieldError = await findFieldValidationError(page);
+    if (fieldError) {
+      return {
+        status: "unconfirmed",
+        reason: `"${fieldError.label}" -- ${fieldError.message} -- fix this in the open browser window, then continue.`,
+        fieldValidationError: fieldError,
+      };
+    }
+
     return {
       status: "unconfirmed",
       reason:

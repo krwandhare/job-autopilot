@@ -47,9 +47,12 @@ type Phase =
   | "blocked"
   | "needs_input"
   | "needs_verification_code"
+  | "needs_field_fix"
   | "ready_for_review"
   | "queue_empty"
   | "error";
+
+type FieldValidationError = { label: string; message: string };
 
 // A dropped connection (phone locks, tab backgrounds mid-request, Wi-Fi
 // hiccup) makes fetch() itself reject -- browsers word that rejection
@@ -108,6 +111,7 @@ export default function AutofillPage() {
   const [verificationCodeDraft, setVerificationCodeDraft] = useState("");
   const [verificationCodeSubmitting, setVerificationCodeSubmitting] = useState(false);
   const [verificationCodeError, setVerificationCodeError] = useState<string | null>(null);
+  const [fieldValidationError, setFieldValidationError] = useState<FieldValidationError | null>(null);
 
   async function loadNextJob() {
     setPhase("idle");
@@ -117,6 +121,7 @@ export default function AutofillPage() {
     setMissingFields([]);
     setManualFields([]);
     setDrafts({});
+    setFieldValidationError(null);
     setAutoSubmitting(false);
     setSubmitNote(null);
     setDetailsOpen(false);
@@ -262,7 +267,12 @@ export default function AutofillPage() {
     }
 
     setAutoSubmitting(true);
-    let data: { status: string; reason?: string; needsVerificationCode?: boolean };
+    let data: {
+      status: string;
+      reason?: string;
+      needsVerificationCode?: boolean;
+      fieldValidationError?: FieldValidationError;
+    };
     try {
       const res = await fetch("/api/autofill/submit", {
         method: "POST",
@@ -289,6 +299,14 @@ export default function AutofillPage() {
       // below) re-enters the same submit flow via runStart().
       setReason(data.reason ?? null);
       setPhase("needs_verification_code");
+    } else if (data.fieldValidationError) {
+      // Same real-time, same-page pause as the verification-code case above,
+      // but for a specific invalid required field (including an unchecked
+      // consent checkbox) the DOM audit in lib/autofill/fieldValidation.ts
+      // caught after the submit click.
+      setFieldValidationError(data.fieldValidationError);
+      setReason(data.reason ?? null);
+      setPhase("needs_field_fix");
     } else {
       setSubmitNote(
         data.reason ??
@@ -311,7 +329,12 @@ export default function AutofillPage() {
     let data: {
       status?: string;
       error?: string;
-      submit?: { status: string; reason?: string; needsVerificationCode?: boolean };
+      submit?: {
+        status: string;
+        reason?: string;
+        needsVerificationCode?: boolean;
+        fieldValidationError?: FieldValidationError;
+      };
     };
     try {
       const res = await fetch("/api/autofill/verification-code", {
@@ -352,6 +375,10 @@ export default function AutofillPage() {
       // -- stay right here so the user can try again immediately.
       setReason(submit.reason ?? null);
       setVerificationCodeError("That code didn't go through -- check it and try again.");
+    } else if (submit.fieldValidationError) {
+      setFieldValidationError(submit.fieldValidationError);
+      setReason(submit.reason ?? null);
+      setPhase("needs_field_fix");
     } else {
       // Filled and clicked, but couldn't confirm success -- same "review
       // it yourself" outcome as a normal unconfirmed submit attempt.
@@ -944,6 +971,48 @@ export default function AutofillPage() {
                   I entered it directly in the browser — continue
                 </button>
                 <button onClick={skipJob} className="rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100">
+                  Skip this job
+                </button>
+              </div>
+            </div>
+          )}
+
+          {phase === "needs_field_fix" && (
+            <div className="space-y-3 rounded-lg border border-red-300 bg-red-50 p-4">
+              <div className="flex items-start gap-2">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-red-600"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6Zm0 8a1 1 0 100-2 1 1 0 000 2Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-red-900">
+                    {fieldValidationError?.label ?? "The form rejected this submission"}
+                  </p>
+                  <p className="mt-0.5 text-sm text-red-800">
+                    {fieldValidationError?.message ??
+                      reason ??
+                      "A required field is invalid. Fix it in the open browser window, then continue."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-red-200 pt-3">
+                <button
+                  type="button"
+                  onClick={resumeAfterManualEntry}
+                  className="rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100"
+                >
+                  Fixed it in the browser — continue
+                </button>
+                <button onClick={skipJob} className="rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100">
                   Skip this job
                 </button>
               </div>

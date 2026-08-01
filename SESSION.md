@@ -1,5 +1,96 @@
 # Session Handoff
 
+## Submission-guard: generic post-submit field-validation audit (ship-feature run)
+
+Requirement: implement a "submission-guard" that runs a field audit before/
+around submitting -- verify required inputs including consent checkboxes are
+valid, and if any field is empty or triggers a validation error, interrupt
+the flow, capture the specific field's error message, and surface it for
+manual intervention.
+
+Built on the same session as the prior consent-checkbox-phrase detection
+(`isConsentRequired` in `lib/autofill/captcha.ts`, previous entry below) but
+generalizes past hardcoded page-text phrases:
+
+- Added `lib/autofill/fieldValidation.ts`'s `findFieldValidationError()`: a
+  read-only DOM audit that finds the first visible required input the
+  browser has marked invalid, checking native HTML5 constraint validation
+  (`:validity`/`.validationMessage` -- this alone covers a plain
+  `<input required>` consent checkbox with no extra logic) and the ARIA
+  `aria-invalid="true"` + `aria-describedby` pattern some ATSes use instead.
+  Never focuses, checks, or corrects anything.
+- Wired into `lib/autofill/filler.ts`'s `attemptSubmitClick()` as a new
+  fallback tier, after the existing `detectCaptcha()` verification-code/
+  consent-phrase check and before the fully generic "couldn't confirm"
+  message -- so a specific field/error pair is reported whenever one is
+  available. `SubmitResult`'s `unconfirmed` variant gained
+  `fieldValidationError?: { label, message }`.
+  `handleUnconfirmedSubmit()` parks the job into the existing `needs_review`
+  human-in-the-loop queue (actionType `validation`, reasonCode
+  `field_validation_error`) rather than adding a new status -- unlike the
+  verification-code case, fixing an invalid field/checkbox is a one-click fix
+  in the still-open browser window, not something worth a dedicated queue.
+- `app/autofill/page.tsx` gained a `needs_field_fix` phase and a red
+  validation-error banner (mirroring the existing amber verification-code
+  banner) showing the exact captured label/message with "Fixed it in the
+  browser -- continue" and "Skip this job" actions. Wired into both
+  `maybeAutoSubmit()` and `submitVerificationCodeAndResume()`, since either
+  path can hit a newly-revealed invalid field.
+- Deliberately did not implement this in `lib/autofill/session.ts` (pure
+  browser/lock state, no page-interaction logic) or introduce a new
+  `needs_consent`-style status/JSON action schema as an early draft of the
+  requirement suggested -- kept the detection and DOM-interaction logic in
+  the modules that already own that concern, and reused the existing
+  `needs_review` queue for a fix that doesn't need its own lane.
+
+Verified live in a disposable `git worktree` + temporary SQLite DB (this
+checkout's own dev server was already running against live production data
+on port 3003, so testing happened in isolation, mirroring the prior
+verification-code exercise): a self-authored local HTML fixture inserts a
+required, unchecked consent checkbox into the DOM only inside the submit
+button's click handler (so the initial field scan sees zero manual fields
+and submit-mode proceeds to actually click). The full path was confirmed
+end to end -- `start` (submit mode) reported zero manual fields, `submit`
+returned `fieldValidationError: {label: "I agree to the Terms and
+Conditions", message: "Please check this box if you want to proceed."}`,
+and the job landed in SQLite as `status = 'needs_review'` with an
+unresolved `validation`/`field_validation_error` job_actions row containing
+the exact captured text. Lint, strict TypeScript, and the disposable
+worktree/DB/dev-server were all torn down cleanly afterward; `git status` in
+this checkout is unaffected except for the intended source changes.
+
+**Not yet done**: no automated regression test exists for this path (no test
+framework in the repo -- see TODO "Add an automated test framework"); only
+manually verified against a synthetic fixture, not a real ATS. The ARIA
+`aria-invalid`/`aria-describedby` branch is implemented but has not been
+exercised against a real posting that uses that pattern instead of native
+HTML5 validation.
+
+## Post-submit consent-checkbox-required detection (ship-feature run)
+
+Requirement: detect a post-submit "please accept the terms to proceed"
+style error banner, following the same pattern as the existing
+verification-code detection, and surface it for manual handling rather than
+a generic unconfirmed-submit failure.
+
+- `lib/autofill/captcha.ts`: added a dedicated `consentRequiredPhrases`
+  pattern list (distinct from the generic bot-detection phrases and the
+  verification-code phrases) and `isConsentRequired` on `CaptchaCheck`.
+- `lib/autofill/filler.ts`: `SubmitResult`'s `unconfirmed` variant gained
+  `needsConsent`, propagated from both the pre-click and post-click
+  `detectCaptcha()` calls. `handleUnconfirmedSubmit()` parks the job into
+  the existing `needs_review` queue (actionType `consent`, reasonCode
+  `consent_checkbox_required`) -- no new status/dashboard entry, since (like
+  the field-validation-error case documented above) the fix is a one-click
+  action in the already-open browser window, not something worth a
+  dedicated queue the way `needs_code` is for verification codes.
+- Verified with `npx tsc --noEmit` and `npm run lint` only at the time; the
+  broader submission-guard work above later exercised the same
+  `handleUnconfirmedSubmit()`/`needs_review` path live in a browser and
+  confirmed it parks correctly.
+- Never auto-checks the box -- detection and reporting only, consistent with
+  AGENTS.md's rule that consent/grouped-checkbox fields stay manual.
+
 ## Investigated "silent submission instead of visible browser" report (ship-feature run)
 
 Requirement: "act as a senior automation engineer... investigate why the
