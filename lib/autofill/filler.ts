@@ -14,6 +14,7 @@ import {
   type AutofillSession,
 } from "./session";
 import { detectCaptcha } from "./captcha";
+import { findVerificationCodeField } from "./verificationCode";
 import {
   scanFields,
   locatorFor,
@@ -37,7 +38,7 @@ export type MissingField = {
 };
 
 export type RunFillerResult =
-  | { status: "blocked"; reason: string }
+  | { status: "blocked"; reason: string; needsVerificationCode?: boolean }
   | { status: "error"; reason: string }
   | { status: "needs_input" | "ready_for_review"; missingFields: MissingField[]; manualFields: MissingField[] };
 
@@ -425,6 +426,7 @@ async function runFillerUnsafe(
     return {
       status: "blocked",
       reason: `${captcha.reason} — please finish this one manually in the browser window that's now open.`,
+      needsVerificationCode: captcha.isVerificationCode,
     };
   }
 
@@ -759,43 +761,99 @@ async function pageShowsSuccessConfirmation(target: FillTarget): Promise<boolean
   return SUBMIT_CONFIRMATION_PATTERN.test(text);
 }
 
+export type VerificationCodeResult =
+  | { status: "filled"; submit: SubmitResult }
+  | { status: "field_not_found" }
+  | { status: "error"; reason: string };
+
+// Fills a human-supplied emailed verification code into the live page and
+// immediately resumes the submission loop by re-attempting the submit
+// click -- one atomic human-in-the-loop step, not two round trips. The
+// code's *value* still comes entirely from the user (read from their own
+// inbox, typed into the dashboard); this only saves them from having to
+// alt-tab into the separate visible browser window to enter it. Never
+// persisted anywhere (unlike ordinary answered fields, which are
+// remembered in profile_answers for reuse across jobs) -- a one-time code
+// has no reuse value and shouldn't be kept.
+//
+// Deliberately calls attemptSubmitClick() directly rather than going
+// through submitApplication()'s normal detectCaptcha() gate: that gate
+// looks at page *text*, and the "a verification code was sent to..."
+// prompt stays in the DOM even after the code field is filled, so running
+// it again here would immediately re-report the same block instead of
+// ever attempting the click. If the click still doesn't confirm (wrong
+// code, a second verification step, etc.), the result is handled exactly
+// like any other unconfirmed submit attempt, including re-parking as
+// needs_code if it's another verification-code prompt.
+export async function submitVerificationCode(
+  jobId: number,
+  code: string
+): Promise<VerificationCodeResult> {
+  return withJobLock(jobId, async () => {
+    const session = getSession(jobId);
+    if (!session || !session.browser.isConnected() || session.page.isClosed()) {
+      return {
+        status: "error",
+        reason: 'No open browser session for this job -- click "Start filling" again first.',
+      };
+    }
+    try {
+      const target = await resolveFillTarget(session);
+      const field = await findVerificationCodeField(target);
+      if (!field) return { status: "field_not_found" };
+
+      const filled = await fillMatched(
+        target,
+        { autofillId: field.autofillId, key: "verification_code", label: "Verification code", kind: "text" },
+        code
+      );
+      if (!filled) return { status: "field_not_found" };
+
+      const submit = await attemptSubmitClick(session);
+      handleUnconfirmedSubmit(jobId, submit);
+      return { status: "filled", submit };
+    } catch (err) {
+      await closeSession(jobId);
+      return { status: "error", reason: friendlyErrorMessage(err) };
+    }
+  });
+}
+
+// Shared by every path that can end a submit attempt "unconfirmed": leaves
+// the browser open for the user to finish by hand, flags the session so
+// the background success watcher starts polling it, and -- specifically
+// for a verification-code blocker, which means "otherwise ready, just
+// needs a human at the actual keyboard to type a code" -- moves the job
+// out of the active queue into its own status so it stops interrupting
+// the "keep going through new jobs" flow. Never downgrades a job that's
+// already further along (e.g. don't touch anything already applied).
+function handleUnconfirmedSubmit(jobId: number, result: SubmitResult): void {
+  if (result.status !== "unconfirmed") return;
+  const session = getSession(jobId);
+  if (session) session.awaitingManualCompletion = true;
+  if (result.needsVerificationCode) {
+    const db = getDb();
+    parkJobWithAction(
+      db,
+      jobId,
+      "needs_code",
+      {
+        actionType: "verification",
+        reasonCode: "verification_code_required",
+        reasonText: "The employer requires a verification code that must be entered manually.",
+        details: [result.reason],
+        source: "autofill",
+      },
+      ["new", "needs_review", "needs_code"]
+    );
+  }
+}
+
 export async function submitApplication(jobId: number): Promise<SubmitResult> {
   return withJobLock(jobId, async () => {
     try {
       const result = await submitApplicationUnsafe(jobId);
-      if (result.status === "unconfirmed") {
-        // Leaves the browser open for the user to finish by hand -- flag it
-        // so the background watcher starts polling this session for a later
-        // success signal instead of requiring the user to report back.
-        const session = getSession(jobId);
-        if (session) session.awaitingManualCompletion = true;
-
-        // A verification-code blocker specifically means "otherwise ready,
-        // just needs a human at the actual keyboard to type a code" -- move
-        // it out of the active queue and into its own status so it stops
-        // interrupting the "keep going through new jobs" flow, and the user
-        // can batch through everything waiting on a code later, in one
-        // sitting at their Mac, instead of hitting each one interleaved
-        // with unrelated jobs. Never downgrades a job that's already
-        // further along (e.g. don't touch anything already applied).
-        if (result.needsVerificationCode) {
-          const db = getDb();
-          parkJobWithAction(
-            db,
-            jobId,
-            "needs_code",
-            {
-              actionType: "verification",
-              reasonCode: "verification_code_required",
-              reasonText:
-                "The employer requires a verification code that must be entered manually.",
-              details: [result.reason],
-              source: "autofill",
-            },
-            ["new", "needs_review", "needs_code"]
-          );
-        }
-      }
+      handleUnconfirmedSubmit(jobId, result);
       return result;
     } catch (err) {
       await closeSession(jobId);
@@ -812,9 +870,8 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
       reason: 'No open browser session for this job -- click "Start filling" again first.',
     };
   }
-  const { page } = session;
 
-  const captcha = await detectCaptcha(page);
+  const captcha = await detectCaptcha(session.page);
   if (captcha.blocked) {
     return {
       status: "unconfirmed",
@@ -823,6 +880,18 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
     };
   }
 
+  return attemptSubmitClick(session);
+}
+
+// The actual click-and-confirm attempt, split out from
+// submitApplicationUnsafe() so resumeSubmitAfterVerificationCode() below
+// can reuse it directly without repeating its own leading detectCaptcha()
+// check -- that check looks at page *text*, which the "a verification
+// code was sent to..." prompt leaves in place even after the code field is
+// filled, so re-running it right after filling the code would immediately
+// re-report the same block instead of ever attempting the click.
+async function attemptSubmitClick(session: AutofillSession): Promise<SubmitResult> {
+  const { page } = session;
   const target = await resolveFillTarget(session);
   const control = target.getByRole("button", { name: SUBMIT_TEXT_PATTERN }).first();
   const hasControl = await control.count().catch(() => 0);

@@ -216,6 +216,19 @@ export default function DashboardPage() {
     loadActions();
   }, [statusFilter, page, showAll]);
 
+  useEffect(() => {
+    // Lightweight background poll so a job newly parked as needs_code
+    // (e.g. an unattended queue-runner run hitting an emailed
+    // verification-code prompt while this dashboard tab just sits open)
+    // surfaces here without a manual "Refresh actions" click -- the
+    // closest a local, single-process, single-user app gets to a
+    // real-time push without adding a websocket/SSE layer for it.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") loadActions();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
   async function addSource(type: string, config: Record<string, unknown>) {
     try {
       const res = await fetch("/api/sources", {

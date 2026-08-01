@@ -46,6 +46,7 @@ type Phase =
   | "starting"
   | "blocked"
   | "needs_input"
+  | "needs_verification_code"
   | "ready_for_review"
   | "queue_empty"
   | "error";
@@ -104,6 +105,9 @@ export default function AutofillPage() {
   const modeRef = useRef<"review" | "submit">("review");
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [submitNote, setSubmitNote] = useState<string | null>(null);
+  const [verificationCodeDraft, setVerificationCodeDraft] = useState("");
+  const [verificationCodeSubmitting, setVerificationCodeSubmitting] = useState(false);
+  const [verificationCodeError, setVerificationCodeError] = useState<string | null>(null);
 
   async function loadNextJob() {
     setPhase("idle");
@@ -116,6 +120,9 @@ export default function AutofillPage() {
     setAutoSubmitting(false);
     setSubmitNote(null);
     setDetailsOpen(false);
+    setVerificationCodeDraft("");
+    setVerificationCodeSubmitting(false);
+    setVerificationCodeError(null);
     modeRef.current = "review";
     try {
       // A jobId in the URL resumes that specific job (e.g. one sitting in
@@ -158,16 +165,15 @@ export default function AutofillPage() {
     loadNextJob();
   }, []);
 
-  async function startFilling(mode: "review" | "submit") {
+  // Core of "Start filling", split out from startFilling() so resuming
+  // after a verification code is entered can re-enter the exact same flow
+  // without re-showing the submit-mode confirm dialog (the user already
+  // opted into that mode once for this job).
+  async function runStart(mode: "review" | "submit") {
     if (!job) return;
-    if (mode === "submit") {
-      const confirmed = window.confirm(
-        "This will automatically fill the application, acknowledge Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy when present, and click Submit once every other field is resolved -- no review step. Continue?"
-      );
-      if (!confirmed) return;
-    }
     modeRef.current = mode;
     setSubmitNote(null);
+    setVerificationCodeError(null);
     setPhase("starting");
 
     let res: Response;
@@ -175,6 +181,7 @@ export default function AutofillPage() {
       status: string;
       reason?: string;
       error?: string;
+      needsVerificationCode?: boolean;
       missingFields?: MissingField[];
       manualFields?: MissingField[];
     };
@@ -197,6 +204,17 @@ export default function AutofillPage() {
       return;
     }
 
+    if (data.status === "blocked" && data.needsVerificationCode) {
+      // A human-in-the-loop pause, not a dead end: the page still shows the
+      // emailed-code prompt from an earlier attempt (or this one). Alert the
+      // user right here instead of the generic "blocked" banner, and offer
+      // an input that injects the code and resumes -- see
+      // submitVerificationCodeAndResume() below.
+      setReason(data.reason ?? null);
+      setPhase("needs_verification_code");
+      return;
+    }
+
     if (data.status === "blocked" || data.status === "error") {
       setReason(data.reason ?? null);
       setPhase(data.status as Phase);
@@ -210,6 +228,16 @@ export default function AutofillPage() {
     if (data.status === "ready_for_review") {
       await maybeAutoSubmit(data.manualFields ?? []);
     }
+  }
+
+  async function startFilling(mode: "review" | "submit") {
+    if (mode === "submit") {
+      const confirmed = window.confirm(
+        "This will automatically fill the application, acknowledge Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy when present, and click Submit once every other field is resolved -- no review step. Continue?"
+      );
+      if (!confirmed) return;
+    }
+    await runStart(mode);
   }
 
   // Called every time the fill flow reaches "ready_for_review" -- right
@@ -234,7 +262,7 @@ export default function AutofillPage() {
     }
 
     setAutoSubmitting(true);
-    let data: { status: string; reason?: string };
+    let data: { status: string; reason?: string; needsVerificationCode?: boolean };
     try {
       const res = await fetch("/api/autofill/submit", {
         method: "POST",
@@ -254,12 +282,92 @@ export default function AutofillPage() {
     if (data.status === "submitted") {
       setSubmitNote("Submitted. Marking Applied and loading the next job…");
       await markAppliedAndNext();
+    } else if (data.needsVerificationCode) {
+      // Pause the loop right here and alert the user in this same view --
+      // they're already watching this exact page, so this is the most
+      // "real-time" this alert can be. Resuming (submitVerificationCodeAndResume,
+      // below) re-enters the same submit flow via runStart().
+      setReason(data.reason ?? null);
+      setPhase("needs_verification_code");
     } else {
       setSubmitNote(
         data.reason ??
           "Could not confirm the submission went through -- check the open browser window before marking this Applied."
       );
     }
+  }
+
+  // Injects a human-supplied emailed verification code into the open
+  // browser window and immediately resumes the submit click in the same
+  // backend call -- the code itself always comes from the user (their
+  // inbox, typed here), this only saves the alt-tab into the separate
+  // visible browser window.
+  async function submitVerificationCodeAndResume() {
+    if (!job) return;
+    const code = verificationCodeDraft.trim();
+    if (!code) return;
+    setVerificationCodeSubmitting(true);
+    setVerificationCodeError(null);
+    let data: {
+      status?: string;
+      error?: string;
+      submit?: { status: string; reason?: string; needsVerificationCode?: boolean };
+    };
+    try {
+      const res = await fetch("/api/autofill/verification-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, code }),
+      });
+      data = await res.json();
+      if (!res.ok) {
+        setVerificationCodeError(data.error ?? "Could not enter the code. Try again.");
+        setVerificationCodeSubmitting(false);
+        return;
+      }
+    } catch (err) {
+      setVerificationCodeError(friendlyNetworkError(err));
+      setVerificationCodeSubmitting(false);
+      return;
+    }
+    setVerificationCodeSubmitting(false);
+
+    if (data.status !== "filled" || !data.submit) {
+      setVerificationCodeError(
+        data.status === "field_not_found"
+          ? "Could not find the code field automatically. Type the code directly into the open browser window, then use \"I entered it in the browser\" below."
+          : "Could not enter the code. Try again, or type it directly into the open browser window."
+      );
+      return;
+    }
+
+    setVerificationCodeDraft("");
+    const submit = data.submit;
+    if (submit.status === "submitted") {
+      setPhase("ready_for_review");
+      setSubmitNote("Submitted. Marking Applied and loading the next job…");
+      await markAppliedAndNext();
+    } else if (submit.needsVerificationCode) {
+      // The employer asked for another code (or the same one didn't take)
+      // -- stay right here so the user can try again immediately.
+      setReason(submit.reason ?? null);
+      setVerificationCodeError("That code didn't go through -- check it and try again.");
+    } else {
+      // Filled and clicked, but couldn't confirm success -- same "review
+      // it yourself" outcome as a normal unconfirmed submit attempt.
+      setPhase("ready_for_review");
+      setSubmitNote(
+        submit.reason ??
+          "Entered the code and clicked submit, but couldn't confirm it went through -- check the open browser window."
+      );
+    }
+  }
+
+  // Fallback for when the code was typed directly into the real browser
+  // window instead (e.g. the field couldn't be located automatically) --
+  // just resumes the same flow without attempting to inject anything.
+  async function resumeAfterManualEntry() {
+    await runStart(modeRef.current);
   }
 
   async function answerField(field: MissingField, answer: string) {
@@ -759,6 +867,79 @@ export default function AutofillPage() {
                   Done with this one, next job
                 </button>
                 <button onClick={skipJob} className="border text-sm px-4 py-2 rounded">
+                  Skip this job
+                </button>
+              </div>
+            </div>
+          )}
+
+          {phase === "needs_verification_code" && (
+            <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-2">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-amber-600"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6Zm0 8a1 1 0 100-2 1 1 0 000 2Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">
+                    Verification code needed
+                  </p>
+                  <p className="mt-0.5 text-sm text-amber-800">
+                    {reason ??
+                      "The employer emailed a one-time verification code. Check your inbox, then enter it below or directly in the open browser window."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoComplete="one-time-code"
+                  value={verificationCodeDraft}
+                  onChange={(e) => setVerificationCodeDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && verificationCodeDraft.trim() && !verificationCodeSubmitting) {
+                      submitVerificationCodeAndResume();
+                    }
+                  }}
+                  placeholder="Paste the code here"
+                  disabled={verificationCodeSubmitting}
+                  className="flex-1 rounded border border-amber-300 px-3 py-2 text-sm disabled:opacity-50"
+                  suppressHydrationWarning
+                />
+                <button
+                  type="button"
+                  onClick={submitVerificationCodeAndResume}
+                  disabled={verificationCodeSubmitting || !verificationCodeDraft.trim()}
+                  className="shrink-0 rounded bg-amber-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {verificationCodeSubmitting ? "Entering code…" : "Enter code & continue"}
+                </button>
+              </div>
+
+              {verificationCodeError && (
+                <p className="text-sm text-red-700">{verificationCodeError}</p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 pt-3">
+                <button
+                  type="button"
+                  onClick={resumeAfterManualEntry}
+                  disabled={verificationCodeSubmitting}
+                  className="rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  I entered it directly in the browser — continue
+                </button>
+                <button onClick={skipJob} className="rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100">
                   Skip this job
                 </button>
               </div>

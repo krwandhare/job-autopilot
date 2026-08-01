@@ -61,6 +61,30 @@
 
 ## Completed
 
+- Built human-in-the-loop verification-code entry
+  (`lib/autofill/verificationCode.ts`, `lib/autofill/filler.ts`,
+  `app/api/autofill/verification-code`, `app/autofill/page.tsx`,
+  `app/page.tsx`): detection and pausing already existed; added the
+  missing pieces -- a dedicated in-app alert with a code input (reached
+  live the instant a submit-mode attempt hits the prompt, and also when
+  resuming an already-parked `needs_code` job, which previously dead-ended
+  at a generic "blocked" banner with no way forward except the real,
+  separate browser window), injection via the same proven fill pipeline
+  (`data-autofill-id` tagging, `fillMatched`), and an atomic resume that
+  re-clicks the real submit control in the same backend call rather than a
+  second round trip that would re-trigger the same page-text block check
+  (found and fixed that exact bug while wiring this up -- see SESSION.md).
+  A 20s background poll on the dashboard surfaces a newly-parked
+  `needs_code` job for a user who's just looking at the dashboard, not
+  watching `/autofill` live. Verified live end-to-end against a synthetic
+  form modeled on the already-live-verified real page text, through a real
+  non-headless browser window, with the final `applied` status and
+  `applications` row cross-checked directly in the database. Lint, strict
+  TypeScript, and the production build all passed.
+  **Not yet live-tested against a real employer's verification screen**
+  (only a synthetic reconstruction) -- recommended next step before fully
+  trusting the auto-locate path; the manual "I entered it directly in the
+  browser" fallback covers this in the meantime.
 - Fixed a real backend bug in resume-artifact regeneration, found via a
   requested diagnostic log-check rather than assumed:
   `generateResumeArtifacts()` never returned `downloadUrl`/`createdAt`, so

@@ -1,5 +1,130 @@
 # Session Handoff
 
+## Human-in-the-loop verification-code entry (ship-feature run)
+
+Requirement: "act as a senior automation engineer... integrate a
+human-in-the-loop verification step" -- detect an emailed verification
+code prompt, pause automation immediately, push a real-time alert with an
+input box, and once entered inject it into the form and resume the
+submission loop.
+
+Started by investigating what already existed rather than assuming a
+blank slate, since this repo already has extensive verification-code
+infrastructure (`lib/autofill/captcha.ts`'s live-verified page-text
+detection for Twilio/Affirm/MongoDB, a `needs_code` job status, Action
+Center surfacing, a background success watcher). Found the actual gaps
+were narrower and more specific than "build this from scratch":
+
+- **Detection (req 1) already existed**: `detectCaptcha()`'s
+  `isVerificationCode` flag, live-verified against real postings.
+- **Pause (req 2) already existed**: `submitApplication()` already
+  returns `unconfirmed` and parks the job as `needs_code` without ever
+  clicking anything further.
+- **Alert + input box (req 3) and inject + resume (req 4) did not
+  exist end to end.** The only path back to a parked `needs_code` job was
+  the dashboard's "Resume" link, which just re-ran the full fill pipeline
+  -- and its leading `detectCaptcha()` check (page-*text*-based) would
+  immediately re-report the same block without exposing
+  `needsVerificationCode` in that response shape at all, a dead end with
+  no way forward except alt-tabbing into the real, separate, non-headless
+  Playwright browser window and typing the code there by hand.
+- New `lib/autofill/verificationCode.ts`: `findVerificationCodeField()`
+  locates the single visible text-like input for the code (label/aria/
+  placeholder/attribute heuristics, explicit false-positive exclusions for
+  zip/postal/country/promo/coupon/referral/discount "code" fields),
+  tagging it with the same `data-autofill-id` attribute `scanFields()`
+  uses so the existing, already-proven fill pipeline
+  (`fillAnsweredField`/`fillMatched`/`locatorFor`) fills it with zero new
+  fill mechanics -- only a new way to find the field. Deliberately
+  conservative: returns null (never guesses) unless exactly one candidate
+  exists, matching this app's fallback-to-manual default everywhere else.
+- **Found and fixed a real architectural bug while wiring the resume
+  step**: naively resuming via the full `runStart()`/`submitApplication()`
+  pipeline after filling the code would hit the *same* leading
+  `detectCaptcha()` text check again -- the "a verification code was sent
+  to..." instructional text plausibly stays in the DOM even after the
+  field is filled, so it would immediately re-block instead of ever
+  clicking submit again, bouncing right back into the code-entry phase.
+  Fixed by extracting the click-and-confirm portion of
+  `submitApplicationUnsafe()` into a shared `attemptSubmitClick()`, and
+  having the new `submitVerificationCode()` call it *directly* -- skipping
+  the redundant leading check it just handled by filling the code --
+  immediately after a successful fill, so "inject the code" and "resume
+  the loop" are one atomic backend action instead of two round trips that
+  could re-trigger the same block. Also factored the
+  park-as-`needs_code`-on-unconfirmed logic (previously only in
+  `submitApplication()`) into a shared `handleUnconfirmedSubmit()` so both
+  the original submit path and this new resume path park correctly (e.g.
+  if the code was wrong or a second verification step appears).
+- `lib/autofill/filler.ts`'s `RunFillerResult`'s `"blocked"` variant
+  gained an optional `needsVerificationCode` field, and the early
+  `detectCaptcha()` check in `runFillerUnsafe()` now sets it -- fixing the
+  dashboard-"Resume"-link dead end above; a subsequent session resuming an
+  already-parked job now also reaches the new alert UI instead of a
+  generic unrecoverable "blocked" banner.
+- New `POST /api/autofill/verification-code` route and
+  `submitVerificationCode(jobId, code)`: fills the code and immediately
+  re-attempts the submit click, returning `{status: "filled", submit:
+  SubmitResult}` (or `field_not_found`/`error`). Deliberately never
+  persists the code to `profile_answers` (unlike ordinary answered
+  fields, which are remembered for reuse across jobs) -- a one-time code
+  has no reuse value and a stale one has no business being offered as a
+  remembered answer on a future job's unrelated field.
+- `app/autofill/page.tsx`: new `"needs_verification_code"` phase, a
+  dedicated amber alert box (code input + "Enter code & continue", a
+  "I entered it directly in the browser -- continue" fallback for when
+  the field can't be located automatically, and Skip), reached from two
+  places -- `runStart()`'s blocked-with-code branch (the resume-from-
+  dashboard path) and `maybeAutoSubmit()`'s needsVerificationCode branch
+  (the live in-session path, the one this request's "real-time" framing
+  mainly describes: the user is already watching this exact page when
+  their own submit-mode attempt hits the code prompt, so transitioning
+  phase in place *is* the real-time alert, no polling needed for that
+  case). `startFilling()` was split into a thin confirm-dialog wrapper
+  and a reusable `runStart()` core so resuming after code entry doesn't
+  re-show the "this will auto-submit" confirm dialog the user already
+  answered once for this job.
+- `app/page.tsx`: added a 20-second background poll of `/api/actions`
+  (only while the tab is visible) so a job parked as `needs_code` by an
+  unattended process while the user is just looking at the dashboard --
+  not watching `/autofill` live -- also surfaces without a manual
+  "Refresh actions" click. The closest a local, single-process,
+  single-user app gets to a real push without adding a websocket/SSE
+  layer for it.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- **Verified live, end to end, through the real app (not mocked), with a
+  real non-headless browser window** (confirmed launchable in this
+  environment first): built a synthetic local HTTP-served application-form
+  page modeled on `captcha.ts`'s live-verified real page text ("a
+  verification code was sent to..."), seeded a job pointing at it, and
+  drove the actual webapp UI (a separate headless Playwright browser
+  driving the Next.js frontend, which itself drives the app's own
+  non-headless Playwright session server-side -- the same architecture a
+  real user's browser + this app's real backend would have) through: click
+  Submit → confirm dialog → the new "Verification code needed" alert
+  appeared with the exact live-verified detection reason text → typed a
+  code → "Enter code & continue" → resumed, clicked the real synthetic
+  submit control again, detected the "Thank you for applying" confirmation
+  → marked Applied → loaded the next job → correctly reported the queue
+  empty (single-job queue). Cross-checked directly against the database
+  afterward, not just the UI: `jobs.status = 'applied'` and a real
+  `applications` row (`source: autofill_submit`) existed. Zero console/page
+  errors throughout. Temporary servers (app + synthetic form) and all
+  scripts were removed afterward; the app's own browser session had
+  already closed itself cleanly through the normal finish flow before
+  cleanup ran.
+- **Known limitation, stated plainly rather than glossed over**: the new
+  `findVerificationCodeField()` locator strategies are verified against a
+  synthetic reconstruction of the real, live-verified page text, not
+  against an actual live employer verification screen (none was available
+  to test against this session) -- a live retest against a real Greenhouse/
+  Twilio/Affirm/MongoDB verification prompt remains the recommended next
+  step before fully trusting the auto-locate path in production, consistent
+  with how every other not-yet-live-verified autofill heuristic in this
+  codebase is flagged. The manual "I entered it directly in the browser"
+  fallback exists specifically so this doesn't become a dead end if the
+  heuristic misses on a real form.
+
 ## Tailored resume draft: download state-management fix + UI overhaul (ship-feature run)
 
 Requirement (dual persona): as a senior backend engineer, debug the
