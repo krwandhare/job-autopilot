@@ -2,6 +2,12 @@
 
 ## In Progress
 
+- Rerun `npm run explorer-agent` whenever the UI changes meaningfully --
+  `docs/explorer-agent/site-map.json`/`e2e-test-plan.md` reflect one
+  disposable-fixture crawl, not the live app, and nothing regenerates them
+  automatically. Use the per-route "Manual review required" list there as
+  the starting point for actually writing E2E tests (still not started --
+  explorer-agent only plans, it doesn't test).
 - Live-test the submission-guard field-validation audit and consent-phrase
   detection against a real, user-authorized employer form -- only verified
   so far against a synthetic local HTML fixture (native HTML5 constraint

@@ -1,5 +1,95 @@
 # Session Handoff
 
+## Explorer-agent: read-only route/DOM crawler + generated E2E test plan (ship-feature run)
+
+Requirement: a recursive Playwright crawler that maps all reachable routes on
+localhost:3000, extracts actionable DOM elements (buttons/inputs/forms) per
+route and categorizes their input requirements, and outputs a JSON
+state-machine map flagging sensitive-input/complex-state-transition steps for
+manual review before generating a final E2E test plan.
+
+Built as a strictly **read-only** reconnaissance tool, not a test executor --
+several controls in this app (Start/"Fill" auto-fill, Auto-fill & submit,
+Sync, Delete, Save, Generate draft) are real state-mutating actions that
+AGENTS.md reserves for explicit user-authorized use, so the crawler only ever
+`page.goto`s and reads the DOM; it never clicks, types, or submits anything.
+
+- `lib/explorer/routes.ts`: pure `buildRouteTemplates`/`matchRoutePattern` --
+  normalizes concrete crawled paths (`/jobs/17`) to this app's actual
+  dynamic-route pattern (`/jobs/[id]`), discovered from the real
+  `app/**/page.tsx` and `app/api/**/route.ts` folder structure rather than
+  hardcoded, with an explicit `unmatched:<path>` fallback instead of a silent
+  wrong match.
+- `lib/explorer/classify.ts`: pure `classifyElement()` -- assigns a
+  requirement kind (text-input/file-upload/selection/boolean-input/
+  action-button/form-submit), a `sensitive` flag (password/file inputs,
+  SSN/passport/DOB-style label patterns), and a `flagForReview` + reason
+  using a recall-oriented verb heuristic (delete, submit, sync, import,
+  upload, save, generate, auto-fill/auto-submit, ...) -- the same
+  label/attribute-based classification style already used by
+  `lib/autofill/fieldMatcher.ts` for third-party ATS forms, with the same
+  fundamental limitation (can't see what an `onClick` handler does, only its
+  visible label).
+- `scripts/explorer-agent.mjs`: the Playwright BFS crawler. Preflights that
+  `--base-url` is reachable (never starts a server itself), discovers this
+  app's real route templates from the filesystem, crawls same-origin links
+  breadth-first capped at `--max-pages` *distinct route patterns* (not raw
+  pages -- every job row collapses to one `/jobs/[id]` visit), and writes
+  `docs/explorer-agent/site-map.json` (the state-machine: nodes, edges,
+  `unreachedRoutes` coverage-gap list, flat `manualReviewQueue`) plus a
+  generated `docs/explorer-agent/e2e-test-plan.md`.
+- **Privacy-safe extraction by construction, not by discipline**: the DOM
+  extraction inside `page.evaluate` never reads `<a>` link text, input
+  `value`s, or `<select>`/`<option>` contents -- all of which carry real
+  job/resume data in this app (job title as link text, skill chips, source
+  lists). It only records element type/attributes and `<button>`/form-field
+  label text, which in this codebase is static JSX copy, never a per-record
+  database value. Verified live (see below): the generated output contains
+  zero occurrences of the seeded fixture's job title, company, or URL.
+
+Verified live end to end, twice (once before and once after two
+classification fixes found by the first real run -- see below), against a
+disposable `git worktree` + isolated `JOB_AUTOPILOT_DATA_DIR` + a distinct
+port (3099), mirroring the pattern already established in this file's
+submission-guard/verification-code entries. `npm install` was required in
+the worktree (a symlinked `node_modules` breaks Turbopack's path checks --
+"Symlink [project]/node_modules is invalid, it points out of the filesystem
+root"). Seeded one clearly-synthetic job row ("Synthetic Fixture Role" /
+"Fixture Co" / `https://example.invalid/job/1`) directly via `better-sqlite3`
+so `/jobs/[id]` had something real to crawl. The crawl reached all 5 known
+page routes (`/`, `/profile`, `/autofill`, `/applications`, `/jobs/[id]`)
+with an empty `unreachedRoutes` list, and `grep` for the fixture's title/
+company/URL across both output files returned zero matches, confirming the
+privacy design holds against a real run, not just in theory.
+
+The first real run caught two genuine classification gaps that the unit
+tests, being hand-written, couldn't have exposed on their own -- both fixed
+and now covered by regression tests in
+`scripts/test-explorer-classify.mjs`:
+- `/autofill`'s "Fill" button -- the single most important control to flag,
+  since it opens a real Playwright session against an external employer ATS
+  -- wasn't matched by any verb pattern on its short visible text. Its
+  `title` attribute (`"Auto-fill (review before submit)"`) does say enough,
+  so `ExtractedElement` gained a `title` field folded into classification
+  (not just visible `label`), fixing this and one other button
+  ("Auto-submit") the same way.
+- `/jobs/[id]`'s "Generate draft" button (writes a new `drafts` row) wasn't
+  flagged -- the pattern list only matched "regenerate", not the plain
+  "generate" shown before a draft exists. Broadened to `/generate|reprocess/i`.
+
+Disposable worktree, isolated data dir, and background dev server were all
+torn down cleanly afterward (`git worktree remove --force`, `rm -rf` the temp
+data dir, killed the background process); `git worktree list` in this
+checkout shows only the real Codex and Claude worktrees. `npm run lint`,
+`npx tsc --noEmit`, and `npm run build` all pass on the final state.
+
+**Not yet done**: no attempt was made to crawl with `--headed` for a visual
+sanity check (headless-only so far); the `manualReviewQueue`/per-route plan
+in the committed `docs/explorer-agent/` output reflects the disposable
+fixture run above, not the user's real app state -- rerun
+`npm run explorer-agent` against a real (or another disposable) instance any
+time the UI changes meaningfully, since nothing regenerates it automatically.
+
 ## Submission-guard: generic post-submit field-validation audit (ship-feature run)
 
 Requirement: implement a "submission-guard" that runs a field audit before/

@@ -23,7 +23,9 @@
     "test:jobs-status-filter-routes": "bash scripts/test-jobs-status-filter-routes.sh",
     "test:queue-runner": "bash scripts/test-queue-runner.sh",
     "test:shared-runtime": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-shared-runtime.mjs",
-    "test:shared-runtime-routes": "bash scripts/test-shared-runtime-routes.sh"
+    "test:shared-runtime-routes": "bash scripts/test-shared-runtime-routes.sh",
+    "test:explorer-classify": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-explorer-classify.mjs",
+    "explorer-agent": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/explorer-agent.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
