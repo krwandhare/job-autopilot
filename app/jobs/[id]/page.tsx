@@ -107,6 +107,17 @@ const COVERAGE_STYLES = {
   needs_review: "bg-blue-50 text-blue-800",
 };
 
+// Compact-row indicator for the summary widget, paired with the same
+// COVERAGE_LABELS text -- never color alone.
+const COVERAGE_DOTS = {
+  supported: "bg-green-600",
+  partial: "bg-amber-500",
+  not_evidenced: "bg-red-600",
+  needs_review: "bg-blue-600",
+};
+
+const PRIORITY_BADGE = { required: "R", preferred: "P", context: "C" };
+
 const STATUS_OPTIONS = [
   "new",
   "drafted",
@@ -142,6 +153,8 @@ export default function JobDetailPage({
   const [resumeArtifacts, setResumeArtifacts] = useState<ResumeArtifact[]>([]);
   const [artifactLoading, setArtifactLoading] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [coverageDrawerOpen, setCoverageDrawerOpen] = useState(false);
+  const [coverageDrawerVisible, setCoverageDrawerVisible] = useState(false);
 
   async function load() {
     setError(null);
@@ -232,6 +245,33 @@ export default function JobDetailPage({
     // Refresh server-backed file state when a cached tab is restored or resumed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  function closeCoverageDrawer() {
+    setCoverageDrawerVisible(false);
+    window.setTimeout(() => setCoverageDrawerOpen(false), 200);
+  }
+
+  // Slide the drawer in a tick after mount (so the closed transform paints
+  // first), lock body scroll while it's open, and close on Escape --
+  // matches the evidence-editor bottom sheet on the Profile page.
+  useEffect(() => {
+    if (!coverageDrawerOpen) return;
+    const raf = requestAnimationFrame(() => setCoverageDrawerVisible(true));
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setCoverageDrawerVisible(false);
+        window.setTimeout(() => setCoverageDrawerOpen(false), 200);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [coverageDrawerOpen]);
 
   async function updateStatus(status: string) {
     setActionError(null);
@@ -517,25 +557,49 @@ export default function JobDetailPage({
       </div>
 
       {job.matchReasons && (
-        <div className="border rounded-lg p-4 text-sm space-y-2">
+        <div className="border rounded-lg p-4 text-sm space-y-3">
           <p className="font-medium">Why this score</p>
           <ul className="list-disc list-inside text-gray-600">
             {job.matchReasons.reasons.map((r, i) => (
               <li key={i}>{r}</li>
             ))}
           </ul>
-          <p>
-            <span className="text-gray-500">Your skills mentioned in posting: </span>
-            {job.matchReasons.matchedSkills.length > 0
-              ? job.matchReasons.matchedSkills.join(", ")
-              : "None"}
-          </p>
-          <p>
-            <span className="text-gray-500">Your skills not mentioned in posting: </span>
-            {job.matchReasons.missingSkills.length > 0
-              ? job.matchReasons.missingSkills.join(", ")
-              : "None"}
-          </p>
+          <div className="grid grid-cols-2 gap-3 border-t pt-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-gray-500">Mentioned in posting</p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {job.matchReasons.matchedSkills.length > 0 ? (
+                  job.matchReasons.matchedSkills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-800"
+                    >
+                      {skill}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-400">None</span>
+                )}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-gray-500">Not mentioned</p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {job.matchReasons.missingSkills.length > 0 ? (
+                  job.matchReasons.missingSkills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                    >
+                      {skill}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-400">None</span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -604,7 +668,93 @@ export default function JobDetailPage({
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">
+                {resumeAnalysis.coverage.length} requirement
+                {resumeAnalysis.coverage.length === 1 ? "" : "s"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setCoverageDrawerOpen(true)}
+                className="rounded text-xs font-medium text-blue-600 hover:underline focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+              >
+                Expand all
+              </button>
+            </div>
+
+            <div
+              role="list"
+              className="max-h-72 divide-y overflow-y-auto rounded border"
+            >
+              {resumeAnalysis.coverage.map((item) => (
+                <div
+                  key={item.requirement.id}
+                  role="listitem"
+                  className="flex items-center gap-2 px-3 py-2 text-xs"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600"
+                    title={item.requirement.priority}
+                  >
+                    {PRIORITY_BADGE[item.requirement.priority]}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-gray-800">
+                    {item.requirement.text}
+                  </span>
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 ${COVERAGE_STYLES[item.status]}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`h-1.5 w-1.5 rounded-full ${COVERAGE_DOTS[item.status]}`}
+                    />
+                    {COVERAGE_LABELS[item.status]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      {coverageDrawerOpen && resumeAnalysis && (
+        <div className="fixed inset-0 z-50" role="presentation">
+          <div
+            className={`absolute inset-0 bg-gray-950/40 transition-opacity duration-200 ${
+              coverageDrawerVisible ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={closeCoverageDrawer}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="coverage-drawer-heading"
+            className={`absolute inset-x-0 bottom-0 mx-auto flex max-h-[85vh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl transition-transform duration-200 ${
+              coverageDrawerVisible ? "translate-y-0" : "translate-y-full"
+            }`}
+          >
+            <div className="shrink-0 border-b p-4">
+              <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-200" aria-hidden="true" />
+              <div className="flex items-center justify-between gap-3">
+                <p id="coverage-drawer-heading" className="text-sm font-semibold text-gray-950">
+                  All requirements ({resumeAnalysis.coverage.length})
+                </p>
+                <button
+                  type="button"
+                  onClick={closeCoverageDrawer}
+                  aria-label="Close"
+                  className="shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-5 w-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 5l10 10M15 5L5 15" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
               {resumeAnalysis.coverage.map((item) => (
                 <article key={item.requirement.id} className="rounded border p-3 space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -644,9 +794,9 @@ export default function JobDetailPage({
                 </article>
               ))}
             </div>
-          </>
-        )}
-      </section>
+          </div>
+        </div>
+      )}
 
       <section className="border rounded-lg p-4 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

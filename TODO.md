@@ -61,6 +61,21 @@
 
 ## Completed
 
+- Optimized the job detail "Resume requirement coverage" section for
+  mobile (`app/jobs/[id]/page.tsx`): the always-expanded list of full
+  requirement cards is now a bounded, internally-scrolling summary widget
+  (one-line rows: priority badge, truncated text, status pill) with an
+  "Expand all" bottom-sheet drawer showing the original full-detail cards
+  unchanged (reusing the same drawer pattern already built for the
+  Profile page's evidence editor). The "Why this score" mentioned/
+  not-mentioned skill lists became a compact 2-column pill grid. Because
+  the list no longer inline-expands the section, "Refresh analysis" stays
+  near the top in practice. Verified live at 390px/1280px in headless
+  Chromium with a real analysis run (13 requirements, verified evidence
+  via the real API) -- confirmed real bounded scroll
+  (scrollHeight 480 > clientHeight 286) and that the drawer shows the
+  identical 13 items. Lint, strict TypeScript, and the production build
+  all passed.
 - Root-caused and fixed the empty "submitted applications" list on the live
   dashboard: 11 real jobs were `status = 'applied'` in the shared database
   with zero matching `applications` rows, because the primary worktree

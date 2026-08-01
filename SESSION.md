@@ -1,5 +1,60 @@
 # Session Handoff
 
+## Job detail "Resume requirement coverage" mobile overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... optimize the resume
+requirement coverage section for mobile" -- collapse the long
+qualification list into a scrollable summary widget with an "expand all"
+drawer, consolidate the "why this score" keyword list into a compact
+2-column grid, and keep the "Refresh analysis" button visible at the top
+without scrolling.
+
+- Scoped to `app/jobs/[id]/page.tsx`'s "Why this score" panel and "Resume
+  requirement coverage" section; the tailored-resume-draft section and
+  description below were left untouched.
+- Requirement list: replaced the always-expanded `space-y-3` stack of full
+  `<article>` cards (priority/kind/status tags, full text, matched/missing
+  terms, related evidence -- easily 6-10+ lines each) with a
+  `max-h-72 overflow-y-auto` bounded widget of one-line rows (a tiny
+  priority badge R/P/C, truncated requirement text, and a compact
+  dot+label status pill). A count label ("N requirements") and an
+  "Expand all" button sit above it. "Expand all" opens a bottom-sheet
+  drawer (same slide-up/Escape-to-close/body-scroll-lock pattern already
+  used for the Profile page's evidence editor, reused verbatim here for
+  consistency) containing the original full-detail cards unchanged --
+  nothing about the data or full-detail view was removed, it only moved
+  behind the drawer so the section's default height stays small regardless
+  of how many requirements a posting has.
+- Because the requirement list no longer inline-expands the section's
+  height, the "Refresh analysis"/"Analyze requirements" button (already
+  structurally first in the section, before any list content) now stays
+  near the top of the page in practice too -- verified live rather than
+  assumed: screenshotted after a real analysis with 13 requirements at
+  both 390px and 1280px and confirmed the button sits directly above a
+  short, bounded widget with no long list pushing it out of initial view.
+- "Why this score": the two keyword lists (skills mentioned/not mentioned
+  in the posting, previously comma-joined prose paragraphs) became a
+  `grid-cols-2` layout of wrapped pill chips, one column each, under the
+  existing prose `reasons` bullet list (left untouched -- it's sentences,
+  not a keyword list).
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database: seeded a real resume (the repo's sample-resume.txt
+  fixture) and a job with a 7-line qualifications + 5-line responsibilities
+  description plus crafted match-reasons data; extracted and bulk-verified
+  evidence through the real `/api/resume/evidence` endpoints (analysis
+  requires verified evidence, matching this repo's existing design) so the
+  live "Analyze requirements" flow produced real data, not a mock. Confirmed
+  the "why this score" grid renders both columns, confirmed a real
+  `Analyze requirements` click produced 13 requirements with the widget's
+  `scrollHeight` (480) exceeding its `clientHeight` (286) -- proving actual
+  bounded internal scroll, not just a tall box -- and confirmed the "Expand
+  all" drawer shows the exact same 13 items in full detail (counts
+  cross-checked, not assumed equal). Zero console/page errors at both
+  widths. Screenshots inspected directly. The temporary server, disposable
+  data directory, and verification script were all removed afterward; no
+  live personal data was read or changed.
+
 ## Cross-branch investigation: 11 orphaned live applications (ship-feature run)
 
 Requirement: "the submitted applications list is empty despite the
