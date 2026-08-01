@@ -122,6 +122,19 @@ try {
   assert.equal(stats.total, 2);
   assert.equal(stats.withResponse, 1);
   assert.equal(stats.responseRate, 0.5);
+  // All-time funnel counts reflect current response_type only (job 3 was
+  // set to "interview" above; job 4 has none).
+  assert.equal(stats.interview, 1);
+  assert.equal(stats.offer, 0);
+  assert.equal(stats.rejected, 0);
+  // Both applications were created "now" (default applied_at), so they land
+  // in the same current-week bucket.
+  assert.equal(stats.funnelWeekly.length, 1);
+  assert.equal(stats.funnelWeekly[0].total, 2);
+  assert.equal(stats.funnelWeekly[0].withResponse, 1);
+  assert.equal(stats.funnelWeekly[0].interview, 1);
+  assert.equal(stats.funnelWeekly[0].offer, 0);
+  assert.equal(stats.funnelWeekly[0].rejected, 0);
 
   // getTopJobsByFit: only status='new' jobs with no application yet and a
   // real (nonzero) score, best match first. Job 5 (score 0, a hard

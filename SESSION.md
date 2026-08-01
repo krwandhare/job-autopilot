@@ -1,5 +1,99 @@
 # Session Handoff
 
+## Applications view overhaul into an analytical hub (ship-feature run)
+
+Requirement: "act as a senior product designer... overhaul the applications
+view to be a high-performance analytical hub" -- a compact horizontal
+metric bar with +/- trend indicators, a company/domain/title grouping
+control, a visual funnel chart (applied/interview/offer/rejected % with
+trend lines), a sort-by dropdown (date/status), dense and mobile-optimized.
+
+This was the largest of this session's `/applications`-and-friends passes
+because, unlike the earlier ones, it needed new backend aggregation, not
+just layout: trend indicators and funnel sparklines need week-over-week
+history that didn't exist in the API response before this change.
+
+- `lib/applications.ts`: `getApplicationStats()` extended (superseding the
+  old `perWeek` field) to also return all-time `interview`/`offer`/
+  `rejected` counts and `funnelWeekly: FunnelWeek[]` (last 12 Sunday-start
+  calendar weeks, most recent first, each with total/withResponse/
+  interview/offer/rejected raw counts). Kept as raw counts, not
+  pre-computed percentages or deltas -- that derivation is presentational
+  and now lives entirely in the frontend, not the backend, so the API
+  stays a plain data provider. Single combined SQL query per shape (one for
+  all-time totals, one grouped-by-week), reusing the exact week-bucketing
+  expression the old `perWeek` query already used, so trend math and the
+  funnel sparklines share one consistent notion of "week."
+  - Known, documented modeling limit carried over unchanged from the
+    existing schema: `applications.response_type` is one current value per
+    row (set via toggle), not a log of every stage an application passed
+    through. An application now marked "offer" after an earlier interview
+    no longer counts toward "interview" anywhere in these stats. The
+    funnel is therefore an accurate snapshot of current outcome
+    distribution, not a true "reached this stage at some point" pipeline --
+    called out both in a code comment and in the UI's own caption text, not
+    silently glossed over.
+  - Extended `scripts/test-applications.mjs` with assertions for the new
+    `interview`/`offer`/`rejected` all-time counts and the `funnelWeekly`
+    shape; `npm run test:applications` passes.
+- `app/applications/page.tsx` (full rewrite of the page body, same file):
+  - **Metric bar** (req 1): the old 3-tile grid became one
+    `grid-cols-3 divide-x` bar. Each cell's trend arrow/delta is derived
+    from `funnelWeekly[0]` (this week) vs `funnelWeekly[1]` (last week):
+    Applications shows raw weekly growth (always "+N", cumulative
+    counters don't have a meaningful negative direction), Response rate
+    shows a percentage-point delta colored by outcome semantics (up=good,
+    down=critical -- the only cell where direction implies "good/bad"),
+    This week shows the plain week-over-week count delta in neutral
+    accent/gray (more or fewer applications isn't inherently good or bad).
+    Renders "No trend yet" instead of a fabricated delta when fewer than
+    two weekly buckets exist.
+  - **Funnel chart** (req 3): `FunnelChart` renders Applied/Interview/
+    Offer/Rejected as dense bar+sparkline+%+delta rows. Applied is always
+    100% by definition, so its sparkline/delta show weekly *volume*
+    instead of a flat, uninformative percentage line; the other three show
+    % of that week's cohort and a percentage-point delta vs the prior
+    week. `Sparkline` is a small inline `<svg><polyline>` (no charting
+    dependency), always paired with the numeric %/delta text next to it,
+    not the only signal.
+  - **Grouping control** (req 2): a 3-way segmented control (Company /
+    Domain / Title, default Company) groups the already-fetched
+    `applications` array client-side -- no new endpoint. "Domain" parses
+    `new URL(app.jobUrl).hostname` (stripping a leading `www.`), falling
+    back to "Unknown" for an unparseable/empty URL. Groups are ordered by
+    size (largest first), then alphabetically.
+  - **Sort by** (req 4): a native `<select>` (Application date / Status).
+    "Status" sorts by response-funnel stage (interview → offer → rejected
+    → ghosted), with awaiting-response applications sorted first as an
+    intentional, documented low-risk choice (most actionable state) rather
+    than last; both modes secondarily sort by most-recently-applied.
+  - Extracted the existing per-application card markup into an
+    `ApplicationCard` component (needed once the list renders inside
+    repeated group sections instead of one flat map) -- its behavior
+    (response toggle buttons, follow-up date save) is unchanged.
+  - Removed `StatTile` and `WeeklyTrendChart` (superseded by `MetricBar`
+    and `FunnelChart`, which are strictly richer) and the `formatWeekLabel`
+    helper that only they used -- an intentional simplification for
+    density (req 5), not an accidental drop; nothing else in the repo
+    referenced any of the three (checked before removing).
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database seeded with 11 synthetic applications spanning four
+  calendar weeks across 7 companies/domains with a deliberate response-type
+  mix, specifically so the trend math would be exercised, not just the
+  empty/flat-line path: confirmed metric-bar values and every trend arrow
+  by hand-computing the expected delta from the seeded data (e.g. response
+  rate 73% overall, -50pt this-week-vs-last, funnel Interview +17pt,
+  Offer/Rejected -33pt -- all matched), confirmed Company/Domain grouping
+  actually re-buckets the list (domains like `boards.greenhouse.io` and
+  `jobs.lever.co` render correctly), confirmed Status sort puts
+  awaiting-response first, confirmed the pre-existing "no response in 14+
+  days" filter still works combined with the new controls, and confirmed
+  zero console/page errors at either width throughout. Screenshots
+  inspected directly. The temporary server, disposable data directory, and
+  verification script were all removed afterward; no live personal data
+  was read or changed.
+
 ## Auto-fill job card mobile-scanning overhaul (ship-feature run)
 
 Requirement: "act as a senior UI engineer... overhaul the auto-fill job

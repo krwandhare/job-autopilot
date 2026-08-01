@@ -61,6 +61,26 @@
 
 ## Completed
 
+- Overhauled the Applications view into an analytical hub
+  (`app/applications/page.tsx`, `lib/applications.ts`): a compact
+  3-column metric bar with week-over-week trend arrows (Applications,
+  Response rate, This week), a visual funnel (Applied/Interview/Offer/
+  Rejected % with per-stage sparkline trend lines, all-time percentages
+  from new `interview`/`offer`/`rejected` stats fields), a Company/Domain/
+  Title grouping segmented control, and a Sort-by (date/status) dropdown --
+  all client-side except the new `funnelWeekly` weekly-cohort data
+  `getApplicationStats()` now returns (superseding the old `perWeek`
+  field). Removed the now-superseded `StatTile`/`WeeklyTrendChart`
+  components. Verified live at 390px and 1280px in headless Chromium
+  against an 11-application, 7-company, 4-week synthetic dataset --
+  hand-verified every trend/funnel delta against the seeded data, and
+  confirmed grouping, sorting, and the existing no-response filter all
+  work together with zero console errors. Extended
+  `scripts/test-applications.mjs` for the new stats fields; lint, strict
+  TypeScript, the production build, and `test:applications` all passed.
+  Known limitation (inherent to the existing schema, not new): the funnel
+  reflects each application's *current* `response_type` only, not a
+  historical log of every stage it passed through.
 - Redesigned the Auto-fill queue card for mobile scanning
   (`app/autofill/page.tsx`): the detail paragraph block (salary, resume
   attachment, matched/gap skills, responsibilities, qualifications) is now
