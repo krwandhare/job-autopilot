@@ -1,5 +1,73 @@
 # Session Handoff
 
+## Investigated "silent submission instead of visible browser" report (ship-feature run)
+
+Requirement: "act as a senior automation engineer... investigate why the
+auto-fill task is triggering a silent submission instead of opening the
+visible browser window for manual review" -- check for a headless
+default, add an explicit visibility check before submitting, and add a
+fallback that opens a new window if the session fails to render.
+
+- **Investigated before assuming the premise was correct.** Checked both
+  `chromium.launch()` calls in this codebase: `lib/autofill/session.ts`
+  (the one actually used for job-application autofill/submission) is
+  already `headless: false` -- there is no code path where autofill runs
+  headless. The other call (`lib/resumeArtifacts.ts`, `headless: true`) is
+  unrelated: it only renders a static tailored-resume PDF and never
+  touches a job application. So the literal "headless mode" premise
+  doesn't hold; nothing needed forcing.
+- **More likely real explanation, stated as an assessment, not proven
+  fact**: this session's own earlier redesign compressed "Auto-fill
+  (review)" and "Auto-fill & submit" into a dense 4-icon row with short
+  labels ("Fill" / "Submit") sitting close together, mobile-first. "Auto-
+  fill & submit" genuinely does auto-click the real submit control by
+  design (the documented opt-in escape hatch) -- if a job's fields are
+  already fully answered, the whole open→fill→submit→confirm→close cycle
+  can finish in a couple of seconds, closing the visible window again
+  almost immediately. That's real headed automation, just easy to miss
+  or misclick into on a small screen, which plausibly reads as "silent
+  submission."
+- Implemented the genuinely valuable version of what was asked, mapped
+  onto this app's real architecture rather than a false premise:
+  - New `pageIsVisibleForSubmit()` in `lib/autofill/filler.ts`: checks
+    `document.visibilityState === "visible"` immediately before the real
+    submit click in `attemptSubmitClick()`. If not visible, calls
+    `page.bringToFront()` (restores the existing filled-in session rather
+    than discarding it and forcing a full refill, which a naive
+    "relaunch a new window" fallback would do) and re-checks; if still
+    not visible, refuses to click and returns `unconfirmed` with a clear
+    reason, exactly matching this file's existing "never guess, fall back
+    to manual" pattern everywhere else.
+  - The existing session-recovery fallback (`getOrCreateSession()` in
+    `session.ts`, already discards a disconnected/closed session and
+    opens a fresh headed window) already covers requirement 3's literal
+    "open a new window if the session fails to render" for the
+    genuinely-dead-session case; not duplicated.
+  - Relabeled the auto-submit button from "Submit" to two-line
+    "Auto-submit" in `app/autofill/page.tsx` for extra clarity against
+    "Fill" at a glance, addressing the misclick-risk assessment above.
+- **Verification honesty note, not glossed over**: attempted to empirically
+  prove the visibility check catches a real "window not visible" case via
+  two automated methods -- CDP `Browser.setWindowBounds({windowState:
+  "minimized"})` and cross-window occlusion via a second page's
+  `bringToFront()`. Neither produced a `"hidden"` `document.visibilityState`
+  in this sandboxed macOS environment (confirmed via `Browser.getWindowBounds`
+  that the CDP minimize call had literally no effect -- `windowState`
+  stayed `"normal"` before and after, a known limitation of CDP window-state
+  control on macOS, not evidence against the underlying mechanism, which is
+  a standard, long-established web platform API used broadly for exactly
+  this purpose). What *was* verified: the check does not produce false
+  positives -- confirmed `visibilityState` correctly reports `visible` in
+  the normal case, and a full live regression run through the real submit
+  flow (synthetic form, real non-headless browser, same technique as the
+  prior verification-code session) completed normally with the new check
+  in place, cross-checked at the database level (`jobs.status = 'applied'`,
+  a real `applications` row). Recommended next step: manually minimize the
+  real autofill browser window during a live auto-submit run to confirm
+  the refusal/`bringToFront()` behavior in practice, since it could not be
+  proven by automation here.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+
 ## Human-in-the-loop verification-code entry (ship-feature run)
 
 Requirement: "act as a senior automation engineer... integrate a

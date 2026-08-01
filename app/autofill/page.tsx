@@ -815,7 +815,11 @@ export default function AutofillPage() {
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
                   <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
                 </svg>
-                <span className="text-[11px] font-medium">Submit</span>
+                <span className="text-center text-[11px] leading-tight font-medium">
+                  Auto-
+                  <br />
+                  submit
+                </span>
               </button>
               <button
                 onClick={saveForLaterAndNext}

@@ -883,6 +883,25 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
   return attemptSubmitClick(session);
 }
 
+// The browser is always launched non-headless (see getOrCreateSession in
+// session.ts) -- that alone doesn't guarantee a human can actually see it
+// at the moment of an automated submit click. The OS can still minimize
+// the window, move it off-screen, or leave another window covering it,
+// none of which Playwright's own connected/closed checks catch.
+// document.visibilityState reflects real OS-level foreground state
+// (Chromium updates it correctly for minimize/occlusion/tab-switch), so
+// it's the closest real signal available for "is this actually visible
+// right now." Never guesses: any failure to confirm is treated as
+// "can't confirm visible," not "assume it's fine."
+async function pageIsVisibleForSubmit(page: Page): Promise<boolean> {
+  if (page.isClosed()) return false;
+  try {
+    return (await page.evaluate(() => document.visibilityState)) === "visible";
+  } catch {
+    return false;
+  }
+}
+
 // The actual click-and-confirm attempt, split out from
 // submitApplicationUnsafe() so resumeSubmitAfterVerificationCode() below
 // can reuse it directly without repeating its own leading detectCaptcha()
@@ -892,6 +911,25 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
 // re-report the same block instead of ever attempting the click.
 async function attemptSubmitClick(session: AutofillSession): Promise<SubmitResult> {
   const { page } = session;
+
+  if (!(await pageIsVisibleForSubmit(page))) {
+    // Bring the existing window forward rather than discarding it and
+    // opening a fresh one -- the page (and everything already filled in
+    // it) is still alive, just not currently on screen; relaunching would
+    // throw away all of that and force a full refill. Only if bringing it
+    // forward still doesn't produce a visible page does this refuse to
+    // click, exactly like every other "can't confirm, don't guess"
+    // fallback in this file.
+    await page.bringToFront().catch(() => {});
+    if (!(await pageIsVisibleForSubmit(page))) {
+      return {
+        status: "unconfirmed",
+        reason:
+          "Could not confirm the browser window is visible on screen -- refusing to click Submit automatically. Bring the window to the foreground yourself, review it, and submit there, or try again once it's visible.",
+      };
+    }
+  }
+
   const target = await resolveFillTarget(session);
   const control = target.getByRole("button", { name: SUBMIT_TEXT_PATTERN }).first();
   const hasControl = await control.count().catch(() => 0);

@@ -61,6 +61,26 @@
 
 ## Completed
 
+- Investigated a reported "silent submission instead of visible browser"
+  issue: confirmed the autofill browser is already `headless: false` (not
+  the cause; the only `headless: true` launch in the codebase is
+  unrelated PDF rendering). Assessed the more likely real explanation as
+  the compact "Fill"/"Submit" icon row (this session's own earlier
+  redesign) being easy to misclick, plus a fast fully-answered auto-submit
+  closing the visible window again within seconds. Added a real safety
+  gate: `pageIsVisibleForSubmit()` checks `document.visibilityState`
+  immediately before the real submit click, calls `page.bringToFront()`
+  if not visible (recovers the existing filled-in session instead of
+  discarding it), and refuses to click if still not visible. Relabeled
+  the button to two-line "Auto-submit" for clarity. Lint, strict
+  TypeScript, and the production build passed; a live regression run
+  through the real submit flow showed no false-positive blocking.
+  **Not fully provable by automation**: two attempts to simulate a real
+  "window not visible" state (CDP minimize, cross-window occlusion) both
+  failed to produce it in this sandboxed macOS environment (CDP window-
+  state control has known macOS limitations) -- recommend manually
+  minimizing the real browser window during a live auto-submit run to
+  confirm the refusal/recovery behavior in practice.
 - Built human-in-the-loop verification-code entry
   (`lib/autofill/verificationCode.ts`, `lib/autofill/filler.ts`,
   `app/api/autofill/verification-code`, `app/autofill/page.tsx`,
