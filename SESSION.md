@@ -1,5 +1,65 @@
 # Session Handoff
 
+## Auto-fill job card mobile-scanning overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... overhaul the auto-fill job
+card for mobile-first scanning" -- condense employer/title into a clean
+header and hide the job detail body by default, collapse the missing-
+resume/skill-gap warnings into one subtle status pill at the card base,
+turn the action buttons into a dense icon row, and keep "view job details"
+as a plain text link below the pill.
+
+- Scoped to `app/autofill/page.tsx`'s job queue card (the `{job && (...)}`
+  block); the rest of the fill flow (missing-field prompts,
+  ready-for-review panel, blocked/error panels) was left behavior-identical,
+  only reflowed to sit below the new header/action-row structure.
+- Header: title/company/location/source/score condensed to two lines (was
+  already close, just tightened weight/size); the previously always-visible
+  detail paragraph block (salary, resume attachment, matched skills, skill
+  gaps, responsibilities, qualifications) now renders only behind a
+  `detailsOpen` disclosure toggle ("Show details"/"Hide details" with a
+  rotating chevron), collapsed by default and reset on every job change.
+  Chose a same-card expand over removing the content outright, since it's
+  data already fetched for this job (no extra request) and "hide ... by
+  default" implies a way to reveal it, not permanent removal -- the
+  existing "View job details" link (req 4) still covers navigating to the
+  full canonical job page.
+- Status pill: `getStatusPill()` collapses the two previously separate,
+  always-visible warning lines (missing resume file, skill-gap list) into
+  one pill with three tones -- critical ("No resume attached") when
+  `resumeAttachment` is null, warning ("N skill gaps vs. this posting")
+  when `skillsInPostingNotInResume` is non-empty, else a good/green
+  "Resume attached, no skill gaps" -- so exactly one pill always renders at
+  the card base, dot + text per the never-color-alone convention already
+  used elsewhere in this app. The tailored-vs-master-resume distinction
+  moved into the collapsible detail body rather than the pill, since it
+  isn't a warning.
+- Actions: the four idle-phase buttons (Auto-fill review, Auto-fill &
+  submit, Save for later, Skip -- all four kept; the requirement named
+  three, but Save for later is a real, intentionally-distinct existing
+  workflow state per its own code comment, not something to silently drop)
+  became a `grid-cols-4` row of icon-over-label buttons (custom inline SVG,
+  no new icon dependency), keeping their original color semantics (solid
+  dark = primary review path, solid red = higher-risk auto-submit,
+  outlined = secondary) and the existing submit-mode confirm dialog and
+  hover tooltips unchanged.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database (a copied fixture resume + one synthetic job with a
+  crafted `match_reasons_json` and a description containing real
+  Responsibilities/Qualifications sections, so `extractJobSections` had
+  real content to parse): confirmed the detail body is absent from the DOM
+  by default, "Show details" reveals it with the exact salary/resume/
+  skills/responsibilities/qualifications content, the icon action row
+  renders all four actions, and the pill correctly read "3 skill gaps vs.
+  this posting". Separately re-verified live (same running server, resume
+  file removed from the disposable data dir) that the pill switches to
+  "No resume attached" when `resumeAttachment` is null. Zero console/page
+  errors at either width in both passes. Screenshots inspected directly;
+  the temporary server, disposable data directory, and verification
+  scripts were all removed afterward. No live personal data was read or
+  changed.
+
 ## Profile page "Verified career evidence" + job filters mobile-density overhaul (ship-feature run)
 
 Requirement: "act as a senior UI engineer... overhaul the verified career

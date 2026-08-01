@@ -61,6 +61,26 @@ function friendlyNetworkError(err: unknown): string {
   return `Lost connection to the server (${message}). Check your network connection and try again.`;
 }
 
+const STATUS_PILL_TONE: Record<"critical" | "warning" | "good", { dot: string; classes: string }> = {
+  critical: { dot: "bg-red-600", classes: "border-red-200 bg-red-50 text-red-700" },
+  warning: { dot: "bg-amber-500", classes: "border-amber-200 bg-amber-50 text-amber-800" },
+  good: { dot: "bg-green-600", classes: "border-green-200 bg-green-50 text-green-700" },
+};
+
+// Collapses the two things previously shown as separate always-visible
+// warnings (no attachable resume, skills the posting wants that the resume
+// doesn't have) into one status read, so the card only ever needs one pill.
+function getStatusPill(job: QueueJob): { text: string; tone: "critical" | "warning" | "good" } {
+  if (!job.resumeAttachment) {
+    return { text: "No resume attached", tone: "critical" };
+  }
+  const gapCount = job.skillsInPostingNotInResume.length;
+  if (gapCount > 0) {
+    return { text: `${gapCount} skill gap${gapCount === 1 ? "" : "s"} vs. this posting`, tone: "warning" };
+  }
+  return { text: "Resume attached, no skill gaps", tone: "good" };
+}
+
 export default function AutofillPage() {
   const [job, setJob] = useState<QueueJob | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -73,6 +93,7 @@ export default function AutofillPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [completionAction, setCompletionAction] = useState<"applied" | "close" | null>(null);
   const [completionError, setCompletionError] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // "review" (default) always leaves the real submit click to the human.
   // "submit" is an opt-in, per-job escape hatch that also clicks the real
@@ -94,6 +115,7 @@ export default function AutofillPage() {
     setDrafts({});
     setAutoSubmitting(false);
     setSubmitNote(null);
+    setDetailsOpen(false);
     modeRef.current = "review";
     try {
       // A jobId in the URL resumes that specific job (e.g. one sitting in
@@ -518,6 +540,8 @@ export default function AutofillPage() {
     loadNextJob();
   }
 
+  const statusPill = job ? getStatusPill(job) : null;
+
   return (
     <div className="max-w-2xl mx-auto p-8 space-y-6">
       <div>
@@ -565,7 +589,7 @@ export default function AutofillPage() {
       {job && (
         <div className="border rounded-lg p-4 space-y-4">
           <div>
-            <p className="font-medium">{job.title}</p>
+            <p className="text-base font-semibold text-gray-950">{job.title}</p>
             <p className="text-sm text-gray-500">
               {job.company} · {job.location ?? "Unknown location"} · {job.source}
               {job.matchScore !== null && ` · score ${job.matchScore}`}
@@ -580,97 +604,138 @@ export default function AutofillPage() {
                 Resuming -- the background queue runner couldn&apos;t resolve this one on its own and left it for you.
               </p>
             )}
-            <div className="mt-2 space-y-1 text-sm">
-              <p>
-                <span className="font-medium">Salary range:</span>{" "}
-                {job.salaryText ?? "Not listed"}
-              </p>
-              <p>
-                <span className="font-medium">Resume attachment:</span>{" "}
-                {job.resumeAttachment ? (
-                  <>
-                    {job.resumeAttachment.filename}{" "}
-                    <span
-                      className={
-                        job.resumeAttachment.source === "tailored"
-                          ? "text-green-700"
-                          : "text-gray-500"
-                      }
-                    >
-                      (
-                      {job.resumeAttachment.source === "tailored"
-                        ? `approved for this job · ${job.resumeAttachment.format?.toUpperCase()}`
-                        : "master resume fallback"}
-                      )
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-red-700">No attachable resume file</span>
-                )}
-              </p>
-              <p>
-                <span className="font-medium">Your skills mentioned in posting:</span>{" "}
-                {job.matchedSkills.length > 0 ? job.matchedSkills.join(", ") : "None"}
-              </p>
-              <p>
-                <span className="font-medium">Skills this posting mentions that aren&apos;t in your resume:</span>{" "}
-                {job.skillsInPostingNotInResume.length > 0
-                  ? job.skillsInPostingNotInResume.join(", ")
-                  : "None detected"}
-              </p>
-              {job.responsibilities && (
-                <p>
-                  <span className="font-medium">Roles &amp; responsibilities:</span>{" "}
-                  {job.responsibilities}
-                </p>
-              )}
-              {job.qualifications && (
-                <p>
-                  <span className="font-medium">Qualifications:</span> {job.qualifications}
-                </p>
-              )}
-              {!job.responsibilities && !job.qualifications && (
-                <p className="text-gray-400">
-                  Couldn&apos;t auto-detect labeled responsibilities/qualifications sections in this
-                  posting — check the full description on the job page.
-                </p>
-              )}
-            </div>
-            <Link
-              href={`/jobs/${job.id}`}
-              className="text-sm text-blue-600 hover:underline"
+
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((open) => !open)}
+              aria-expanded={detailsOpen}
+              aria-controls="autofill-job-detail-body"
+              className="mt-2 flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800"
             >
-              View job details
-            </Link>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={`h-3.5 w-3.5 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              {detailsOpen ? "Hide details" : "Show details"}
+            </button>
+
+            {detailsOpen && (
+              <div id="autofill-job-detail-body" className="mt-2 space-y-1 text-sm">
+                <p>
+                  <span className="font-medium">Salary range:</span>{" "}
+                  {job.salaryText ?? "Not listed"}
+                </p>
+                <p>
+                  <span className="font-medium">Resume attachment:</span>{" "}
+                  {job.resumeAttachment ? (
+                    <>
+                      {job.resumeAttachment.filename}{" "}
+                      <span
+                        className={
+                          job.resumeAttachment.source === "tailored"
+                            ? "text-green-700"
+                            : "text-gray-500"
+                        }
+                      >
+                        (
+                        {job.resumeAttachment.source === "tailored"
+                          ? `approved for this job · ${job.resumeAttachment.format?.toUpperCase()}`
+                          : "master resume fallback"}
+                        )
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-red-700">No attachable resume file</span>
+                  )}
+                </p>
+                <p>
+                  <span className="font-medium">Your skills mentioned in posting:</span>{" "}
+                  {job.matchedSkills.length > 0 ? job.matchedSkills.join(", ") : "None"}
+                </p>
+                <p>
+                  <span className="font-medium">Skills this posting mentions that aren&apos;t in your resume:</span>{" "}
+                  {job.skillsInPostingNotInResume.length > 0
+                    ? job.skillsInPostingNotInResume.join(", ")
+                    : "None detected"}
+                </p>
+                {job.responsibilities && (
+                  <p>
+                    <span className="font-medium">Roles &amp; responsibilities:</span>{" "}
+                    {job.responsibilities}
+                  </p>
+                )}
+                {job.qualifications && (
+                  <p>
+                    <span className="font-medium">Qualifications:</span> {job.qualifications}
+                  </p>
+                )}
+                {!job.responsibilities && !job.qualifications && (
+                  <p className="text-gray-400">
+                    Couldn&apos;t auto-detect labeled responsibilities/qualifications sections in this
+                    posting — check the full description on the job page.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {phase === "idle" && (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <button
                 onClick={() => startFilling("review")}
-                className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
+                title="Auto-fill (review before submit)"
+                className="flex flex-col items-center gap-1 rounded-lg bg-gray-900 px-2 py-2.5 text-white hover:bg-gray-800"
               >
-                Auto-fill (review before submit)
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                  <path d="M13 2 3 14h7l-1 8 11-14h-7l1-6z" />
+                </svg>
+                <span className="text-[11px] font-medium">Fill</span>
               </button>
               <button
                 onClick={() => startFilling("submit")}
-                className="bg-red-700 text-white text-sm px-4 py-2 rounded"
-                title="Also clicks the real submit button once everything's filled -- no review step"
+                title="Auto-fill & submit -- also clicks the real submit button once everything's filled, no review step"
+                className="flex flex-col items-center gap-1 rounded-lg bg-red-700 px-2 py-2.5 text-white hover:bg-red-800"
               >
-                Auto-fill &amp; submit
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                  <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
+                </svg>
+                <span className="text-[11px] font-medium">Submit</span>
               </button>
               <button
                 onClick={saveForLaterAndNext}
-                className="border text-sm px-4 py-2 rounded"
-                title="Partial match -- keep it for review later instead of skipping outright"
+                title="Save for later -- partial match, keep it for review instead of skipping outright"
+                className="flex flex-col items-center gap-1 rounded-lg border border-gray-300 px-2 py-2.5 text-gray-700 hover:bg-gray-50"
               >
-                Save for later
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                  <path d="M6 2a2 2 0 00-2 2v18l8-5 8 5V4a2 2 0 00-2-2H6z" />
+                </svg>
+                <span className="text-[11px] font-medium">Later</span>
               </button>
               <button
                 onClick={skipJob}
-                className="border text-sm px-4 py-2 rounded"
+                title="Skip this job"
+                className="flex flex-col items-center gap-1 rounded-lg border border-gray-300 px-2 py-2.5 text-gray-500 hover:bg-gray-50"
               >
-                Skip this job
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+                <span className="text-[11px] font-medium">Skip</span>
               </button>
             </div>
           )}
@@ -860,6 +925,23 @@ export default function AutofillPage() {
                     : "Close without marking Applied"}
                 </button>
               </div>
+            </div>
+          )}
+
+          {statusPill && (
+            <div className="flex flex-col items-start gap-1 border-t pt-3">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${STATUS_PILL_TONE[statusPill.tone].classes}`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 rounded-full ${STATUS_PILL_TONE[statusPill.tone].dot}`}
+                />
+                {statusPill.text}
+              </span>
+              <Link href={`/jobs/${job.id}`} className="text-sm text-blue-600 hover:underline">
+                View job details
+              </Link>
             </div>
           )}
         </div>

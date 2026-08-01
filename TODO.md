@@ -61,6 +61,22 @@
 
 ## Completed
 
+- Redesigned the Auto-fill queue card for mobile scanning
+  (`app/autofill/page.tsx`): the detail paragraph block (salary, resume
+  attachment, matched/gap skills, responsibilities, qualifications) is now
+  hidden by default behind a "Show details" disclosure toggle; the two
+  previously separate warning lines (missing resume, skill gaps) collapsed
+  into one status pill (`getStatusPill()`, critical/warning/good tones) at
+  the card base with the "View job details" link right below it; and the
+  four idle-phase action buttons (Fill/Submit/Later/Skip -- all four kept)
+  became a dense `grid-cols-4` icon-over-label row. Verified live at 390px
+  and 1280px in headless Chromium against a disposable database (real
+  fixture resume + a synthetic job with crafted match/skill-gap data and a
+  parsed Responsibilities/Qualifications description) -- confirmed the
+  collapsed/expanded states, all three pill tones (including live-tested
+  "No resume attached" after removing the seeded resume file), and zero
+  console errors. Lint, strict TypeScript, and the production build all
+  passed.
 - Redesigned the Profile page's "Verified career evidence" section and job
   filters for mobile density (`app/profile/page.tsx`): the nested
   card-per-item list is now a dense table-like row list (category label +
