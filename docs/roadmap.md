@@ -34,8 +34,10 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Deterministic cover-letter and screening-answer generation.
 - Visible Playwright browser sessions that scan and fill supported native and React-style controls.
 - Stored resume attachment, ad hoc file attachment, and remembered semantic answers.
+- Per-job CV archiving: the exact resume file attached to an application form is content-addressed, sanitized, and linked to that job ID under `data/cv-archive/` for post-submission review, independent of later resume edits or re-tailoring.
 - Manual boundaries for sensitive/ambiguous controls and CAPTCHA/bot-block detection.
 - Review-only autofill by default, plus explicit guarded auto-submit with conservative fallback and manual local status tracking.
+- Pre-submit required-field auditing, including consent controls and ATS/native validation messages, with an accessible `UI-validation-error` toast and no submit click on failure.
 - Explicit user-confirmed autofill completion: mark locally `applied` and advance only after the user says they submitted; allow closing without changing `new`.
 - Auto-fill queue cards show stored matched and missing skills before the user starts filling.
 - Dashboard Action Center prioritizes manual application work with readable
@@ -57,9 +59,9 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
   skill extraction, TXT parsing, drafts, HTML cleanup, and source normalization.
 - Add isolated SQLite/route integration tests that never touch the user's `data/app.db`.
 - Expand controlled Playwright coverage beyond the tailored-resume generator
-  to field matching, native selects, React-style comboboxes, embedded forms,
-  browser closure, CAPTCHA boundaries, and confirmation that submit controls
-  are ignored.
+  and submission-guard fixtures to field matching, native selects,
+  React-style comboboxes, embedded forms, browser closure, CAPTCHA boundaries,
+  and end-to-end confirmation that invalid forms never activate submit controls.
 - Remove the production build's dependency on fetching Google Fonts at build time or otherwise provide a reproducible network-enabled build path.
 - Add file-size, supported-content/MIME, and error handling limits to both upload endpoints.
 - Add remote-fetch timeouts and response-size bounds, especially for the user-supplied LinkedIn page.

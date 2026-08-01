@@ -2,6 +2,15 @@
 
 ## In Progress
 
+- Live-verify per-job CV archiving (`lib/cvArchive.ts`) against a real,
+  user-authorized ATS form: confirm the archived file under
+  `data/cv-archive/<jobId>/` matches what was actually attached, and that
+  archiving never delays or blocks the real attachment.
+- No UI surface yet exposes archived CVs for the post-submission review loop
+  (`getLatestCvArchiveForJob`/`listCvArchiveForJob` exist but are unused
+  outside tests) -- decide where that review view should live (job detail?
+  applications page?) before building it.
+
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
@@ -18,6 +27,7 @@
 - Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
 - Manually verify the new opt-in "Auto-fill & submit" mode against a real, user-authorized test application before relying on it for real submissions -- static checks and a production build passed, but no live ATS run has confirmed the submit-control detection or confirmation logic yet.
 - Retest Twilio's location autocomplete, grouped referral-source question, the narrowly allowlisted submit-mode policy acknowledgements, and exact manual-blocker messaging in a visible browser; static checks pass, but the live form has not been rerun after the latest fixes.
+- Live-retest the pre-submit audit against a user-authorized ATS form and confirm the `UI-validation-error` toast matches the employer-rendered error without activating Submit.
 - Live-test the unattended queue runner and verification-code recovery against user-authorized forms; confirm uncertain jobs are parked as `needs_review` or `needs_code` and no manual blocker is bypassed.
 
 ## Next
@@ -40,6 +50,16 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Added per-job CV archiving: `lib/cvArchive.ts` snapshots the exact resume
+  file about to be attached to an application form, content-addressed and
+  linked directly to the job ID under `data/cv-archive/`, with a new
+  `cv_archive` SQLite table, a call site in `lib/autofill/filler.ts` before
+  attachment, and `npm run test:cv-archive` covering creation, idempotent
+  re-attachment, history-on-change, isolation, and path-traversal safety.
+  Lint, strict TypeScript, production build, and the existing
+  `test:submission-guard` suite passed; live ATS verification is pending
+  (see In Progress).
 
 - Added a standard `npm test` command that runs all 14 existing deterministic
   suites sequentially with a disposable default runtime directory, isolated
@@ -205,6 +225,7 @@
 - Enforced configured preferred locations for Remote-only matching so geographically restricted remote roles do not qualify solely as remote (uncommitted, awaiting review).
 - Added conservative canonical skill aliases, clearer mentioned/not-mentioned labels, and removed draft language that treated an unmentioned target skill as a user skill gap (uncommitted, awaiting review).
 - Collapsed grouped referral-source checkboxes into one answerable question, kept policy acknowledgements manual with full labels, and made auto-submit refusal messages enumerate the exact blockers (uncommitted, awaiting live retest).
+- Added a session-level submission guard for required/invalid fields (including consent controls), exact bounded error toasts, and deterministic Playwright coverage (uncommitted, awaiting live ATS retest).
 - Added watchlist, verification-code, review, and external-lead workflow statuses; resumable jobs; serialized Playwright actions; guarded success watching; diagnostic inspect/snapshot routes; and an unattended queue runner that parks uncertain jobs (uncommitted, static validation passed).
 - Established shared agent, session, workflow, architecture, and roadmap documentation.
 - Added GitHub Actions quality checks (`933c4bc`), following the shared-context documentation commit (`d314240`).

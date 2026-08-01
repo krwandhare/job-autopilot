@@ -4,10 +4,13 @@ import { generateDraft } from "@/lib/draft";
 import type { MatchResult } from "@/lib/matching";
 import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
 import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
+import { archiveCvForJob } from "@/lib/cvArchive";
+import { createApplication } from "@/lib/applications";
 import {
   getOrCreateSession,
   getSession,
   getAllSessions,
+  auditSubmissionFields,
   closeSession,
   withJobLock,
   type AutofillSession,
@@ -460,6 +463,15 @@ async function runFillerUnsafe(
   for (const field of [...scan.matched, ...scan.custom]) {
     if (field.key === "resume") {
       if (resumeAttachment) {
+        // Best-effort: snapshot exactly what's about to be attached, linked
+        // to this job ID, before attaching it -- so a later post-submission
+        // review can see the real file even if the resume is edited or
+        // re-tailored afterward. Must never block the actual attachment.
+        try {
+          archiveCvForJob(db, jobId, resumeAttachment);
+        } catch {
+          // archiving is a convenience, not a precondition for filling
+        }
         const attached = await locatorFor(target, field.autofillId)
           .setInputFiles(resumeAttachment.filePath)
           .then(() => true)
@@ -717,6 +729,12 @@ export async function inspectField(
 
 export type SubmitResult =
   | { status: "submitted" }
+  | {
+      status: "validation_error";
+      reasonCode: "UI-validation-error";
+      reason: string;
+      fields: { label: string; error: string }[];
+    }
   | { status: "unconfirmed"; reason: string; needsVerificationCode?: boolean }
   | { status: "error"; reason: string };
 
@@ -821,6 +839,17 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
   }
 
   const target = await resolveFillTarget(session);
+  const validationIssues = await auditSubmissionFields(target);
+  if (validationIssues.length > 0) {
+    const first = validationIssues[0];
+    return {
+      status: "validation_error",
+      reasonCode: "UI-validation-error",
+      reason: `${first.label}: ${first.error}`,
+      fields: validationIssues,
+    };
+  }
+
   const control = target.getByRole("button", { name: SUBMIT_TEXT_PATTERN }).first();
   const hasControl = await control.count().catch(() => 0);
   if (!hasControl) {
@@ -941,8 +970,24 @@ function startSubmissionWatcher(): void {
         if (confirmed) {
           const db = getDb();
           const complete = db.transaction(() => {
+            const job = db
+              .prepare("SELECT status, company FROM jobs WHERE id = ?")
+              .get(jobId) as { status: string; company: string } | undefined;
             db.prepare("UPDATE jobs SET status = 'applied' WHERE id = ?").run(jobId);
             resolveJobActions(db, jobId);
+            // Mirrors PATCH /api/jobs/[id]'s applied-transition hook, which
+            // this background path bypasses since it writes status directly.
+            if (job && job.status !== "applied") {
+              const latestResume = db
+                .prepare("SELECT filename FROM resumes ORDER BY uploaded_at DESC LIMIT 1")
+                .get() as { filename: string } | undefined;
+              createApplication(db, {
+                jobId,
+                companyName: job.company,
+                resumeVersion: latestResume?.filename ?? null,
+                source: "autofill_submit",
+              });
+            }
           });
           complete();
           await closeSession(jobId);

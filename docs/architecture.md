@@ -64,7 +64,7 @@ Browser UI
 | `POST /api/autofill/answer` | Upsert a remembered answer by semantic key and attempt to fill the corresponding live field. |
 | `POST /api/autofill/upload-file` | Store an ad hoc file and attach it to the live field; a resume-classified file also becomes the latest resume's canonical path. |
 | `POST /api/autofill/finish` | Close and remove the in-memory browser session for a job. It does not update job status or verify submission. |
-| `POST /api/autofill/submit` | In explicitly selected submit mode, conservatively locate and click the submit control and require a confirmation signal; otherwise return an unconfirmed/manual result. |
+| `POST /api/autofill/submit` | Audit visible required/invalid controls, return exact bounded field errors without clicking when validation fails, then conservatively locate/click submit and require confirmation. |
 | `GET /api/autofill/inspect` | Return diagnostic metadata for a field in an open local browser session. |
 | `GET /api/autofill/snapshot` | Return a diagnostic snapshot of an open local browser session. |
 | `GET /api/actions` | Return prioritized unresolved manual actions and per-status counts for the dashboard Action Center, with safe status-derived fallback reasons. |
@@ -108,6 +108,9 @@ connection on `global.__db`, and initializes:
 - `applications`: one local submission record per job with source, applied
   time, resume label, cover-letter flag, notes, follow-up date, and optional
   response outcome.
+- `cv_archive`: one row per distinct resume file ever attached to a job's
+  application form, linking the sanitized archived copy directly to the job
+  ID for later post-submission review.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
@@ -250,6 +253,11 @@ claims stop a second local server from starting the same job while the first
 lease is active. This is local coordination, not a distributed browser-session
 store, and remains unsuitable for serverless deployment.
 
+Immediately before submission, `session.ts` audits visible enabled
+native/ARIA-required controls (including consent checkboxes and radio groups)
+and controls marked `aria-invalid`. It triggers native validity reporting,
+prefers bounded ATS-rendered field errors, and never returns values or HTML.
+
 `lib/autofill/filler.ts`:
 
 1. loads the job and opens its URL;
@@ -272,7 +280,18 @@ validation, and an existing local file. It honors the saved DOCX/PDF
 preference, tries the other validated format if that file is missing, and then
 falls back to the master resume. It never selects another job's variant.
 
-In opt-in submit mode, the filler locates and clicks a narrowly matched submit button only after all fillable questions are resolved and no manual-only controls remain. It requires a navigation or confirmation-text signal; otherwise it leaves the browser open and reports an unconfirmed result. `finish` only closes the browser and never proves employer receipt.
+Immediately before that selected file is attached to the live form, the
+filler makes a best-effort call into `lib/cvArchive.ts`, which copies the
+exact bytes into `data/cv-archive/<jobId>/` and records a `cv_archive` row
+(source, sanitized filename, format, variant ID, and a content hash). This
+snapshot is what a post-submission review should trust, since a later resume
+edit or re-tailoring pass would otherwise change what
+`selectResumeAttachmentForJob()` returns for the same job. Archiving is
+content-addressed and idempotent per job (re-attaching identical bytes reuses
+the existing row and file), and an archiving failure never blocks the actual
+form attachment.
+
+In opt-in submit mode, the filler runs the session-level field audit before locating or clicking a narrowly matched submit button. Validation failures return `UI-validation-error` and leave the browser open without a click. Valid forms still require a navigation or confirmation-text signal after clicking; otherwise the result is unconfirmed. `finish` only closes the browser and never proves employer receipt.
 
 ## Module responsibilities
 
@@ -286,11 +305,12 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 | `lib/jobRequirements.ts` | Posting requirement extraction, fingerprinted persistence, and verified-evidence coverage. |
 | `lib/resumeVariants.ts` | Evidence-constrained ordering, variant audit persistence, stale checks, and approval. |
 | `lib/resumeArtifacts.ts` | ATS-safe DOCX/PDF rendering, round-trip validation, artifact persistence, and validated lookup. |
+| `lib/cvArchive.ts` | Content-addressed, per-job snapshot of the exact resume file attached to a form, for post-submission review. |
 | `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
 | `lib/draft.ts` | Template-based cover letters and screening answers. |
 | `lib/sources/*` | External fetch/parsing and normalization. |
-| `lib/autofill/session.ts` | Playwright browser lifecycle. |
+| `lib/autofill/session.ts` | Playwright lifecycle, per-job serialization, and pre-submit required-field auditing. |
 | `lib/autofill/captcha.ts` | Visible CAPTCHA and bot-block heuristics. |
 | `lib/autofill/fieldMatcher.ts` | Live form discovery, classification, and select/combobox interaction. |
 | `lib/autofill/filler.ts` | Database-to-form orchestration and error recovery. |

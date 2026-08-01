@@ -82,6 +82,7 @@ export default function AutofillPage() {
   const modeRef = useRef<"review" | "submit">("review");
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [submitNote, setSubmitNote] = useState<string | null>(null);
+  const [validationToast, setValidationToast] = useState<string | null>(null);
 
   async function loadNextJob() {
     setPhase("idle");
@@ -93,6 +94,7 @@ export default function AutofillPage() {
     setDrafts({});
     setAutoSubmitting(false);
     setSubmitNote(null);
+    setValidationToast(null);
     modeRef.current = "review";
     try {
       // A jobId in the URL resumes that specific job (e.g. one sitting in
@@ -141,6 +143,7 @@ export default function AutofillPage() {
     }
     modeRef.current = mode;
     setSubmitNote(null);
+    setValidationToast(null);
     setPhase("starting");
 
     let res: Response;
@@ -207,7 +210,12 @@ export default function AutofillPage() {
     }
 
     setAutoSubmitting(true);
-    let data: { status: string; reason?: string };
+    let data: {
+      status: string;
+      reason?: string;
+      reasonCode?: string;
+      fields?: { label: string; error: string }[];
+    };
     try {
       const res = await fetch("/api/autofill/submit", {
         method: "POST",
@@ -227,6 +235,14 @@ export default function AutofillPage() {
     if (data.status === "submitted") {
       setSubmitNote("Submitted. Marking Applied and loading the next job…");
       await markAppliedAndNext();
+    } else if (data.status === "validation_error" && data.reasonCode === "UI-validation-error") {
+      const exactErrors = (data.fields ?? [])
+        .map((field) => `${field.label}: ${field.error}`)
+        .join(" • ");
+      setValidationToast(exactErrors || data.reason || "A required field is invalid.");
+      setSubmitNote(
+        "Submission guard interrupted auto-submit before any click. Correct the field shown in the validation toast, then retry."
+      );
     } else {
       setSubmitNote(
         data.reason ??
@@ -507,6 +523,24 @@ export default function AutofillPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-8 space-y-6">
+      {validationToast && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          data-toast-type="UI-validation-error"
+          className="fixed right-4 top-4 z-50 max-w-md rounded border border-red-300 bg-red-50 p-4 text-sm text-red-800 shadow-lg"
+        >
+          <p className="font-semibold">Submission blocked by form validation</p>
+          <p className="mt-1">{validationToast}</p>
+          <button
+            type="button"
+            onClick={() => setValidationToast(null)}
+            className="mt-2 rounded border border-red-300 px-2 py-1 text-xs"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-semibold">Auto-fill</h1>
         <p className="text-sm text-gray-500">

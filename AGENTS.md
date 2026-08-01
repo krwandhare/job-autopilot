@@ -319,7 +319,8 @@ For autofill changes, static checks are not enough. Manually verify in a visible
 - Do not edit, delete, migrate, or inspect a user's live database unless the task requires it and the user has authorized that scope. Back up material local data before risky schema work.
 - Resume uploads are stored both as extracted text/skills in SQLite and as the original bytes under a per-upload directory in `data/resumes/`.
 - The stored basename is sanitized while preserving a clean filename for ATS upload. Do not expose internal storage paths to the client.
-- Both `data/*.db*` and `data/resumes/` are ignored by Git. Preserve those ignore rules.
+- Immediately before `lib/autofill/filler.ts` attaches a resume file to a live application form, `lib/cvArchive.ts` best-effort copies those exact bytes into `data/cv-archive/<jobId>/` and records a `cv_archive` row linking the sanitized, content-addressed filename to that job ID, for post-submission review. Archiving must never block the actual attachment.
+- Both `data/*.db*`, `data/resumes/`, and `data/cv-archive/` are ignored by Git. Preserve those ignore rules.
 - Current upload handlers do not enforce size limits, MIME validation, retention, or cleanup. Treat those as known hardening gaps, not as implemented protections.
 - Autofill file uploads can update the latest resume's `file_path` when the field is classified as `resume`; document and test any change to this behavior.
 

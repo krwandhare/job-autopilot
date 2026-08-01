@@ -20,8 +20,10 @@
     "test:resume-artifacts": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-resume-artifacts.mjs",
     "test:resume-analysis-routes": "bash scripts/test-resume-analysis-routes.sh",
     "test:tailored-resume-generator": "playwright test tests/tailored-resume-generator.spec.ts --workers=1 --reporter=line --output=${PLAYWRIGHT_OUTPUT_DIR:-test-results}",
+    "test:submission-guard": "playwright test tests/submission-guard.spec.ts --workers=1 --reporter=line --output=${PLAYWRIGHT_OUTPUT_DIR:-test-results}",
     "test:gmail-leads": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-gmail-leads.mjs",
     "test:applications": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-applications.mjs",
+    "test:cv-archive": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-cv-archive.mjs",
     "test:queue-runner": "bash scripts/test-queue-runner.sh",
     "test:shared-runtime": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-shared-runtime.mjs",
     "test:shared-runtime-routes": "bash scripts/test-shared-runtime-routes.sh"

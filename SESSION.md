@@ -57,6 +57,48 @@ CLI session.
 
 ## Current project state
 
+On 2026-08-01, per-job CV archiving was added via `SHIP-FEATURE:`. Two
+decisions were confirmed with the user first: the archive is keyed directly
+to the job ID (rather than, e.g., a separate lookup table) so the
+post-submission review loop can find it by job, and archived files live
+under the project's own `data/cv-archive/` runtime directory (ignored by
+Git, matching `data/resumes/`) rather than an out-of-tree location like
+`~/cv-archive`.
+
+`lib/cvArchive.ts`'s `archiveCvForJob()` is called from
+`lib/autofill/filler.ts` immediately before a selected resume file is
+attached to a live application form (shared by review and submit mode). It
+copies the exact bytes into `data/cv-archive/<jobId>/`, sanitizes the stored
+filename, and records a new `cv_archive` row (source, original filename,
+format, tailored variant ID, and a sha256 content hash) keyed to that job ID.
+Archiving is content-addressed and idempotent per job -- re-attaching
+identical bytes (e.g. reopening the review screen) reuses the existing row
+and file instead of duplicating either -- and a failed archive attempt never
+blocks the actual form attachment. `getLatestCvArchiveForJob()` and
+`listCvArchiveForJob()` support later lookup; no UI surface consumes them
+yet.
+
+`scripts/test-cv-archive.mjs` (`npm run test:cv-archive`, added to
+`scripts/test-all.sh`) covers first-archive creation, idempotent
+re-attachment, a genuinely changed file creating new history rather than
+overwriting it, per-job isolation, and that a path-traversal-style filename
+never escapes the job's own archive subdirectory. `npm run lint`,
+`npx tsc --noEmit`, `npm run build`, and the existing
+`test:submission-guard` suite (to confirm no regression in the modified
+resume-attachment call site) all passed. Live ATS verification of the actual
+attach-then-archive sequence was not performed this session.
+
+On 2026-08-01, the uncommitted autofill work gained a submission guard.
+`lib/autofill/session.ts` audits visible enabled native/ARIA-required and
+`aria-invalid` controls immediately before submit, including required consent
+checkboxes/radio groups. Invalid forms return bounded labels plus exact
+ATS-rendered/native errors without returning values/HTML and without clicking
+Submit. The Auto-fill client renders an accessible `UI-validation-error`
+toast. Three disposable Playwright cases cover required text/consent failures,
+valid pass-through, and custom `aria-invalid` errors. `npm test`, lint, strict
+TypeScript, production build, and diff checks passed. No live database,
+employer form, or submission was used.
+
 Job Autopilot is an implemented local MVP on `feature/codex-work`, currently
 34 commits ahead of its remote tracking branch. The working application
 includes profile/resume setup, configurable job-source synchronization,

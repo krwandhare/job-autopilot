@@ -277,6 +277,11 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
    explicitly selected. A different job, changed posting/resume/evidence,
    missing file, or absent approval falls back to the master resume. A failed
    attachment is surfaced for manual handling rather than silently ignored.
+   Immediately before that file is attached, a best-effort snapshot copies its
+   exact bytes into `data/cv-archive/<jobId>/` and records a `cv_archive` row,
+   so a later post-submission review can see precisely what was sent even if
+   the resume is edited or re-tailored afterward; a failed snapshot never
+   blocks the attachment itself.
 9. The UI asks for remaining values; saved answers are reused by semantic key on later jobs. A grouped radio/checkbox question is presented once with its real options instead of once per option.
    Search-as-you-type location controls are cleared before retries, wait for their live suggestion list, and may retry a shorter city query; success still requires clicking a real suggestion.
 10. Policy acknowledgements, certifications, and other agreement checkboxes retain their full parent question and remain manual-only by default. In explicitly selected submit mode, the two narrowly allowlisted Twilio Applicant Privacy Policy and Candidate AI Responsible Use Policy acknowledgements are checked automatically after the confirmation dialog names that behavior; all other agreements remain manual.
@@ -332,7 +337,7 @@ Complete CAPTCHA or sensitive/ambiguous questions manually in the visible browse
 
 ### Implemented boundary
 
-Review mode never clicks an employer submit control. The separately selected opt-in submit mode clicks a conservatively matched submit control only when filling is complete and no manual-only fields remain. A refusal lists the exact blockers; CAPTCHA, an unknown submit control, or an unconfirmed result falls back to the open employer window.
+Review mode never clicks an employer submit control. The separately selected opt-in submit mode first audits every visible enabled required/invalid field, including consent checkboxes and radio groups. Empty fields, native validity failures, or ATS `aria-invalid` state interrupt before any click and display a `UI-validation-error` toast with the bounded field label and exact rendered/native error. Only a valid form proceeds to the conservatively matched submit control. CAPTCHA, an unknown submit control, or an unconfirmed result still falls back to the open employer window.
 
 - **“I submitted it — mark Applied & next”** is an explicit user confirmation. It first patches the local job status to `applied`, verifies that update succeeded, then closes the Playwright session and loads the next local `new` job.
 - If the status update fails, the UI displays an error, keeps the browser session open, and does not advance.

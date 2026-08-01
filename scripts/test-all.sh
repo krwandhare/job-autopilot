@@ -26,8 +26,10 @@ test_commands=(
   test:resume-artifacts
   test:resume-analysis-routes
   test:tailored-resume-generator
+  test:submission-guard
   test:gmail-leads
   test:applications
+  test:cv-archive
   test:queue-runner
   test:shared-runtime
   test:shared-runtime-routes

@@ -232,6 +232,22 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_applications_no_response
       ON applications(response_received_at, applied_at);
+
+    CREATE TABLE IF NOT EXISTS cv_archive (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      source TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      format TEXT,
+      variant_id INTEGER,
+      sha256 TEXT NOT NULL,
+      archived_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (source IN ('tailored', 'master'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cv_archive_job
+      ON cv_archive(job_id, archived_at DESC, id DESC);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -448,4 +464,16 @@ export type ApplicationRow = {
   response_type: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type CvArchiveRow = {
+  id: number;
+  job_id: number;
+  source: "tailored" | "master";
+  original_filename: string;
+  file_path: string;
+  format: string | null;
+  variant_id: number | null;
+  sha256: string;
+  archived_at: string;
 };
