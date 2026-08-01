@@ -61,6 +61,20 @@
 
 ## Completed
 
+- Redesigned the Profile page's "Verified career evidence" section and job
+  filters for mobile density (`app/profile/page.tsx`): the nested
+  card-per-item list is now a dense table-like row list (category label +
+  truncated content snippet + compact status dot/label per row), tapping a
+  row opens a bottom-sheet modal for status/text editing (Escape-to-close,
+  body-scroll-locked, closes only after a real successful save), the job
+  filters' text inputs are now a fully-paired 2-column/3-row grid, and
+  "Remote only" is a compact `role="switch"` toggle instead of a checkbox.
+  Verified live at 390px and 1280px in headless Chromium against a
+  disposable database seeded with the repo's real sample resume fixture (9
+  extracted evidence rows) -- confirmed the list renders, the sheet opens
+  on tap, a status change persists after Save, Escape closes it, and there
+  were zero console errors. Lint, strict TypeScript, and the production
+  build all passed.
 - Redesigned the dashboard's "Needs your attention" Action Center for
   mobile-first productivity (`app/page.tsx`): header status tiles are now a
   horizontal scrollable pill row (wraps on desktop), action cards collapse

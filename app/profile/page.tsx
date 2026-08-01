@@ -31,6 +31,33 @@ type Filter = {
   excludedCompanies: string[];
 };
 
+// `dot`/`text` size the dense list row's compact status indicator; `selected`
+// styles the equivalent choice in the edit sheet. Always paired with the
+// `label` text, never color alone.
+const EVIDENCE_STATUS_META: Record<
+  ResumeEvidence["verificationStatus"],
+  { label: string; dot: string; text: string; selected: string }
+> = {
+  verified: {
+    label: "Verified",
+    dot: "bg-green-600",
+    text: "text-green-700",
+    selected: "border-green-600 bg-green-50 text-green-800",
+  },
+  extracted: {
+    label: "Review",
+    dot: "bg-amber-500",
+    text: "text-amber-700",
+    selected: "border-amber-500 bg-amber-50 text-amber-800",
+  },
+  rejected: {
+    label: "Rejected",
+    dot: "bg-gray-400",
+    text: "text-gray-500",
+    selected: "border-gray-500 bg-gray-100 text-gray-700",
+  },
+};
+
 export default function ProfilePage() {
   const [resume, setResume] = useState<Resume | null>(null);
   const [skills, setSkills] = useState<string[]>([]);
@@ -45,6 +72,8 @@ export default function ProfilePage() {
   const [verifyingSkills, setVerifyingSkills] = useState(false);
   const [verifyingAllEvidence, setVerifyingAllEvidence] = useState(false);
   const [evidenceMessage, setEvidenceMessage] = useState<string | null>(null);
+  const [editingEvidenceId, setEditingEvidenceId] = useState<number | null>(null);
+  const [evidenceSheetOpen, setEvidenceSheetOpen] = useState(false);
 
   const [filter, setFilter] = useState<Filter>({
     id: 0,
@@ -224,7 +253,7 @@ export default function ProfilePage() {
     );
   }
 
-  async function saveEvidence(item: ResumeEvidence) {
+  async function saveEvidence(item: ResumeEvidence): Promise<boolean> {
     setSavingEvidenceId(item.id);
     setEvidenceError(null);
     try {
@@ -242,12 +271,47 @@ export default function ProfilePage() {
       if (data.evidence) {
         updateEvidence(item.id, data.evidence);
       }
+      return true;
     } catch (error) {
       setEvidenceError(error instanceof Error ? error.message : "Could not save evidence");
+      return false;
     } finally {
       setSavingEvidenceId(null);
     }
   }
+
+  function openEvidenceModal(id: number) {
+    setEvidenceError(null);
+    setEditingEvidenceId(id);
+  }
+
+  function closeEvidenceModal() {
+    setEvidenceSheetOpen(false);
+    window.setTimeout(() => setEditingEvidenceId(null), 200);
+  }
+
+  // Slide the sheet in a tick after mount (so the closed transform paints
+  // first), lock body scroll while it's open, and close on Escape.
+  useEffect(() => {
+    if (editingEvidenceId === null) return;
+    const raf = requestAnimationFrame(() => setEvidenceSheetOpen(true));
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setEvidenceSheetOpen(false);
+        window.setTimeout(() => setEditingEvidenceId(null), 200);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editingEvidenceId]);
+
+  const editingEvidence = evidence.find((item) => item.id === editingEvidenceId) ?? null;
 
   async function verifyAllPendingSkills() {
     if (!resume) return;
@@ -525,58 +589,38 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  {evidence.map((item) => (
-                    <article key={item.id} className="rounded border p-3 space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs text-gray-500">
-                          <span className="font-medium text-gray-700">{item.section}</span>
-                          {" · "}
+                <div className="divide-y overflow-hidden rounded-lg border" role="list">
+                  {evidence.map((item) => {
+                    const meta = EVIDENCE_STATUS_META[item.verificationStatus];
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="listitem"
+                        onClick={() => openEvidenceModal(item.id)}
+                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 active:bg-gray-100"
+                      >
+                        <span className="w-20 shrink-0 truncate text-xs font-semibold capitalize text-gray-500">
                           {item.kind}
-                          {item.sourceStartLine ? ` · source line ${item.sourceStartLine}` : ""}
-                        </div>
-                        <select
-                          value={item.verificationStatus}
-                          onChange={(event) =>
-                            updateEvidence(item.id, {
-                              verificationStatus: event.target
-                                .value as ResumeEvidence["verificationStatus"],
-                            })
-                          }
-                          className="border rounded px-2 py-1 text-xs"
-                          suppressHydrationWarning
+                        </span>
+                        <span
+                          className={`min-w-0 flex-1 truncate text-sm ${
+                            item.verificationStatus === "rejected"
+                              ? "text-gray-400 line-through"
+                              : "text-gray-800"
+                          }`}
                         >
-                          <option value="extracted">Needs review</option>
-                          <option value="verified">Verified</option>
-                          <option value="rejected">Reject</option>
-                        </select>
-                      </div>
-                      <textarea
-                        value={item.normalizedText}
-                        onChange={(event) =>
-                          updateEvidence(item.id, { normalizedText: event.target.value })
-                        }
-                        rows={2}
-                        className="w-full rounded border px-2 py-1 text-sm"
-                        suppressHydrationWarning
-                      />
-                      {item.sourceText !== item.normalizedText && (
-                        <p className="text-xs text-gray-400">
-                          Extracted source: {item.sourceText}
-                        </p>
-                      )}
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => saveEvidence(item)}
-                          disabled={savingEvidenceId === item.id || !item.normalizedText.trim()}
-                          className="rounded bg-gray-900 px-3 py-1 text-xs text-white disabled:opacity-50"
+                          {item.normalizedText.trim() || "(empty)"}
+                        </span>
+                        <span
+                          className={`inline-flex shrink-0 items-center gap-1 text-[11px] font-medium ${meta.text}`}
                         >
-                          {savingEvidenceId === item.id ? "Saving…" : "Save evidence"}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                          {meta.label}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -584,9 +628,113 @@ export default function ProfilePage() {
         )}
       </section>
 
+      {editingEvidence && (
+        <div className="fixed inset-0 z-50" role="presentation">
+          <div
+            className={`absolute inset-0 bg-gray-950/40 transition-opacity duration-200 ${
+              evidenceSheetOpen ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={closeEvidenceModal}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="evidence-modal-heading"
+            className={`absolute inset-x-0 bottom-0 mx-auto w-full max-w-lg rounded-t-2xl bg-white p-4 shadow-xl transition-transform duration-200 ${
+              evidenceSheetOpen ? "translate-y-0" : "translate-y-full"
+            }`}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-200" aria-hidden="true" />
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p id="evidence-modal-heading" className="text-sm font-semibold capitalize text-gray-950">
+                  {editingEvidence.kind}
+                </p>
+                <p className="truncate text-xs text-gray-500">
+                  {editingEvidence.section}
+                  {editingEvidence.sourceStartLine
+                    ? ` · source line ${editingEvidence.sourceStartLine}`
+                    : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEvidenceModal}
+                aria-label="Close"
+                className="shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-5 w-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 5l10 10M15 5L5 15" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              {(["extracted", "verified", "rejected"] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => updateEvidence(editingEvidence.id, { verificationStatus: status })}
+                  aria-pressed={editingEvidence.verificationStatus === status}
+                  className={`flex-1 rounded-lg border px-2 py-2 text-sm font-medium ${
+                    editingEvidence.verificationStatus === status
+                      ? EVIDENCE_STATUS_META[status].selected
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {EVIDENCE_STATUS_META[status].label}
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              value={editingEvidence.normalizedText}
+              onChange={(event) =>
+                updateEvidence(editingEvidence.id, { normalizedText: event.target.value })
+              }
+              rows={4}
+              autoFocus
+              className="mt-3 w-full rounded-lg border px-3 py-2 text-sm"
+            />
+
+            {editingEvidence.sourceText !== editingEvidence.normalizedText && (
+              <p className="mt-2 text-xs text-gray-400">
+                Extracted source: {editingEvidence.sourceText}
+              </p>
+            )}
+
+            {evidenceError && <p className="mt-2 text-xs text-red-600">{evidenceError}</p>}
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEvidenceModal}
+                className="rounded-lg border border-gray-300 px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await saveEvidence(editingEvidence);
+                  if (ok) closeEvidenceModal();
+                }}
+                disabled={
+                  savingEvidenceId === editingEvidence.id || !editingEvidence.normalizedText.trim()
+                }
+                className="rounded-lg bg-gray-900 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {savingEvidenceId === editingEvidence.id ? "Saving…" : "Save evidence"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Job filters</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <label className="text-sm space-y-1">
             <span className="block text-gray-600">Title must include (comma-separated)</span>
             <input
@@ -633,7 +781,7 @@ export default function ProfilePage() {
               suppressHydrationWarning
             />
           </label>
-          <label className="text-sm space-y-1 col-span-2">
+          <label className="text-sm space-y-1">
             <span className="block text-gray-600">Excluded companies (comma-separated)</span>
             <input
               value={excludedCompaniesText}
@@ -643,15 +791,30 @@ export default function ProfilePage() {
               suppressHydrationWarning
             />
           </label>
-          <label className="text-sm flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={filter.remoteOnly}
-              onChange={(e) => setFilter({ ...filter, remoteOnly: e.target.checked })}
-              suppressHydrationWarning
-            />
-            <span>Remote only</span>
-          </label>
+          <div className="text-sm space-y-1">
+            <span className="block text-gray-600">Remote only</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={filter.remoteOnly}
+              onClick={() => setFilter({ ...filter, remoteOnly: !filter.remoteOnly })}
+              className="flex h-[30px] items-center gap-2"
+            >
+              <span
+                aria-hidden="true"
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  filter.remoteOnly ? "bg-gray-900" : "bg-gray-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    filter.remoteOnly ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </span>
+              <span className="text-gray-700">{filter.remoteOnly ? "On" : "Off"}</span>
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button

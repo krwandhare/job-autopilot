@@ -1,5 +1,60 @@
 # Session Handoff
 
+## Profile page "Verified career evidence" + job filters mobile-density overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... overhaul the verified career
+evidence section for mobile-first density" -- replace the nested
+card-per-item list with a dense table-like list (category and content
+snippet side by side), open a bottom-sheet modal on tap for verification,
+group the job-filter text inputs into a 2x2 grid to cut vertical length in
+half, and convert the "remote only" checkbox into a compact toggle switch.
+
+- Scoped to `app/profile/page.tsx` (the only page with a "Verified career
+  evidence" section and a job-filters form).
+- Evidence list: each `article`-per-item card (status `<select>` + always-
+  visible `<textarea>` + inline save button, ~6-8 lines tall each) became one
+  `divide-y` row per item: a fixed-width capitalized `kind` label, a
+  `min-w-0 flex-1 truncate` content snippet, and a compact status indicator
+  (colored dot + short text label -- "Verified"/"Review"/"Rejected" --
+  never color alone, matching the convention from the dashboard Action
+  Center overhaul). Rejected items render the snippet muted+struck-through
+  as an extra non-color signal.
+- Tapping a row opens a bottom sheet (`editingEvidenceId` state, `fixed`
+  overlay + `translate-y-full -> translate-y-0` panel animated a tick after
+  mount via `requestAnimationFrame` so the closed state paints first) with
+  the item's kind/section/source-line, a 3-way status choice
+  (Review/Verified/Rejected as pressed toggle buttons), the editable
+  textarea, the extracted-source diff note, Cancel, and Save. Escape closes
+  it and body scroll is locked while open; no new dependency was needed
+  (no dialog/sheet library existed or was added). `saveEvidence()` now
+  returns a boolean so the sheet only auto-closes on a real save success,
+  staying open with the error visible if the PATCH fails.
+- Job filters: the previous grid already paired the first four text inputs
+  2x2, but `excludedCompanies` forced a `col-span-2` full-width row and the
+  checkbox sat alone below it (4 visual rows total for 5 text inputs + 1
+  checkbox). Removed the span so `excludedCompanies` shares a row with the
+  new control, and replaced the native checkbox with a `role="switch"`
+  `aria-checked` toggle (no new dependency), giving a consistent 3-row,
+  fully-paired 2-column grid with a visible "On"/"Off" text label next to
+  the switch (not color-only).
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database seeded from the repo's own
+  `fixtures/resume-tailoring/sample-resume.txt` (9 real extracted evidence
+  rows) and a populated filters row: confirmed the dense list renders all
+  9 rows, tapping a row opens the sheet, changing status to Verified and
+  saving persists (row's status label updated to "Verified" after the
+  sheet closed, confirmed via a fresh read of the row, not an assumed
+  state), Escape closes a second sheet, the filters grid renders as a
+  tight 2-column/3-row layout with the toggle in its "On" state, and there
+  were zero console/page errors at either width. Screenshots inspected
+  directly. The temporary server, disposable data directory, and
+  verification script were all removed afterward; no live personal data
+  was read or changed.
+- Not addressed (unrelated, pre-existing, out of scope for this pass): the
+  Resume-upload/skills card above this section and the rest of the app
+  were left untouched.
+
 ## Dashboard "Needs your attention" mobile-first overhaul (ship-feature run)
 
 Requirement: "act as a senior UI engineer... overhaul my job application
