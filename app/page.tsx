@@ -56,38 +56,40 @@ const STATUS_LABELS: Record<string, string> = {
   external_lead: "External Lead (LinkedIn, etc.)",
 };
 
-const ACTION_META: Record<
-  string,
-  { shortLabel: string; eyebrow: string; accent: string; panel: string }
-> = {
+// `dot` is a solid-color status indicator; `badge` is a tinted
+// background/text pairing sized for text-on-color contrast (a solid accent
+// like amber-500 fails WCAG for white text, so pills use a light tint with a
+// dark-enough text color instead, per the accent-plus-label convention
+// already used on the Applications page).
+const ACTION_META: Record<string, { shortLabel: string; dot: string; badge: string; panel: string }> = {
   needs_code: {
     shortLabel: "Verification",
-    eyebrow: "Verification code required",
-    accent: "bg-red-600",
+    dot: "bg-red-600",
+    badge: "border-red-200 bg-red-50 text-red-700",
     panel: "border-red-200 bg-red-50/60",
   },
   needs_review: {
     shortLabel: "Needs review",
-    eyebrow: "Application needs your review",
-    accent: "bg-amber-500",
+    dot: "bg-amber-500",
+    badge: "border-amber-200 bg-amber-50 text-amber-800",
     panel: "border-amber-200 bg-amber-50/60",
   },
   external_lead: {
     shortLabel: "External",
-    eyebrow: "External application",
-    accent: "bg-violet-500",
+    dot: "bg-violet-500",
+    badge: "border-violet-200 bg-violet-50 text-violet-700",
     panel: "border-violet-200 bg-violet-50/60",
   },
   drafted: {
     shortLabel: "Drafts",
-    eyebrow: "Draft ready to review",
-    accent: "bg-blue-500",
+    dot: "bg-blue-500",
+    badge: "border-blue-200 bg-blue-50 text-blue-700",
     panel: "border-blue-200 bg-blue-50/60",
   },
   watchlist: {
     shortLabel: "Decisions",
-    eyebrow: "Decision needed",
-    accent: "bg-slate-500",
+    dot: "bg-slate-500",
+    badge: "border-slate-200 bg-slate-50 text-slate-700",
     panel: "border-slate-200 bg-slate-50/70",
   },
 };
@@ -331,6 +333,20 @@ export default function DashboardPage() {
 
   const [decidingJobId, setDecidingJobId] = useState<number | null>(null);
 
+  // Action cards default to a compact summary; only the tapped card reveals
+  // "why you're needed" and the continue action, keeping the list scannable
+  // one-handed on mobile.
+  const [expandedActions, setExpandedActions] = useState<Set<string>>(new Set());
+
+  function toggleAction(key: string) {
+    setExpandedActions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   async function decideAction(jobId: number, status: string) {
     setDecidingJobId(jobId);
     try {
@@ -450,10 +466,15 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="Filter by what needs attention"
+        >
           {ACTION_STATUS_ORDER.map((status) => {
             const meta = ACTION_META[status];
             const count = actionCenter.counts[status] ?? 0;
+            const active = statusFilter === status;
             return (
               <button
                 key={status}
@@ -463,13 +484,14 @@ export default function DashboardPage() {
                   setPage(1);
                   document.getElementById("job-pipeline")?.scrollIntoView({ behavior: "smooth" });
                 }}
-                className="rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:border-gray-400 hover:shadow"
+                aria-pressed={active}
+                className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${meta.badge} ${
+                  active ? "ring-2 ring-gray-900 ring-offset-1" : ""
+                }`}
               >
-                <span className={`mb-3 block h-1.5 w-8 rounded-full ${meta.accent}`} />
-                <span className="block text-2xl font-semibold tabular-nums text-gray-950">
-                  {count}
-                </span>
-                <span className="text-xs font-medium text-gray-500">{meta.shortLabel}</span>
+                <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+                <span className="font-semibold tabular-nums">{count}</span>
+                <span>{meta.shortLabel}</span>
               </button>
             );
           })}
@@ -490,101 +512,132 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="space-y-2.5">
           {actionCenter.actions.map((action) => {
             const meta = ACTION_META[action.status] ?? ACTION_META.needs_review;
+            const key = `${action.jobId}-${action.id ?? action.status}`;
+            const expanded = expandedActions.has(key);
+            const panelId = `action-panel-${key}`;
             return (
               <article
-                key={`${action.jobId}-${action.id ?? action.status}`}
-                className={`rounded-2xl border p-5 ${meta.panel}`}
+                key={key}
+                className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      {meta.eyebrow}
-                    </p>
-                    <h3 className="mt-1 truncate text-lg font-semibold text-gray-950">
-                      {action.title}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {action.company} · {action.location ?? "Location not listed"}
-                      {action.remote ? " · Remote" : ""}
-                    </p>
+                <button
+                  type="button"
+                  onClick={() => toggleAction(key)}
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  className="flex w-full items-center gap-3 p-4 text-left active:bg-gray-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-semibold text-gray-950">{action.title}</p>
+                    <p className="truncate text-sm text-gray-600">{action.company}</p>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs text-gray-500">{relativeTime(action.updatedAt)}</p>
-                    {action.matchScore != null && (
-                      <p className="mt-1 text-sm font-semibold text-gray-700">
-                        Match {Math.round(action.matchScore)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-white/80 bg-white/75 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Why you&apos;re needed
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-gray-800">{action.reasonText}</p>
-                  {action.details.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                      {action.details.slice(0, 3).map((detail) => (
-                        <li key={detail} className="flex gap-2">
-                          <span aria-hidden="true" className="text-gray-400">
-                            •
-                          </span>
-                          <span>{detail}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  {action.primaryHref.startsWith("http") ? (
-                    <a
-                      href={action.primaryHref}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
-                    >
-                      {action.primaryLabel}
-                    </a>
-                  ) : (
-                    <Link
-                      href={action.primaryHref}
-                      className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
-                    >
-                      {action.primaryLabel}
-                    </Link>
-                  )}
-                  <Link
-                    href={`/jobs/${action.jobId}`}
-                    className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.badge}`}
                   >
-                    Job details
-                  </Link>
-                  {action.status === "external_lead" && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => decideAction(action.jobId, "applied")}
-                        disabled={decidingJobId === action.jobId}
-                        className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                    {meta.shortLabel}
+                  </span>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className={`h-5 w-5 shrink-0 text-gray-400 transition-transform ${
+                      expanded ? "rotate-180" : ""
+                    }`}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+
+                {expanded && (
+                  <div id={panelId} className={`border-t p-4 ${meta.panel}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                      <span>
+                        {action.location ?? "Location not listed"}
+                        {action.remote ? " · Remote" : ""}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {action.matchScore != null && (
+                          <span className="font-semibold text-gray-700">
+                            Match {Math.round(action.matchScore)}
+                          </span>
+                        )}
+                        <span>{relativeTime(action.updatedAt)}</span>
+                      </span>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-white/80 bg-white/75 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Why you&apos;re needed
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-gray-800">{action.reasonText}</p>
+                      {action.details.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                          {action.details.slice(0, 3).map((detail) => (
+                            <li key={detail} className="flex gap-2">
+                              <span aria-hidden="true" className="text-gray-400">
+                                •
+                              </span>
+                              <span>{detail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {action.primaryHref.startsWith("http") ? (
+                        <a
+                          href={action.primaryHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                        >
+                          {action.primaryLabel}
+                        </a>
+                      ) : (
+                        <Link
+                          href={action.primaryHref}
+                          className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                        >
+                          {action.primaryLabel}
+                        </Link>
+                      )}
+                      <Link
+                        href={`/jobs/${action.jobId}`}
+                        className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                       >
-                        I applied
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => decideAction(action.jobId, "rejected")}
-                        disabled={decidingJobId === action.jobId}
-                        className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        Not interested
-                      </button>
-                    </>
-                  )}
-                </div>
+                        Job details
+                      </Link>
+                      {action.status === "external_lead" && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => decideAction(action.jobId, "applied")}
+                            disabled={decidingJobId === action.jobId}
+                            className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                          >
+                            I applied
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => decideAction(action.jobId, "rejected")}
+                            disabled={decidingJobId === action.jobId}
+                            className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Not interested
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </article>
             );
           })}

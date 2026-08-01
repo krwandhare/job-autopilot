@@ -1,5 +1,56 @@
 # Session Handoff
 
+## Dashboard "Needs your attention" mobile-first overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... overhaul my job application
+dashboard for mobile-first productivity" -- compress header metrics into a
+horizontal scrollable pill row, turn the application list into a compact
+list (employer, role, small action badge), add per-card accordion expansion
+(collapsed by default, tap reveals "why you're needed" + continue), clean
+high-contrast one-handed mobile layout.
+
+- Scoped to `app/page.tsx`'s "Needs your attention" Action Center section
+  (header metric tiles + action cards), not the whole page. That section is
+  the only place with the literal "Why you're needed" copy, the primary
+  action button, and employer/role data the requirement describes; the
+  separate paginated "Job pipeline" list below serves a different purpose
+  (browsing all jobs) and was left untouched, matching how the prior
+  Applications-page overhaul stayed scoped to one section rather than a
+  page-wide rewrite.
+- `ACTION_META`'s single `accent` field (previously only used as a
+  decorative underline bar) split into `dot` (solid indicator) and `badge`
+  (tinted bg-*-50/text-*-700ish pill). Solid `bg-amber-500` with white text
+  fails WCAG contrast; the tinted-background-plus-dark-text pattern already
+  established on the Applications page redesign was reused instead, still
+  always paired with a text label per that page's never-color-alone rule.
+- Header metric tiles (was a `grid-cols-2 sm:grid-cols-5` block of larger
+  cards) are now a horizontal `overflow-x-auto` row of small pills on
+  mobile, `sm:flex-wrap` on wider viewports; each pill keeps its original
+  click-to-filter-and-scroll-to-pipeline behavior and an `aria-pressed`
+  active state.
+- Each action card is now collapsed by default to title/company/status
+  badge/chevron behind one `aria-expanded`/`aria-controls` toggle button per
+  card (`expandedActions` state, a `Set<string>` keyed the same way the
+  cards already were). Tapping expands to reveal location/match/time,
+  "Why you're needed" reasoning and details, the primary continue button
+  (`action.primaryLabel`/`primaryHref`, unchanged logic), "Job details",
+  and (for external leads) the "I applied"/"Not interested" buttons -- all
+  previously always-visible, now behind the tap.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium against a disposable SQLite database
+  (5 synthetic jobs, one per Action Center status) at both 390px and
+  1280px: pill row's `scrollWidth` (656) exceeds `clientWidth` (390) on
+  mobile confirming real horizontal scroll, while desktop shows equal
+  widths confirming the wrap fallback; a card's `aria-expanded` toggles
+  and "Why you're needed" becomes visible on tap at both widths; zero
+  console/page errors. Screenshots inspected directly. The temporary
+  server (port 3911), disposable data directory, and verification script
+  were all removed afterward; no live personal data was read or changed.
+- Not addressed (out of scope for this pass, matching the existing TODO
+  note to extend the Applications-page visual language app-wide): the
+  "Job pipeline" list, Sources/LinkedIn-import sections, and the rest of
+  the app (Auto-fill, job detail, Profile) were not restyled.
+
 ## LLM-assisted resume tailoring wired into the existing pipeline (ship-feature run)
 
 Requirement: extend the existing deterministic resume-tailoring pipeline

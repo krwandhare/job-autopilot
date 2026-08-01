@@ -61,6 +61,17 @@
 
 ## Completed
 
+- Redesigned the dashboard's "Needs your attention" Action Center for
+  mobile-first productivity (`app/page.tsx`): header status tiles are now a
+  horizontal scrollable pill row (wraps on desktop), action cards collapse
+  to employer/role/status-badge by default with a per-card accordion toggle
+  that reveals "Why you're needed" and the continue action on tap, and
+  status badges switched from solid-color to contrast-safe tinted pills.
+  Verified live at 390px and 1280px in headless Chromium with a disposable
+  seeded database -- confirmed real horizontal scroll on mobile, wrap on
+  desktop, working expand/collapse, and zero console errors. Lint, strict
+  TypeScript, and the production build all passed. Scoped to this one
+  section, not the whole page.
 - Wired real LLM resume tailoring into the existing deterministic
   pipeline (`lib/llmTailoring.ts`, `claude-opus-5`, forced strict
   tool-use, no free text): tailors only the free-text evidence kinds
