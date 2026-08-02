@@ -302,7 +302,10 @@ Statuses are local labels only. Setting `applied` does not submit anything and i
 
 - Browser sessions live only in one server process and disappear on restart.
 - Real forms vary continuously; “ready for review” means no currently detected fillable values are missing, not that the form is valid or complete.
-- No end-to-end ATS form was exercised in this documentation session.
+- One user-authorized Greenhouse form was exercised in review mode on
+  2026-08-02. Its resume attachment completed, the exact archived bytes and
+  SHA-256 were verified, and the browser was closed without submitting or
+  marking Applied. This is evidence for that observed form only.
 - Authentication, multi-page applications, unexpected navigation, and every custom widget are not guaranteed.
 
 ## File upload during autofill

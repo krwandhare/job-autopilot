@@ -2,10 +2,14 @@
 
 ## In Progress
 
-- Live-verify per-job CV archiving (`lib/cvArchive.ts`) against a real,
-  user-authorized ATS form: confirm the archived file under
-  `data/cv-archive/<jobId>/` matches what was actually attached, and that
-  archiving never delays or blocks the real attachment.
+- Fix PDF resume re-upload in the Next.js development server. A real local
+  re-upload currently returns HTTP 400 because the bundled pdf.js fake worker
+  cannot find `.next/dev/server/chunks/pdf.worker.mjs`; standalone extraction
+  of the same file succeeds and matches the stored extracted-text hash.
+- Restore a durable stored file for the latest master-resume revision through
+  the normal upload flow after that worker issue is fixed. The temporary,
+  hash-verified path used for live CV-archive testing was restored to its
+  original null value after the test.
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
@@ -45,6 +49,14 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Live-verified per-job CV archiving against a real, user-authorized Greenhouse
+  form in Auto-fill (review) mode. The form reached review with the resume
+  field filled and only manual policy acknowledgements remaining; no submit
+  control was activated and the browser was closed without marking Applied.
+  The resulting archive stayed under the exact job directory, its recorded
+  SHA-256 matched the archived bytes, and those bytes exactly matched the file
+  selected for attachment. The job-detail history UI displayed the live row.
 
 - Added an “Attached CV history” panel to each job-detail page with newest,
   master/tailored source, format, timestamp, short fingerprint, empty/error/

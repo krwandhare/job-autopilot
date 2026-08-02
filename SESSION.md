@@ -1,5 +1,32 @@
 # Session Handoff
 
+## Live CV archive verification
+
+On 2026-08-02, a real user-authorized Greenhouse application was opened in
+Auto-fill (review) mode to verify the complete attach-and-archive path. The
+form reached the human-review state with its resume field filled; the only
+remaining manual items were policy acknowledgements. No employer submit
+control was activated, the application was not marked Applied, and the
+employer browser was closed through “Close without marking Applied.”
+
+The new archive row was then checked against the exact file selected by
+autofill: archived bytes matched byte-for-byte, the stored SHA-256 matched the
+archive, and the path remained inside that job's `data/cv-archive/<jobId>/`
+directory. The job-detail “Attached CV history” panel displayed the live row
+with latest/source/format/time/fingerprint metadata and its guarded download.
+This verifies the observed live attachment path; it does not prove employer
+receipt and does not establish compatibility with every ATS.
+
+Setup exposed a separate existing defect: the latest resume revision had no
+stored `file_path`, and a normal local PDF re-upload failed before insertion
+because the Next.js development bundle could not resolve its pdf.js fake
+worker chunk. Standalone extraction of the unique local source file succeeded
+and exactly matched the latest stored extracted-text hash. For this one test,
+SQLite was backed up and the latest row temporarily pointed to that verified
+file; afterward the original null path was restored and the temporary backup
+was deleted. The durable next task is to fix the dev PDF worker/re-upload path,
+then restore the latest resume through the normal upload workflow.
+
 ## Attached CV history review surface
 
 On 2026-08-02, the job-detail page gained a read-only “Attached CV history”
