@@ -65,10 +65,23 @@ function friendlyNetworkError(err: unknown): string {
   return `Lost connection to the server (${message}). Check your network connection and try again.`;
 }
 
+// Shares the dashboard's --color-accent/--color-status-* tokens
+// (app/globals.css, app/page.tsx's ACTION_META) for the same outcome
+// semantics -- status-warning (#fab219) fails WCAG text-on-white contrast,
+// so its tint keeps dark amber text rather than text-status-warning.
 const STATUS_PILL_TONE: Record<"critical" | "warning" | "good", { dot: string; classes: string }> = {
-  critical: { dot: "bg-red-600", classes: "border-red-200 bg-red-50 text-red-700" },
-  warning: { dot: "bg-amber-500", classes: "border-amber-200 bg-amber-50 text-amber-800" },
-  good: { dot: "bg-green-600", classes: "border-green-200 bg-green-50 text-green-700" },
+  critical: {
+    dot: "bg-status-critical",
+    classes: "border-status-critical/30 bg-status-critical/10 text-status-critical",
+  },
+  warning: {
+    dot: "bg-status-warning",
+    classes: "border-status-warning/40 bg-status-warning/10 text-amber-800",
+  },
+  good: {
+    dot: "bg-status-good",
+    classes: "border-status-good/30 bg-status-good/10 text-green-700",
+  },
 };
 
 // Collapses the two things previously shown as separate always-visible
@@ -702,7 +715,7 @@ export default function AutofillPage() {
         <div className="border rounded-lg p-6 text-sm text-gray-500">
           No jobs with status &quot;New&quot; left to work through. Sync more jobs, or change some
           statuses back to New on the{" "}
-          <Link href="/" className="text-blue-600 hover:underline">
+          <Link href="/" className="text-accent hover:underline">
             dashboard
           </Link>
           .
@@ -711,7 +724,7 @@ export default function AutofillPage() {
 
       {!initialLoading && !job && phase === "error" && (
         <div className="border rounded-lg p-6 space-y-3">
-          <p className="text-sm text-red-600">{reason}</p>
+          <p className="text-sm text-status-critical">{reason}</p>
           <button
             onClick={loadNextJob}
             className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
@@ -730,12 +743,12 @@ export default function AutofillPage() {
               {job.matchScore !== null && ` · score ${job.matchScore}`}
             </p>
             {job.status === "needs_code" && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+              <p className="text-xs text-amber-700 bg-status-warning/10 border border-status-warning/40 rounded px-2 py-1 mt-2 inline-block">
                 Resuming -- this one was previously blocked on an emailed verification code.
               </p>
             )}
             {job.status === "needs_review" && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+              <p className="text-xs text-amber-700 bg-status-warning/10 border border-status-warning/40 rounded px-2 py-1 mt-2 inline-block">
                 Resuming -- the background queue runner couldn&apos;t resolve this one on its own and left it for you.
               </p>
             )}
@@ -788,7 +801,7 @@ export default function AutofillPage() {
                       </span>
                     </>
                   ) : (
-                    <span className="text-red-700">No attachable resume file</span>
+                    <span className="text-status-critical">No attachable resume file</span>
                   )}
                 </p>
                 <p>
@@ -837,7 +850,7 @@ export default function AutofillPage() {
               <button
                 onClick={() => startFilling("submit")}
                 title="Auto-fill & submit -- also clicks the real submit button once everything's filled, no review step"
-                className="flex flex-col items-center gap-1 rounded-lg bg-red-700 px-2 py-2.5 text-white hover:bg-red-800"
+                className="flex flex-col items-center gap-1 rounded-lg bg-status-critical px-2 py-2.5 text-white hover:bg-red-800"
               >
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
                   <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
@@ -889,7 +902,7 @@ export default function AutofillPage() {
 
           {(phase === "blocked" || phase === "error") && (
             <div className="space-y-3">
-              <p className="text-sm text-red-600">{reason}</p>
+              <p className="text-sm text-status-critical">{reason}</p>
               <div className="flex gap-2">
                 <button
                   onClick={finishAndNext}
@@ -905,7 +918,7 @@ export default function AutofillPage() {
           )}
 
           {phase === "needs_verification_code" && (
-            <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+            <div className="space-y-3 rounded-lg border border-status-warning/40 bg-status-warning/10 p-4">
               <div className="flex items-start gap-2">
                 <svg
                   aria-hidden="true"
@@ -944,7 +957,7 @@ export default function AutofillPage() {
                   }}
                   placeholder="Paste the code here"
                   disabled={verificationCodeSubmitting}
-                  className="flex-1 rounded border border-amber-300 px-3 py-2 text-sm disabled:opacity-50"
+                  className="flex-1 rounded border border-status-warning/40 px-3 py-2 text-sm disabled:opacity-50"
                   suppressHydrationWarning
                 />
                 <button
@@ -958,19 +971,19 @@ export default function AutofillPage() {
               </div>
 
               {verificationCodeError && (
-                <p className="text-sm text-red-700">{verificationCodeError}</p>
+                <p className="text-sm text-status-critical">{verificationCodeError}</p>
               )}
 
-              <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 pt-3">
+              <div className="flex flex-wrap items-center gap-2 border-t border-status-warning/30 pt-3">
                 <button
                   type="button"
                   onClick={resumeAfterManualEntry}
                   disabled={verificationCodeSubmitting}
-                  className="rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  className="rounded border border-status-warning/40 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
                 >
                   I entered it directly in the browser — continue
                 </button>
-                <button onClick={skipJob} className="rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100">
+                <button onClick={skipJob} className="rounded border border-status-warning/40 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100">
                   Skip this job
                 </button>
               </div>
@@ -978,13 +991,13 @@ export default function AutofillPage() {
           )}
 
           {phase === "needs_field_fix" && (
-            <div className="space-y-3 rounded-lg border border-red-300 bg-red-50 p-4">
+            <div className="space-y-3 rounded-lg border border-status-critical/40 bg-status-critical/10 p-4">
               <div className="flex items-start gap-2">
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 20 20"
                   fill="currentColor"
-                  className="mt-0.5 h-5 w-5 shrink-0 text-red-600"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-status-critical"
                 >
                   <path
                     fillRule="evenodd"
@@ -1004,15 +1017,15 @@ export default function AutofillPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 border-t border-red-200 pt-3">
+              <div className="flex flex-wrap items-center gap-2 border-t border-status-critical/30 pt-3">
                 <button
                   type="button"
                   onClick={resumeAfterManualEntry}
-                  className="rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100"
+                  className="rounded border border-status-critical/40 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100"
                 >
                   Fixed it in the browser — continue
                 </button>
-                <button onClick={skipJob} className="rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100">
+                <button onClick={skipJob} className="rounded border border-status-critical/40 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100">
                   Skip this job
                 </button>
               </div>
@@ -1126,7 +1139,7 @@ export default function AutofillPage() {
                     </div>
                   )}
                   {fieldErrors[field.autofillId] && (
-                    <p className="text-xs text-red-600">{fieldErrors[field.autofillId]}</p>
+                    <p className="text-xs text-status-critical">{fieldErrors[field.autofillId]}</p>
                   )}
                 </div>
               ))}
@@ -1144,12 +1157,12 @@ export default function AutofillPage() {
                 proof that the employer received the application.
               </p>
               {submitNote && (
-                <p className="text-sm text-amber-700 border border-amber-200 bg-amber-50 rounded p-3">
+                <p className="text-sm text-amber-700 border border-status-warning/40 bg-status-warning/10 rounded p-3">
                   {submitNote}
                 </p>
               )}
               {manualFields.length > 0 && (
-                <div className="text-sm text-amber-700 border border-amber-200 bg-amber-50 rounded p-3">
+                <div className="text-sm text-amber-700 border border-status-warning/40 bg-status-warning/10 rounded p-3">
                   <p className="font-medium">These need your own input (never auto-filled):</p>
                   <ul className="list-disc list-inside">
                     {manualFields.map((f) => (
@@ -1158,7 +1171,7 @@ export default function AutofillPage() {
                   </ul>
                 </div>
               )}
-              {completionError && <p className="text-sm text-red-600">{completionError}</p>}
+              {completionError && <p className="text-sm text-status-critical">{completionError}</p>}
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={markAppliedAndNext}
@@ -1193,7 +1206,7 @@ export default function AutofillPage() {
                 />
                 {statusPill.text}
               </span>
-              <Link href={`/jobs/${job.id}`} className="text-sm text-blue-600 hover:underline">
+              <Link href={`/jobs/${job.id}`} className="text-sm text-accent hover:underline">
                 View job details
               </Link>
             </div>
