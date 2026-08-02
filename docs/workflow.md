@@ -103,7 +103,10 @@ never reads or writes the live `data/app.db`.
 
 ### Incomplete or unverified
 
-- Upload size, MIME, malware, retention, deletion, and cleanup controls are not implemented.
+- Master-resume uploads enforce a 10 MiB ceiling and validate supported
+  extension, MIME, and PDF/DOCX/TXT content before transactional persistence.
+  Malware scanning and retention/deletion controls are not implemented, and
+  ad hoc Auto-fill uploads still need equivalent size/content hardening.
 - The latest uploaded resume remains the master. An approved, validated
   job-specific variant can override it only for that exact job in autofill.
 - Saving a resume or filters does not rescore existing jobs immediately. Run synchronization or re-import a URL to compute new scores.

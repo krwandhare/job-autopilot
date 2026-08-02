@@ -1,5 +1,25 @@
 # Session Handoff
 
+## Master-resume upload hardening
+
+On 2026-08-02, `POST /api/resume` gained a 10 MiB limit plus extension, MIME,
+and content validation for PDF, DOCX, and UTF-8 TXT uploads. PDF magic bytes,
+required DOCX package entries, and non-empty valid text are checked before
+extraction or persistence. Database insertion and file storage are
+transactional; a storage failure rolls back the row, removes only the new
+upload directory, and returns a bounded error without a local path.
+
+Focused validation covers valid formats and rejected extension, empty, size,
+MIME, signature/package, and encoding cases. The disposable route E2E confirms
+a disguised PDF returns HTTP 400 without a database row or resume directory.
+`npm test`, scoped ESLint, strict TypeScript, `git diff --check`, and the
+production build passed. The build emitted a non-fatal Turbopack NFT tracing
+warning for the resume route; repository-wide lint remains blocked by the
+pre-existing untracked Ruflo helpers. The live database was not accessed.
+
+The exact next recommended task is to apply bounded, field-appropriate upload
+validation and cleanup to the ad hoc Auto-fill file endpoint.
+
 ## Development PDF upload repair
 
 On 2026-08-02, PDF uploads through `POST /api/resume` were repaired for the

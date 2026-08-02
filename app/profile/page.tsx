@@ -413,6 +413,7 @@ export default function ProfilePage() {
           className="block text-sm"
           suppressHydrationWarning
         />
+        <p className="text-xs text-gray-500">PDF, DOCX, or UTF-8 TXT · maximum 10 MB</p>
         {uploading && <p className="text-sm text-gray-500">Parsing resume…</p>}
         {uploadError && (
           <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">

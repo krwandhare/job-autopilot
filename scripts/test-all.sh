@@ -25,6 +25,7 @@ test_commands=(
   test:resume-variants
   test:resume-artifacts
   test:resume-server-config
+  test:resume-upload-validation
   test:resume-analysis-routes
   test:tailored-resume-generator
   test:submission-guard

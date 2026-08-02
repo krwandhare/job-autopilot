@@ -28,7 +28,8 @@
   standard `npm test` suite.
 - Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
-- Add server-side upload limits and content/type validation for resume and autofill file uploads.
+- Add server-side size/content validation and failed-upload cleanup to the
+  Auto-fill ad hoc file endpoint; master-resume uploads are now hardened.
 
 ## Later
 
@@ -41,6 +42,12 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Added a 10 MiB ceiling plus extension, MIME, and real-content validation for
+  master PDF/DOCX/TXT uploads. Rejected files are never inserted or stored;
+  persistence is transactional and cleans up its new directory on failure.
+  Focused validation and disposable route E2E cover malformed and disguised
+  inputs without touching the live database.
 
 - Fixed PDF resume uploads in the Next.js development server by keeping the
   directly imported `pdfjs-dist` package external, with a focused configuration
