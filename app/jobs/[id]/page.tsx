@@ -101,20 +101,23 @@ const COVERAGE_LABELS = {
   needs_review: "Needs your review",
 };
 
+// Shares the dashboard/Auto-fill pages' --color-accent/--color-status-*
+// tokens for background tint + dot; text stays on the existing dark shade
+// (status-warning in particular fails WCAG text-on-white contrast outright).
 const COVERAGE_STYLES = {
-  supported: "bg-green-50 text-green-800",
-  partial: "bg-amber-50 text-amber-800",
-  not_evidenced: "bg-red-50 text-red-800",
-  needs_review: "bg-blue-50 text-blue-800",
+  supported: "bg-status-good/10 text-green-800",
+  partial: "bg-status-warning/10 text-amber-800",
+  not_evidenced: "bg-status-critical/10 text-status-critical",
+  needs_review: "bg-accent/10 text-blue-800",
 };
 
 // Compact-row indicator for the summary widget, paired with the same
 // COVERAGE_LABELS text -- never color alone.
 const COVERAGE_DOTS = {
-  supported: "bg-green-600",
-  partial: "bg-amber-500",
-  not_evidenced: "bg-red-600",
-  needs_review: "bg-blue-600",
+  supported: "bg-status-good",
+  partial: "bg-status-warning",
+  not_evidenced: "bg-status-critical",
+  needs_review: "bg-accent",
 };
 
 const PRIORITY_BADGE = { required: "R", preferred: "P", context: "C" };
@@ -531,15 +534,15 @@ export default function JobDetailPage({
         <Link href="/" className="text-sm text-gray-500 hover:underline">
           ← Back to dashboard
         </Link>
-        <div className="mt-4 rounded border border-red-200 bg-red-50 p-4 space-y-3">
+        <div className="mt-4 rounded border border-status-critical/30 bg-status-critical/10 p-4 space-y-3">
           <p className="text-sm font-medium text-red-800">Couldn&apos;t load this job</p>
-          <p className="text-sm text-red-700">{error}</p>
+          <p className="text-sm text-status-critical">{error}</p>
           <button
             onClick={() => {
               setInitialLoading(true);
               load();
             }}
-            className="text-sm bg-red-700 text-white px-3 py-1.5 rounded hover:bg-red-800"
+            className="text-sm bg-status-critical text-white px-3 py-1.5 rounded hover:bg-red-800"
           >
             Retry
           </button>
@@ -569,18 +572,18 @@ export default function JobDetailPage({
           href={job.url}
           target="_blank"
           rel="noreferrer"
-          className="text-sm text-blue-600 hover:underline"
+          className="text-sm text-accent hover:underline"
         >
           View original posting ↗
         </a>
       </div>
 
       {actionError && (
-        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex items-center justify-between gap-3">
+        <div className="rounded border border-status-critical/30 bg-status-critical/10 p-3 text-sm text-status-critical flex items-center justify-between gap-3">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
-            className="text-red-700 hover:text-red-900 text-xs shrink-0"
+            className="text-status-critical hover:text-red-900 text-xs shrink-0"
             aria-label="Dismiss"
           >
             Dismiss
@@ -626,7 +629,7 @@ export default function JobDetailPage({
                   job.matchReasons.matchedSkills.map((skill) => (
                     <span
                       key={skill}
-                      className="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-800"
+                      className="rounded-full bg-status-good/10 px-2 py-0.5 text-xs text-green-800"
                     >
                       {skill}
                     </span>
@@ -681,7 +684,7 @@ export default function JobDetailPage({
         </div>
 
         {analysisError && (
-          <div className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="rounded bg-status-warning/10 p-3 text-sm text-amber-900">
             {analysisError}{" "}
             {analysisError.toLowerCase().includes("evidence") && (
               <Link href="/profile" className="underline">
@@ -708,13 +711,13 @@ export default function JobDetailPage({
                 <span className="block text-xs text-gray-500">Preferred</span>
                 <span className="font-semibold">{resumeAnalysis.counts.preferred}</span>
               </div>
-              <div className="rounded bg-green-50 p-2">
+              <div className="rounded bg-status-good/10 p-2">
                 <span className="block text-xs text-green-700">Evidence found</span>
                 <span className="font-semibold text-green-900">
                   {resumeAnalysis.counts.supported}
                 </span>
               </div>
-              <div className="rounded bg-red-50 p-2">
+              <div className="rounded bg-status-critical/10 p-2">
                 <span className="block text-xs text-red-700">Not evidenced</span>
                 <span className="font-semibold text-red-900">
                   {resumeAnalysis.counts.notEvidenced}
@@ -730,7 +733,7 @@ export default function JobDetailPage({
               <button
                 type="button"
                 onClick={() => setCoverageDrawerOpen(true)}
-                className="rounded text-xs font-medium text-blue-600 hover:underline focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+                className="rounded text-xs font-medium text-accent hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
               >
                 Expand all
               </button>
@@ -889,7 +892,7 @@ export default function JobDetailPage({
         </div>
 
         {variantError && (
-          <div className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="rounded bg-status-warning/10 p-3 text-sm text-amber-900">
             {variantError}{" "}
             {variantError.toLowerCase().includes("evidence") && (
               <Link href="/profile" className="underline">
@@ -900,7 +903,7 @@ export default function JobDetailPage({
         )}
 
         {tailoringNotice && !variantError && (
-          <div className="rounded bg-blue-50 p-3 text-sm text-blue-900">{tailoringNotice}</div>
+          <div className="rounded bg-accent/10 p-3 text-sm text-blue-900">{tailoringNotice}</div>
         )}
 
         {!resumeVariant && !variantError && (
@@ -948,7 +951,7 @@ export default function JobDetailPage({
                 </button>
               )}
               {resumeVariant.status === "approved" && (
-                <span className="rounded bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                <span className="rounded bg-status-good/10 px-3 py-1 text-xs font-medium text-green-800">
                   Approved for this job
                 </span>
               )}
@@ -960,7 +963,7 @@ export default function JobDetailPage({
             </p>
 
             {resumeVariant.status === "approved" && (
-              <div className="rounded border border-green-200 bg-green-50 p-3 space-y-3">
+              <div className="rounded border border-status-good/30 bg-status-good/10 p-3 space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-medium text-green-900">ATS-safe files</p>
@@ -991,7 +994,7 @@ export default function JobDetailPage({
                       onChange={(event) =>
                         setPreferredFormat(event.target.value as "docx" | "pdf")
                       }
-                      className="rounded border border-green-300 bg-white px-2 py-1"
+                      className="rounded border border-status-good/40 bg-white px-2 py-1"
                       suppressHydrationWarning
                     >
                       <option value="docx">DOCX (default)</option>
@@ -1012,16 +1015,16 @@ export default function JobDetailPage({
                           <span
                             className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                               artifact.validationStatus === "passed"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
+                                ? "bg-status-good/10 text-green-800"
+                                : "bg-status-critical/10 text-status-critical"
                             }`}
                           >
                             <span
                               aria-hidden="true"
                               className={`h-1 w-1 rounded-full ${
                                 artifact.validationStatus === "passed"
-                                  ? "bg-green-600"
-                                  : "bg-red-600"
+                                  ? "bg-status-good"
+                                  : "bg-status-critical"
                               }`}
                             />
                             {artifact.validationStatus === "passed" ? "Passed" : "Failed"}
@@ -1069,7 +1072,7 @@ export default function JobDetailPage({
                     setTailoredViewMode((mode) => (mode === "source" ? "tailored" : "source"))
                   }
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                    tailoredViewMode === "tailored" ? "bg-blue-700" : "bg-gray-300"
+                    tailoredViewMode === "tailored" ? "bg-accent" : "bg-gray-300"
                   }`}
                 >
                   <span
@@ -1081,7 +1084,7 @@ export default function JobDetailPage({
                 </button>
                 <span
                   className={
-                    tailoredViewMode === "tailored" ? "font-medium text-blue-700" : "text-gray-400"
+                    tailoredViewMode === "tailored" ? "font-medium text-accent" : "text-gray-400"
                   }
                 >
                   Tailored version
@@ -1122,12 +1125,12 @@ export default function JobDetailPage({
 
                   <div
                     className={`rounded p-2 ${
-                      tailoredViewMode === "tailored" ? "bg-blue-50" : "bg-gray-50"
+                      tailoredViewMode === "tailored" ? "bg-accent/10" : "bg-gray-50"
                     }`}
                   >
                     <p
                       className={`text-xs font-medium ${
-                        tailoredViewMode === "tailored" ? "text-blue-700" : "text-gray-500"
+                        tailoredViewMode === "tailored" ? "text-accent" : "text-gray-500"
                       }`}
                     >
                       {tailoredViewMode === "tailored" ? "Tailored version" : "Verified source"}
