@@ -28,8 +28,6 @@
   standard `npm test` suite.
 - Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
-- Add server-side size/content validation and failed-upload cleanup to the
-  Auto-fill ad hoc file endpoint; master-resume uploads are now hardened.
 
 ## Later
 
@@ -42,6 +40,12 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Hardened ad hoc Auto-fill uploads with the same 10 MiB PDF/DOCX/TXT
+  validation boundary as master resumes, bounded request metadata,
+  collision-resistant staging, cleanup after stage/attachment failure, and a
+  master pointer update only after successful live attachment. Disposable
+  tests verify staging/cleanup and rejection before disk persistence.
 
 - Added a 10 MiB ceiling plus extension, MIME, and real-content validation for
   master PDF/DOCX/TXT uploads. Rejected files are never inserted or stored;

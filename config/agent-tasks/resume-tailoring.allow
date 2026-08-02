@@ -5,6 +5,7 @@ app/api/resume/**
 app/api/jobs/\[id\]/**
 app/api/resume-variants/**
 app/api/autofill/next/route.ts
+app/api/autofill/upload-file/route.ts
 app/profile/**
 app/jobs/\[id\]/**
 app/autofill/page.tsx
@@ -17,8 +18,10 @@ lib/resumeVariants.ts
 lib/resumeArtifacts.ts
 lib/cvArchive.ts
 lib/autofill/filler.ts
+lib/autofill/upload.ts
 scripts/test-resume-*.mjs
 scripts/test-resume-*.sh
+scripts/test-autofill-upload.mjs
 scripts/test-cv-archive.mjs
 package.json
 package-lock.json

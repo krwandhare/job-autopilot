@@ -32,6 +32,7 @@ test_commands=(
   test:gmail-leads
   test:applications
   test:cv-archive
+  test:autofill-upload
   test:queue-runner
   test:shared-runtime
   test:shared-runtime-routes

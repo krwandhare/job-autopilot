@@ -63,8 +63,6 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
   React-style comboboxes, embedded forms, browser closure, CAPTCHA boundaries,
   and end-to-end confirmation that invalid forms never activate submit controls.
 - Remove the production build's dependency on fetching Google Fonts at build time or otherwise provide a reproducible network-enabled build path.
-- Add file-size, supported-content/MIME, and cleanup protections to the ad hoc
-  Auto-fill upload endpoint; the master-resume endpoint now has these checks.
 - Add remote-fetch timeouts and response-size bounds, especially for the user-supplied LinkedIn page.
 - Add retention/deletion behavior for old resumes, upload directories, drafts, and profile answers.
 - Add source-configuration validation and deduplication.

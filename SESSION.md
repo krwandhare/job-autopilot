@@ -1,5 +1,24 @@
 # Session Handoff
 
+## Auto-fill upload hardening
+
+On 2026-08-02, the ad hoc Auto-fill file route was aligned with the hardened
+master-resume boundary: PDF, DOCX, and UTF-8 TXT only, a 10 MiB ceiling, bounded
+field metadata, MIME/content checks before disk writes, and collision-resistant
+per-upload staging directories. A failed stage or Playwright attachment removes
+only that staged directory. The latest resume's durable `file_path` is updated
+only after the live form accepts the attachment; failure of that secondary
+pointer update no longer misreports a successful live attachment as failed.
+
+The Auto-fill UI displays and constrains the supported file types. Isolated
+tests cover unique staging, byte preservation, and cleanup, while the disposable
+route E2E confirms a disguised PDF is rejected before any upload directory is
+created. The full disposable `npm test` suite, scoped lint, strict TypeScript,
+diff checks, the submission-guard browser suite, and the production build pass;
+the build retains the known non-fatal resume-route tracing warning. The exact
+next recommended task is the API-route and
+Playwright-internal error-handling audit already listed in TODO.
+
 ## Master-resume upload hardening
 
 On 2026-08-02, `POST /api/resume` gained a 10 MiB limit plus extension, MIME,

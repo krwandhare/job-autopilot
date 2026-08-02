@@ -724,25 +724,31 @@ export default function AutofillPage() {
                 <div key={field.autofillId} className="border rounded p-3 space-y-2">
                   <p className="text-sm font-medium">{field.label}</p>
                   {field.kind === "file" ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="file"
-                        disabled={saving === field.autofillId}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) answerFileField(field, f);
-                        }}
-                        className="text-sm flex-1"
-                        suppressHydrationWarning
-                      />
-                      <button
-                        disabled={saving === field.autofillId}
-                        onClick={() => answerField(field, SKIP_SENTINEL)}
-                        className="border text-sm px-3 py-1 rounded disabled:opacity-40"
-                      >
-                        Prefer not to answer
-                      </button>
-                    </div>
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept=".pdf,.docx,.txt"
+                          disabled={saving === field.autofillId}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) answerFileField(field, f);
+                          }}
+                          className="text-sm flex-1"
+                          suppressHydrationWarning
+                        />
+                        <button
+                          disabled={saving === field.autofillId}
+                          onClick={() => answerField(field, SKIP_SENTINEL)}
+                          className="border text-sm px-3 py-1 rounded disabled:opacity-40"
+                        >
+                          Prefer not to answer
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        PDF, DOCX, or UTF-8 TXT · maximum 10 MB
+                      </p>
+                    </>
                   ) : field.kind === "select" && (field.options?.length ?? 0) > 0 ? (
                     <div className="flex gap-2">
                       <select
