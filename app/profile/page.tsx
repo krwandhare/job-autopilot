@@ -33,22 +33,27 @@ type Filter = {
 
 // `dot`/`text` size the dense list row's compact status indicator; `selected`
 // styles the equivalent choice in the edit sheet. Always paired with the
-// `label` text, never color alone.
+// `label` text, never color alone. Shares the Applications page's
+// --color-status-* tokens and its exact "selected chip" convention
+// (full-opacity token border, light tint background, neutral dark text --
+// see RESPONSE_TYPES in app/applications/page.tsx). `rejected` stays
+// deliberately gray/neutral, not a token -- it isn't an outcome-severity
+// state, just a de-emphasized one.
 const EVIDENCE_STATUS_META: Record<
   ResumeEvidence["verificationStatus"],
   { label: string; dot: string; text: string; selected: string }
 > = {
   verified: {
     label: "Verified",
-    dot: "bg-green-600",
+    dot: "bg-status-good",
     text: "text-green-700",
-    selected: "border-green-600 bg-green-50 text-green-800",
+    selected: "border-status-good bg-status-good/10 text-gray-900",
   },
   extracted: {
     label: "Review",
-    dot: "bg-amber-500",
+    dot: "bg-status-warning",
     text: "text-amber-700",
-    selected: "border-amber-500 bg-amber-50 text-amber-800",
+    selected: "border-status-warning bg-status-warning/10 text-gray-900",
   },
   rejected: {
     label: "Rejected",
@@ -439,7 +444,7 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
+      {loadError && <p className="text-sm text-status-critical">{loadError}</p>}
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Resume</h2>
@@ -452,7 +457,7 @@ export default function ProfilePage() {
           suppressHydrationWarning
         />
         {uploading && <p className="text-sm text-gray-500">Parsing resume…</p>}
-        {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
+        {uploadError && <p className="text-sm text-status-critical">{uploadError}</p>}
 
         {resume && (
           <div className="border rounded-lg p-4 space-y-3">
@@ -463,7 +468,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={reprocessPdfResume}
                   disabled={reprocessingResume || uploading}
-                  className="rounded border border-blue-700 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                  className="rounded border border-accent px-3 py-1 text-xs font-medium text-accent hover:bg-accent/10 disabled:opacity-50"
                 >
                   {reprocessingResume
                     ? "Repairing PDF layout…"
@@ -475,12 +480,12 @@ export default function ProfilePage() {
               <p className="text-xs text-gray-500 mb-1">
                 Detected skills (edit as needed — these drive job matching):
               </p>
-              {skillsError && <p className="text-xs text-red-600 mb-2">{skillsError}</p>}
+              {skillsError && <p className="text-xs text-status-critical mb-2">{skillsError}</p>}
               <div className="flex flex-wrap gap-2 mb-2">
                 {skills.map((s) => (
                   <span
                     key={s}
-                    className="inline-flex items-center gap-1 bg-blue-50 text-blue-800 text-xs px-2 py-1 rounded-full"
+                    className="inline-flex items-center gap-1 bg-accent/10 text-blue-800 text-xs px-2 py-1 rounded-full"
                   >
                     {s}
                     <button
@@ -526,7 +531,7 @@ export default function ProfilePage() {
             {evidenceLoading && (
               <p className="text-sm text-gray-500">Building evidence profile…</p>
             )}
-            {evidenceError && <p className="text-sm text-red-600">{evidenceError}</p>}
+            {evidenceError && <p className="text-sm text-status-critical">{evidenceError}</p>}
             {evidenceMessage && <p className="text-sm text-green-700">{evidenceMessage}</p>}
             {!evidenceLoading && evidence.length === 0 && !evidenceError && (
               <p className="text-sm text-gray-500">
@@ -559,7 +564,7 @@ export default function ProfilePage() {
                       type="button"
                       onClick={verifyAllPendingSkills}
                       disabled={verifyingSkills || savingEvidenceId !== null}
-                      className="rounded border border-green-700 px-3 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
+                      className="rounded border border-status-good px-3 py-1 text-xs font-medium text-green-700 hover:bg-status-good/10 disabled:opacity-50"
                     >
                       {verifyingSkills ? "Verifying skills…" : "Verify all skills"}
                     </button>
@@ -567,7 +572,7 @@ export default function ProfilePage() {
                 </div>
 
                 {evidence.some((item) => item.verificationStatus === "extracted") && (
-                  <div className="rounded border border-blue-200 bg-blue-50 p-3">
+                  <div className="rounded border border-accent/30 bg-accent/10 p-3">
                     <p className="text-xs text-blue-900">
                       Trust all remaining content in this uploaded resume? This is faster, but you
                       remain responsible for every claim.
@@ -704,7 +709,7 @@ export default function ProfilePage() {
               </p>
             )}
 
-            {evidenceError && <p className="mt-2 text-xs text-red-600">{evidenceError}</p>}
+            {evidenceError && <p className="mt-2 text-xs text-status-critical">{evidenceError}</p>}
 
             <div className="mt-4 flex items-center justify-end gap-2">
               <button
@@ -826,7 +831,7 @@ export default function ProfilePage() {
           </button>
           {savedMessage && <span className="text-sm text-green-600">{savedMessage}</span>}
         </div>
-        {filtersError && <p className="text-sm text-red-600">{filtersError}</p>}
+        {filtersError && <p className="text-sm text-status-critical">{filtersError}</p>}
       </section>
     </div>
   );
