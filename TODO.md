@@ -5,9 +5,16 @@
 - Rerun `npm run explorer-agent` whenever the UI changes meaningfully --
   `docs/explorer-agent/site-map.json`/`e2e-test-plan.md` reflect one
   disposable-fixture crawl, not the live app, and nothing regenerates them
-  automatically. Use the per-route "Manual review required" list there as
-  the starting point for actually writing E2E tests (still not started --
-  explorer-agent only plans, it doesn't test).
+  automatically. `Sync jobs`, `Save filters`, `Later`, and the profile resume
+  file input from that manual-review queue still have no test coverage
+  (only `Sync Gmail leads`, `Import`, `Generate draft`, and resume *upload*
+  do so far -- see Completed).
+- Run `node scripts/live-check-gmail-sync.mjs --confirm` and `node
+  scripts/live-check-linkedin-import.mjs --confirm --url <a real posting>`
+  yourself when you want to validate those two routes live -- both refuse to
+  do anything without `--confirm` and were only verified to refuse correctly,
+  not actually run, since a real run reads your real Gmail inbox / fetches a
+  real LinkedIn page and writes real rows into your real database.
 - Live-test the submission-guard field-validation audit and consent-phrase
   detection against a real, user-authorized employer form -- only verified
   so far against a synthetic local HTML fixture (native HTML5 constraint
@@ -73,6 +80,28 @@
 
 ## Completed
 
+- Added test coverage for four of explorer-agent's flagged manual-review
+  controls, split by actual risk (`Fill`/`Auto-submit` deliberately left
+  manual-only, unchanged -- an automated test would submit a real job
+  application): `scripts/test-draft-generation.sh`
+  (`npm run test:draft-generation`) and `scripts/test-resume-upload.sh`
+  (`npm run test:resume-upload`) are real, repeatable route E2E tests against
+  a disposable database (the latter uploads the existing synthetic
+  `fixtures/resume-tailoring/sample-resume.txt`, never a real resume, per the
+  prior incident noted above). `scripts/live-check-gmail-sync.mjs` and
+  `scripts/live-check-linkedin-import.mjs` are manual-only Node scripts for
+  `Sync Gmail leads`/`Import` (real external side effects against real
+  accounts) -- intentionally not wired to any npm script or repeatable
+  suite, refuse to run without `--confirm`, and the LinkedIn one requires an
+  explicit real `--url` rather than guessing one. Two real bugs found and
+  fixed while getting the new tests green: a `curl -f` on an
+  intentional-404 check aborted the whole script before its own assertion
+  ran, and a macOS `$TMPDIR` double-slash defeated a literal-slash
+  disposable-directory check. `npm run lint`, `npx tsc --noEmit`, and
+  `npm run build` all passed; both new automated tests verified passing
+  live. The two live-check scripts were only verified to correctly refuse
+  without `--confirm` -- an actual `--confirm` run against a real Gmail
+  inbox/LinkedIn posting is left for the user to trigger deliberately.
 - Added a generic post-submit field-validation audit ("submission-guard"):
   `lib/autofill/fieldValidation.ts` detects the first visible invalid
   required field (native HTML5 constraint validation, covering a plain

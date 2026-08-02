@@ -1,5 +1,84 @@
 # Session Handoff
 
+## Test coverage for explorer-agent's manual-review queue (continuation of prior session)
+
+Requirement, continued from a prior conversation (recovered via `SESSION.md`/
+`TODO.md` since the original session's transcript wasn't accessible here):
+generate real test coverage for the items explorer-agent's classifier flagged
+as "manual review required" in `docs/explorer-agent/e2e-test-plan.md`, without
+weakening what the classifier means or auto-triggering real external side
+effects. The prior conversation had already rejected relabeling everything
+"safe" and rejected wiring `Fill`/`Auto-submit` into any automated test (both
+can submit a real job application for real, exactly what AGENTS.md forbids
+outside the two explicit human-driven modes), and settled on a narrower,
+user-approved split by actual risk:
+
+- **`Fill` / `Auto-submit`**: left as documented manual-verification steps
+  only, unchanged -- not touched by this session, consistent with the prior
+  refusal.
+- **`Sync Gmail leads` (`POST /api/jobs/sync-gmail`) / `Import` (`POST
+  /api/jobs/import-url`, LinkedIn URL import)**: real external side effects
+  (a real Gmail inbox read, a real LinkedIn page fetch) but read-oriented, no
+  application submission. Asked the user directly whether these should be
+  repeatable/re-runnable or occasional-manual-only, since re-running either
+  against real accounts on every test run risks duplicate imports/quota
+  burn; user chose **occasional, manual-only**. Built
+  `scripts/live-check-gmail-sync.mjs` and
+  `scripts/live-check-linkedin-import.mjs` -- plain Node scripts, deliberately
+  **not** wired to any `npm run test:*` alias or repeatable suite. Both
+  refuse to do anything without an explicit `--confirm` flag (verified live:
+  both print a clear warning and exit 1 without it), print only the
+  privacy-bounded summary fields the routes already return (title/company/
+  url/counts, never raw email bodies or full page content), and the LinkedIn
+  script requires an explicit `--url` for a real posting the user actually
+  wants imported -- it never guesses or defaults a target URL.
+- **`Generate draft` (`POST /api/draft/[id]`)**: purely local/deterministic
+  (`lib/draft.ts`), no external call, no real submission -- given real
+  automated, repeatable route-E2E coverage. New
+  `scripts/test-draft-generation.sh` (`npm run test:draft-generation`,
+  following the existing `test-jobs-status-filter-routes.sh` disposable-
+  server pattern: `npm run start` against a temp `JOB_AUTOPILOT_DATA_DIR`,
+  seeded via a direct `better-sqlite3` insert, exercised via `curl`) covers a
+  404 for a nonexistent job, a successful generation asserting the job
+  title/company and matched skills actually appear in the returned cover
+  letter, that the drafts row is actually persisted (not just returned), and
+  that generating twice for the same job succeeds rather than erroring.
+- **Resume upload (`POST /api/resume`)**: the file input itself handles real
+  personal data, but the route can be safely covered by automating the
+  upload of a *synthetic* fixture file instead of a real resume -- the exact
+  distinction `TODO.md` already calls out from a real prior incident where
+  test automation overwrote the live resume's `file_path`. New
+  `scripts/test-resume-upload.sh` (`npm run test:resume-upload`) uploads the
+  existing synthetic `fixtures/resume-tailoring/sample-resume.txt` fixture
+  (already `Jordan Example`/`@example.test` placeholder data, not new) against
+  a disposable `JOB_AUTOPILOT_DATA_DIR`, and asserts the response filename,
+  detected skills, the persisted `resumes` row, and that the file actually
+  landed under the *disposable* `resumes/` directory, not the real one.
+- Two real bugs found and fixed while getting these green, not left as
+  "known failures": (1) `curl -f` on the two intentional-non-200 status
+  checks (`/api/draft/999` expecting 404) made curl itself fail before the
+  assertion ever ran, aborting the whole script under `set -euo pipefail`
+  every time -- removed `-f` from status-code-only checks, kept it on calls
+  that should always succeed. (2) The resume-upload script's disposable-
+  directory assertion never matched: macOS's `$TMPDIR` already ends in `/`,
+  so `mktemp -d "$TMPDIR/..."` produces a double slash that Node's
+  `path.join()` silently normalizes away when writing `file_path`, so a
+  literal-slash-count glob comparison against the raw `mktemp` output never
+  matched a real (correct) upload. Fixed by canonicalizing `TEST_DATA` via
+  `cd "$TEST_DATA" && pwd` immediately after creation.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed --
+  confirmed the only lint findings anywhere in the tree are pre-existing,
+  in the untracked `.claude/helpers/*` Ruflo scaffolding, unrelated to this
+  change. `npm run test:draft-generation` and `npm run test:resume-upload`
+  both pass live, not just "should pass."
+- **Not yet done, deliberately left for the user**: neither
+  `live-check-gmail-sync.mjs` nor `live-check-linkedin-import.mjs` has
+  actually been run with `--confirm` -- that performs a real Gmail sync /
+  real LinkedIn fetch against real accounts and was correctly left for the
+  user to trigger deliberately, not something to run unilaterally while
+  building the harness. Only the refusal-without-`--confirm` path was
+  verified live.
+
 ## Explorer-agent: read-only route/DOM crawler + generated E2E test plan (ship-feature run)
 
 Requirement: a recursive Playwright crawler that maps all reachable routes on
