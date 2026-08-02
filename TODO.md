@@ -31,11 +31,6 @@
   instead of doing nothing). No live Claude API call has been made yet in
   this environment -- verify the actual tailored wording and the violet
   "AI-tailored" pill once a key is added.
-- Extend the 2026-07-31 Applications-page UI overhaul (stat tiles, weekly
-  trend chart, status-colored response pills, `--color-accent`/
-  `--color-status-*` tokens in `app/globals.css`) to the rest of the app
-  (main dashboard, Auto-fill, job detail, Profile) for a consistent look --
-  explicitly scoped out of that pass, not started.
 - The root layout's nav (`app/layout.tsx`) wraps awkwardly at a 390px
   viewport (found while verifying the Applications-page redesign;
   pre-existing, unrelated to that change).
@@ -80,6 +75,34 @@
 
 ## Completed
 
+- Extended the 2026-07-31 Applications-page `--color-accent`/
+  `--color-status-*` token visual language to the rest of the app
+  (`app/page.tsx`, `app/autofill/page.tsx`, `app/jobs/[id]/page.tsx`,
+  `app/profile/page.tsx`) -- previously only `app/applications/page.tsx`
+  actually used the tokens (19 occurrences vs. zero elsewhere). Migrated
+  genuine outcome-severity colors only (blocking/error=critical, attention=
+  warning, positive=good, in-progress/neutral=accent); left categorical,
+  non-outcome colors alone (dashboard's `external_lead`/`watchlist`
+  categories, the job detail "AI-tailored" pill) since forcing them onto a
+  4-color outcome palette would reduce visual distinguishability rather than
+  improve it. Computed real WCAG contrast ratios per swap rather than
+  guessing: `status-critical` (~5.22:1) and `accent` (~4.41:1, matching the
+  Applications page's own precedent) pass as text color; `status-good`
+  (~3.35:1) and especially `status-warning` (~1.84:1) fail outright, so
+  those swaps tokenize only background/border/dot and keep the existing
+  dark Tailwind text shade -- and no solid white-text button's background
+  was swapped to a token that fails white-text contrast at that weight
+  (several buttons, e.g. "Approve this variant", "Generate files", deliberately
+  kept their darker raw Tailwind shade instead). Before starting, synced with
+  Codex's branch per AGENTS.md and confirmed via `git merge-base
+  --is-ancestor` that no merge was actually needed -- Codex's work was
+  already fully incorporated. Lint, strict TypeScript, and the production
+  build passed after every page; each was verified live in headless Chromium
+  against a disposable database seeded to exercise every tone (all five
+  Action Center statuses, all three Auto-fill status-pill tones, both
+  coverage outcomes plus a created draft on job detail, all three evidence
+  states on Profile) with screenshots inspected directly and zero console
+  errors.
 - Surfaced `tailoringMode` and added a "Regenerate with AI" control to the
   resume-variant review UI (`app/jobs/[id]/page.tsx`): the field previously
   only existed in one API response and was never persisted, so it couldn't

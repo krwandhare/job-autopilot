@@ -1,5 +1,89 @@
 # Session Handoff
 
+## Extended the Applications-page color-token visual language app-wide
+
+Requirement (from `TODO.md`): extend the 2026-07-31 Applications-page UI
+overhaul's `--color-accent`/`--color-status-*` tokens (`app/globals.css`) to
+the rest of the app (dashboard, Auto-fill, job detail, Profile) for a
+consistent look -- explicitly scoped out of the original pass.
+
+Before starting, synced this branch with Codex's per AGENTS.md: fetched
+both, confirmed `origin/feature/codex-work` (tip `8343ed1`) was already a
+full ancestor of this branch (`git merge-base --is-ancestor`, both against
+local `HEAD` and `origin/feature/claude-autofill`) -- no merge was actually
+needed, Codex's work was already fully incorporated from an earlier session.
+
+Investigated before touching anything: grepped for actual `bg-accent`/
+`bg-status-*`/`text-accent`/etc. usage (Tailwind v4's `@theme` block turns
+`--color-accent` into real utility classes) and found only
+`app/applications/page.tsx` used them (19 occurrences); the other four pages
+used zero, each with their own ad-hoc raw Tailwind colors (`bg-green-*`,
+`bg-amber-*`, `bg-red-*`, `bg-blue-*`) for equivalent semantic meaning.
+
+**Scoping decisions, made deliberately rather than doing a blind find/replace**:
+- Only migrated genuine *outcome-severity* colors (blocking/error=critical,
+  attention-needed=warning, positive/success=good, in-progress/neutral/
+  link=accent). Left *categorical* (non-outcome) colors alone -- the
+  dashboard's `external_lead` (violet) and `watchlist` (slate) Action Center
+  categories, and the job detail page's "AI-tailored" pill (violet, added
+  in the tailoringMode session entry above) -- since collapsing distinct
+  categories onto a 4-color outcome palette not designed to represent them
+  would reduce, not improve, visual distinguishability.
+- Computed actual WCAG contrast ratios rather than guessing (formula:
+  relative luminance -> contrast ratio): `--color-status-critical` (#d03b3b)
+  passes AA-normal-text at ~5.22:1 and is used directly as text color;
+  `--color-accent` (#2a78d6) passes marginally at ~4.41:1 and is used for
+  links/toggles, matching the Applications page's own existing precedent;
+  `--color-status-good` (#0ca30c) at ~3.35:1 and especially
+  `--color-status-warning` (#fab219) at ~1.84:1 both fail outright as text
+  color on white, so every good/warning swap tokenizes only the
+  background tint/border/dot and keeps the existing dark Tailwind text
+  shade (green-700/800, amber-800/900) -- documented inline with a code
+  comment at each tone-map definition, not just in this log.
+- Never swapped a *solid, white-text* button's background to a status/
+  accent token unless the specific token passed white-text contrast at that
+  weight (verified `status-critical` does, ~5.22:1, e.g. Auto-fill's
+  "Auto-submit" button and the job-detail "Retry" button; `status-good`/
+  `status-warning`/`accent` at typical shades used for solid CTAs do not,
+  so "Approve this variant", "Generate files", the amber "Enter code &
+  continue", and the blue "Download" buttons all deliberately kept their
+  existing darker raw Tailwind shades -- swapping them would have been a
+  real accessibility regression, not a cosmetic improvement).
+- For the Profile page's evidence status "selected chip" style (the 3-way
+  status picker in the evidence edit sheet), followed the Applications
+  page's own already-established convention exactly (full-opacity token
+  border + light tint background + neutral `text-gray-900`, not colored
+  text) rather than inventing a new pattern.
+
+Touched files, one commit each, live-verified before moving to the next:
+`app/page.tsx` (Action Center `ACTION_META.needs_code/needs_review/drafted`,
+error/caught-up banners, "I applied" button), `app/autofill/page.tsx`
+(`STATUS_PILL_TONE`, the verification-code and field-validation-error
+panels' borders/icons/dividers, error text, links, the Auto-submit button),
+`app/jobs/[id]/page.tsx` (`COVERAGE_STYLES`/`COVERAGE_DOTS`, requirement
+stat cards, error/notice banners, the artifact validation pill, the source/
+tailored toggle), `app/profile/page.tsx` (`EVIDENCE_STATUS_META`, error
+banners, the detected-skills pill, the "Verify all resume content" notice).
+
+`npm run lint`, `npx tsc --noEmit`, and `npm run build` passed after every
+page. Verified live in headless Chromium against a disposable database for
+each page, seeding data that actually exercises every tone (all five Action
+Center statuses plus the empty "caught up" state; a job with a missing
+resume and one with skill gaps for Auto-fill's three pill tones; a job with
+both supported and not-evidenced requirements plus a created draft for job
+detail; evidence in all three verification states for Profile) --
+screenshots inspected directly each time, zero console/page errors, temp
+servers/data dirs removed afterward.
+
+**Not addressed, deliberately out of scope for this pass**: plain
+informational text with no accompanying background/border (e.g. "Filled
+everything it could", skill-gap counts, matched-term notes) was left on its
+existing dark Tailwind shade rather than tokenized -- there was no
+bg/border element to make consistent and no accessibility gap to close, so
+touching it would have been a cosmetic-only change with no clear benefit.
+The root layout's nav wrapping issue at 390px (a separate, pre-existing
+TODO item) was not touched.
+
 ## Surfaced tailoringMode + "Regenerate with AI" in the resume-variant UI
 
 Requirement (from `TODO.md`): "surface `tailoringMode` (llm vs deterministic)
