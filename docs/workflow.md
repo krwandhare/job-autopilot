@@ -80,8 +80,19 @@ apply the same hierarchy without changing any verified text.
 disposable runtime directory and drives this workflow in headless Chromium.
 It checks an unsupported upload, a valid TXT upload, bulk evidence
 verification, evidence-constrained tailoring for a synthetic job, approval,
-round-trip DOCX/PDF generation, and both browser download actions. The script
+round-trip DOCX/PDF generation, both browser download actions, and the
+job-detail attached-CV history. Archive coverage verifies the empty state,
+latest/source metadata, exact-byte download, cross-job denial, and refusal to
+serve a file whose bytes no longer match its recorded fingerprint. The script
 never opens the default `data/app.db` or an employer page.
+
+After autofill attaches a CV, `/jobs/[id]` lists its local snapshots under
+“Attached CV history.” The UI identifies the newest snapshot, master versus
+tailored source, format, attachment time, and a short content fingerprint.
+Downloads go through an exact-job route that never returns internal paths and
+revalidates the archived SHA-256 before serving bytes. This local history is
+evidence of what Job Autopilot selected for attachment, not proof that an
+employer received an application.
 
 `npm test` runs every deterministic model, route, workflow, integration, and
 browser suite in sequence. The aggregate runner exports a disposable runtime

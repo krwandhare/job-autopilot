@@ -18,7 +18,7 @@ Browser UI
 | --- | --- | --- |
 | `/` | `app/page.tsx` | Action Center for manual application steps and decisions, followed by source management, LinkedIn import, and the filterable job pipeline. |
 | `/profile` | `app/profile/page.tsx` | Upload the latest resume, review/edit detected skills, and save matching filters. |
-| `/jobs/[id]` | `app/jobs/[id]/page.tsx` | Display normalized job data, local status, score/reasons, matched/missing skills, and the latest generated draft. |
+| `/jobs/[id]` | `app/jobs/[id]/page.tsx` | Display normalized job data, local status, score/reasons, resume tailoring, attached-CV history, and the latest generated draft. |
 | `/autofill` | `app/autofill/page.tsx` | Work through the highest-ranked `new` job, launch filling, collect missing answers/files, show manual fields, and close/skip sessions. |
 | `/applications` | `app/applications/page.tsx` | Review locally recorded submissions, response status, follow-up dates, summary statistics, and top unsubmitted jobs by stored match score. |
 
@@ -47,6 +47,8 @@ Browser UI
 | `POST /api/jobs/[id]/resume-analysis` | Deterministically extract or refresh posting requirements and return evidence-backed coverage. |
 | `GET /api/jobs/[id]/resume-variant` | Return the latest active draft or approved resume variant for a job. |
 | `POST /api/jobs/[id]/resume-variant` | Compose a new draft exclusively from the latest resume's verified evidence. |
+| `GET /api/jobs/[id]/cv-archive` | Return privacy-bounded metadata for CV snapshots attached to this exact job, newest first, without filesystem paths. |
+| `GET /api/jobs/[id]/cv-archive/[archiveId]/download` | Download an exact-job archived CV only after its path, existence, and recorded SHA-256 fingerprint are revalidated. |
 | `GET /api/resume-variants/[id]` | Return one variant and its ordered audit items. |
 | `PATCH /api/resume-variants/[id]` | Include or exclude one item while the variant remains a draft. |
 | `POST /api/resume-variants/[id]/approve` | Approve a current, non-stale, evidence-valid job-specific variant. |

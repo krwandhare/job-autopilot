@@ -34,7 +34,7 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Deterministic cover-letter and screening-answer generation.
 - Visible Playwright browser sessions that scan and fill supported native and React-style controls.
 - Stored resume attachment, ad hoc file attachment, and remembered semantic answers.
-- Per-job CV archiving: the exact resume file attached to an application form is content-addressed, sanitized, and linked to that job ID under `data/cv-archive/` for post-submission review, independent of later resume edits or re-tailoring.
+- Per-job CV archiving: the exact resume file attached to an application form is content-addressed, sanitized, and linked to that job ID under `data/cv-archive/`, with privacy-safe history and fingerprint-validated downloads on the job-detail page, independent of later resume edits or re-tailoring.
 - Manual boundaries for sensitive/ambiguous controls and CAPTCHA/bot-block detection.
 - Review-only autofill by default, plus explicit guarded auto-submit with conservative fallback and manual local status tracking.
 - Pre-submit required-field auditing, including consent controls and ATS/native validation messages, with an accessible `UI-validation-error` toast and no submit click on failure.

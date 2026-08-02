@@ -6,11 +6,6 @@
   user-authorized ATS form: confirm the archived file under
   `data/cv-archive/<jobId>/` matches what was actually attached, and that
   archiving never delays or blocks the real attachment.
-- No UI surface yet exposes archived CVs for the post-submission review loop
-  (`getLatestCvArchiveForJob`/`listCvArchiveForJob` exist but are unused
-  outside tests) -- decide where that review view should live (job detail?
-  applications page?) before building it.
-
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
@@ -50,6 +45,14 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Added an “Attached CV history” panel to each job-detail page with newest,
+  master/tailored source, format, timestamp, short fingerprint, empty/error/
+  loading states, and an exact-job download action. The metadata API never
+  exposes local paths; downloads revalidate archive containment and SHA-256
+  and reject cross-job, missing, or changed files. Disposable browser coverage
+  verifies the populated and empty UI plus exact-byte download and refusal
+  cases.
 
 - Added per-job CV archiving: `lib/cvArchive.ts` snapshots the exact resume
   file about to be attached to an application form, content-addressed and

@@ -93,6 +93,18 @@ type ResumeArtifact = {
   createdAt: string;
 };
 
+type CvArchive = {
+  id: number;
+  source: "tailored" | "master";
+  filename: string;
+  format: string | null;
+  variantId: number | null;
+  archivedAt: string;
+  fingerprint: string;
+  isLatest: boolean;
+  downloadUrl: string;
+};
+
 const COVERAGE_LABELS = {
   supported: "Evidence found",
   partial: "Partial evidence",
@@ -119,6 +131,18 @@ const STATUS_OPTIONS = [
   "external_lead",
 ];
 
+function formatArchivedAt(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(`${value}Z`));
+}
+
 export default function JobDetailPage({
   params,
 }: {
@@ -141,6 +165,9 @@ export default function JobDetailPage({
   const [resumeArtifacts, setResumeArtifacts] = useState<ResumeArtifact[]>([]);
   const [artifactLoading, setArtifactLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cvArchives, setCvArchives] = useState<CvArchive[]>([]);
+  const [cvArchiveLoading, setCvArchiveLoading] = useState(true);
+  const [cvArchiveError, setCvArchiveError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -205,12 +232,32 @@ export default function JobDetailPage({
     }
   }
 
+  async function loadCvArchives() {
+    setCvArchiveLoading(true);
+    try {
+      const res = await fetch(`/api/jobs/${id}/cv-archive`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not load attached CV history");
+      setCvArchives(data.archives ?? []);
+      setCvArchiveError(null);
+    } catch (archiveFailure) {
+      setCvArchiveError(
+        archiveFailure instanceof Error
+          ? archiveFailure.message
+          : "Could not load attached CV history"
+      );
+    } finally {
+      setCvArchiveLoading(false);
+    }
+  }
+
   useEffect(() => {
     // Data load on mount/id change, not synchronous render-derived state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
     loadResumeAnalysis();
     loadResumeVariant();
+    loadCvArchives();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -218,6 +265,7 @@ export default function JobDetailPage({
     const refreshResumeFiles = () => {
       if (document.visibilityState === "visible") {
         void loadResumeVariant();
+        void loadCvArchives();
       }
     };
 
@@ -631,6 +679,77 @@ export default function JobDetailPage({
               ))}
             </div>
           </>
+        )}
+      </section>
+
+      <section className="space-y-4 rounded-lg border p-4" aria-labelledby="attached-cv-heading">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 id="attached-cv-heading" className="text-lg font-medium">
+              Attached CV history
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Local snapshots of the exact resume bytes selected when autofill attached a CV for
+              this job. This history does not confirm that an employer received an application.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadCvArchives()}
+            disabled={cvArchiveLoading}
+            className="min-h-11 shrink-0 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-50"
+          >
+            {cvArchiveLoading ? "Refreshing…" : "Refresh history"}
+          </button>
+        </div>
+
+        {cvArchiveError && (
+          <div role="alert" className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+            {cvArchiveError}
+          </div>
+        )}
+
+        {!cvArchiveLoading && !cvArchiveError && cvArchives.length === 0 && (
+          <div className="rounded bg-gray-50 p-3 text-sm text-gray-600">
+            No CV has been attached through autofill for this job yet.
+          </div>
+        )}
+
+        {cvArchives.length > 0 && (
+          <ol className="space-y-3">
+            {cvArchives.map((archive) => (
+              <li key={archive.id} className="rounded border border-gray-200 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="break-all text-sm font-medium text-gray-900">
+                        {archive.filename}
+                      </p>
+                      {archive.isLatest && (
+                        <span className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                          Latest attached
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      {archive.source === "tailored" ? "Tailored for this job" : "Master resume"}
+                      {archive.format ? ` · ${archive.format.toUpperCase()}` : " · File"}
+                      {` · ${formatArchivedAt(archive.archivedAt)}`}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      File fingerprint: <span className="font-mono">{archive.fingerprint}</span>
+                    </p>
+                  </div>
+                  <a
+                    href={archive.downloadUrl}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+                  >
+                    Download attached CV
+                  </a>
+                </div>
+              </li>
+            ))}
+          </ol>
         )}
       </section>
 

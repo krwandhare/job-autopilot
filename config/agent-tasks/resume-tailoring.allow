@@ -15,9 +15,11 @@ lib/jobRequirements.ts
 lib/resumeTailoring.ts
 lib/resumeVariants.ts
 lib/resumeArtifacts.ts
+lib/cvArchive.ts
 lib/autofill/filler.ts
 scripts/test-resume-*.mjs
 scripts/test-resume-*.sh
+scripts/test-cv-archive.mjs
 package.json
 package-lock.json
 tsconfig.json

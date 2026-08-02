@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import Database from "better-sqlite3";
 import { expect, test, type Page } from "playwright/test";
@@ -78,6 +79,62 @@ Terraform experience is preferred.`,
         "new"
       );
     return Number(result.lastInsertRowid);
+  } finally {
+    db.close();
+  }
+}
+
+function seedArchivedCvJob(withArchive: boolean): {
+  jobId: number;
+  archiveId?: number;
+  archivePath?: string;
+} {
+  const db = new Database(path.join(runtimeDir, "app.db"));
+  try {
+    const result = db
+      .prepare(
+        `INSERT INTO jobs
+          (source, source_job_id, title, company, location, remote, description, url,
+           fetched_at, match_score, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "test",
+        `cv-archive-ui-${withArchive ? "history" : "empty"}`,
+        withArchive ? "Archived CV Review Job" : "No Archived CV Job",
+        "Synthetic Company",
+        "Remote",
+        1,
+        "Synthetic job used only for isolated CV archive UI verification.",
+        "https://example.invalid/cv-archive-ui",
+        "2026-08-02 12:00:00",
+        80,
+        "new"
+      );
+    const jobId = Number(result.lastInsertRowid);
+    if (!withArchive) return { jobId };
+
+    const archiveDir = path.join(runtimeDir, "cv-archive", String(jobId));
+    fs.mkdirSync(archiveDir, { recursive: true });
+    const archiveBytes = Buffer.from("synthetic exact attached CV bytes");
+    const sha256 = createHash("sha256").update(archiveBytes).digest("hex");
+    const archivePath = path.join(archiveDir, `${sha256.slice(0, 12)}-synthetic-attached.pdf`);
+    fs.writeFileSync(archivePath, archiveBytes);
+    const archiveResult = db.prepare(
+      `INSERT INTO cv_archive
+        (job_id, source, original_filename, file_path, format, variant_id, sha256, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      jobId,
+      "tailored",
+      "synthetic-attached.pdf",
+      archivePath,
+      "pdf",
+      42,
+      sha256,
+      "2026-08-02 12:34:00"
+    );
+    return { jobId, archiveId: Number(archiveResult.lastInsertRowid), archivePath };
   } finally {
     db.close();
   }
@@ -219,4 +276,43 @@ test("uploads, tailors, validates, and downloads a job-specific resume", async (
   await uploadAndVerifyResume(page);
   const jobId = seedTailoringJob();
   await tailorAndDownload(page, jobId);
+});
+
+test("shows and safely downloads exact-job attached CV history", async ({ page }) => {
+  const archived = seedArchivedCvJob(true);
+  const empty = seedArchivedCvJob(false);
+
+  await page.goto(`${baseUrl}/jobs/${archived.jobId}`);
+  await page.getByRole("heading", { name: "Attached CV history" }).waitFor();
+  await page.getByText("synthetic-attached.pdf", { exact: true }).waitFor();
+  await page.getByText("Latest attached", { exact: true }).waitFor();
+  await page.getByText("Tailored for this job", { exact: false }).waitFor();
+  await page.getByText("This history does not confirm that an employer received", {
+    exact: false,
+  }).waitFor();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download attached CV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("synthetic-attached.pdf");
+  const downloadedPath = path.join(runtimeDir, "downloaded-attached-cv.pdf");
+  await download.saveAs(downloadedPath);
+  expect(fs.readFileSync(downloadedPath, "utf8")).toBe("synthetic exact attached CV bytes");
+
+  const wrongJobResponse = await page.request.get(
+    `${baseUrl}/api/jobs/${empty.jobId}/cv-archive/${archived.archiveId}/download`
+  );
+  expect(wrongJobResponse.status()).toBe(404);
+
+  fs.writeFileSync(archived.archivePath!, "changed after archive");
+  const tamperedResponse = await page.request.get(
+    `${baseUrl}/api/jobs/${archived.jobId}/cv-archive/${archived.archiveId}/download`
+  );
+  expect(tamperedResponse.status()).toBe(409);
+
+  await page.goto(`${baseUrl}/jobs/${empty.jobId}`);
+  await page.getByText("No CV has been attached through autofill for this job yet.", {
+    exact: true,
+  }).waitFor();
+  await expect(page.getByRole("link", { name: "Download attached CV" })).toHaveCount(0);
 });

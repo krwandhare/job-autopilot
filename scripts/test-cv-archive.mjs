@@ -7,9 +7,13 @@ import Database from "better-sqlite3";
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "job-autopilot-cv-archive-"));
 process.env.JOB_AUTOPILOT_DATA_DIR = tempDir;
 
-const { archiveCvForJob, getLatestCvArchiveForJob, listCvArchiveForJob } = await import(
-  "../lib/cvArchive.ts"
-);
+const {
+  archiveCvForJob,
+  getCvArchiveForJob,
+  getLatestCvArchiveForJob,
+  listCvArchiveForJob,
+  verifyCvArchiveFile,
+} = await import("../lib/cvArchive.ts");
 
 const db = new Database(path.join(tempDir, "cv-archive.db"));
 
@@ -100,6 +104,9 @@ try {
     historyForJob1.map((row) => row.id),
     [archived2.id, archived1.id]
   );
+  assert.equal(getCvArchiveForJob(db, 1, archived2.id)?.id, archived2.id);
+  assert.equal(getCvArchiveForJob(db, 2, archived2.id), null);
+  assert.equal(verifyCvArchiveFile(archived2)?.toString(), "tailored resume content v2 for job 1");
 
   // A master-resume fallback attachment for a different job stays isolated.
   const archivedMaster = archiveCvForJob(db, 2, {
@@ -129,6 +136,16 @@ try {
     archivedMalicious.file_path.startsWith(path.join(tempDir, "cv-archive", "2") + path.sep)
   );
   assert.ok(!archivedMalicious.file_path.includes(".."));
+
+  // Download verification refuses paths outside the job archive and detects
+  // later byte changes instead of serving a file that no longer matches the
+  // recorded attachment fingerprint.
+  assert.equal(
+    verifyCvArchiveFile({ ...archivedMaster, file_path: masterPath }),
+    null
+  );
+  fs.writeFileSync(archivedMaster.file_path, "tampered bytes");
+  assert.equal(verifyCvArchiveFile(archivedMaster), null);
 
   console.log("CV archive data-model checks passed.");
 } finally {

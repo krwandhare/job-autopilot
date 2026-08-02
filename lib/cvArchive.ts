@@ -81,3 +81,26 @@ export function listCvArchiveForJob(db: Database.Database, jobId: number): CvArc
     .prepare(`SELECT * FROM cv_archive WHERE job_id = ? ORDER BY archived_at DESC, id DESC`)
     .all(jobId) as CvArchiveRow[];
 }
+
+export function getCvArchiveForJob(
+  db: Database.Database,
+  jobId: number,
+  archiveId: number
+): CvArchiveRow | null {
+  return (
+    (db
+      .prepare("SELECT * FROM cv_archive WHERE id = ? AND job_id = ?")
+      .get(archiveId, jobId) as CvArchiveRow | undefined) ?? null
+  );
+}
+
+export function verifyCvArchiveFile(row: CvArchiveRow): Buffer | null {
+  const expectedJobDir = path.resolve(getCvArchiveDir(), String(row.job_id));
+  const resolvedFilePath = path.resolve(row.file_path);
+  if (!resolvedFilePath.startsWith(`${expectedJobDir}${path.sep}`)) return null;
+  if (!fs.existsSync(resolvedFilePath)) return null;
+
+  const bytes = fs.readFileSync(resolvedFilePath);
+  const actualSha256 = createHash("sha256").update(bytes).digest("hex");
+  return actualSha256 === row.sha256 ? bytes : null;
+}

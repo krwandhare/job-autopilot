@@ -1,5 +1,29 @@
 # Session Handoff
 
+## Attached CV history review surface
+
+On 2026-08-02, the job-detail page gained a read-only “Attached CV history”
+panel. `GET /api/jobs/[id]/cv-archive` returns newest-first, privacy-bounded
+metadata without `file_path`; the nested archive download route verifies the
+archive belongs to the requested job, remains under that job's archive
+directory, exists, and still matches its recorded SHA-256 before serving it.
+The UI covers loading, failure, empty, long-filename, latest, master/tailored,
+format, UTC timestamp, fingerprint, and touch-sized download states while
+stating that local history is not employer-receipt evidence.
+
+Focused archive checks, scoped ESLint, strict TypeScript, the production
+build, `git diff --check`, and the full disposable `npm test` suite passed.
+The tailored-resume Playwright suite now has two cases and verifies exact-byte
+archive download, cross-job denial, tamper refusal, and empty history without
+opening the live database or an employer form. Repository-wide `npm run lint`
+is currently blocked only by 28 errors in user-owned, untracked Ruflo files
+under `.claude/helpers/`; those files and the existing `.gitignore` change
+were deliberately not modified.
+
+The exact next recommended task is the still-pending live, user-authorized ATS
+verification that the archived file matches the CV actually attached and that
+best-effort archiving never delays or blocks attachment.
+
 ## Ship-feature shared integration and Claude availability
 
 On 2026-07-31, the cross-agent `ship-feature` workflow was isolated onto
