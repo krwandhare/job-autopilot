@@ -60,19 +60,31 @@ const STATUS_LABELS: Record<string, string> = {
 // background/text pairing sized for text-on-color contrast (a solid accent
 // like amber-500 fails WCAG for white text, so pills use a light tint with a
 // dark-enough text color instead, per the accent-plus-label convention
-// already used on the Applications page).
+// already used on the Applications page). needs_code/needs_review/drafted
+// are genuine outcome states (blocking/warning/in-progress) and share the
+// Applications page's --color-accent/--color-status-* tokens accordingly.
+// external_lead and watchlist are categorical, not outcome states (an
+// external lead isn't "bad" and a watchlist item isn't "in progress"), so
+// they intentionally keep their own distinct raw colors rather than being
+// forced onto a 4-color outcome palette that isn't designed to represent
+// them -- collapsing them onto reused tokens would make two visually
+// distinct Action Center categories harder to tell apart at a glance.
+// status-warning (#fab219) fails WCAG text-on-white contrast entirely (~1.8:1),
+// so its badge keeps the existing dark amber-800 text rather than
+// text-status-warning; status-critical/accent both pass and use the token
+// directly for badge text.
 const ACTION_META: Record<string, { shortLabel: string; dot: string; badge: string; panel: string }> = {
   needs_code: {
     shortLabel: "Verification",
-    dot: "bg-red-600",
-    badge: "border-red-200 bg-red-50 text-red-700",
-    panel: "border-red-200 bg-red-50/60",
+    dot: "bg-status-critical",
+    badge: "border-status-critical/30 bg-status-critical/10 text-status-critical",
+    panel: "border-status-critical/30 bg-status-critical/10",
   },
   needs_review: {
     shortLabel: "Needs review",
-    dot: "bg-amber-500",
-    badge: "border-amber-200 bg-amber-50 text-amber-800",
-    panel: "border-amber-200 bg-amber-50/60",
+    dot: "bg-status-warning",
+    badge: "border-status-warning/40 bg-status-warning/10 text-amber-800",
+    panel: "border-status-warning/40 bg-status-warning/10",
   },
   external_lead: {
     shortLabel: "External",
@@ -82,9 +94,9 @@ const ACTION_META: Record<string, { shortLabel: string; dot: string; badge: stri
   },
   drafted: {
     shortLabel: "Drafts",
-    dot: "bg-blue-500",
-    badge: "border-blue-200 bg-blue-50 text-blue-700",
-    panel: "border-blue-200 bg-blue-50/60",
+    dot: "bg-accent",
+    badge: "border-accent/30 bg-accent/10 text-accent",
+    panel: "border-accent/30 bg-accent/10",
   },
   watchlist: {
     shortLabel: "Decisions",
@@ -438,12 +450,12 @@ export default function DashboardPage() {
         </div>
       </div>
       {pageError && (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-status-critical/30 bg-status-critical/10 p-3 text-sm text-status-critical">
           <span>{pageError}</span>
           <button
             type="button"
             onClick={() => setPageError(null)}
-            className="shrink-0 font-medium text-red-700 hover:text-red-900"
+            className="shrink-0 font-medium text-status-critical hover:text-red-900"
           >
             Dismiss
           </button>
@@ -511,13 +523,13 @@ export default function DashboardPage() {
         </div>
 
         {actionsError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-xl border border-status-critical/30 bg-status-critical/10 p-4 text-sm text-status-critical">
             {actionsError}
           </div>
         )}
 
         {!actionsLoading && !actionsError && actionCenter.actions.length === 0 && (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
+          <div className="rounded-2xl border border-status-good/30 bg-status-good/10 p-5">
             <p className="font-medium text-emerald-900">You&apos;re caught up.</p>
             <p className="mt-1 text-sm text-emerald-700">
               No application currently needs a manual step or decision.
@@ -634,7 +646,7 @@ export default function DashboardPage() {
                             type="button"
                             onClick={() => decideAction(action.jobId, "applied")}
                             disabled={decidingJobId === action.jobId}
-                            className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                            className="rounded-lg border border-status-good/40 bg-status-good/10 px-3.5 py-2 text-sm font-medium text-emerald-800 hover:bg-status-good/20 disabled:opacity-50"
                           >
                             I applied
                           </button>
@@ -800,7 +812,7 @@ export default function DashboardPage() {
             {importing ? "Importing…" : "Import"}
           </button>
         </div>
-        {importError && <p className="text-sm text-red-600">{importError}</p>}
+        {importError && <p className="text-sm text-status-critical">{importError}</p>}
       </section>
 
       <section id="job-pipeline" className="scroll-mt-6 space-y-3">
