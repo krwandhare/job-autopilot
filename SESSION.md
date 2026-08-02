@@ -1,5 +1,27 @@
 # Session Handoff
 
+## Development PDF upload repair
+
+On 2026-08-02, PDF uploads through `POST /api/resume` were repaired for the
+Next.js development server by externalizing the directly imported
+`pdfjs-dist` package alongside `pdf-parse`. This keeps pdf.js worker resolution
+in `node_modules` instead of relocating it to a missing `.next/dev` chunk. A
+focused configuration regression is included in the standard disposable test
+suite.
+
+The normal upload route was then exercised with the user-authorized master
+PDF. It returned HTTP 200, created a durable latest revision, stored bytes that
+match the source byte-for-byte, and reproduced the prior extracted resume text.
+An Auto-fill queue lookup for a job without an approved tailored variant chose
+that master PDF; the temporary claim was immediately released, no employer
+browser was opened, and nothing was submitted. `npm test`, scoped ESLint,
+strict TypeScript, the production build, and the live development-route check
+all passed. Repository-wide lint remains outside this checkpoint because of
+pre-existing untracked Ruflo helper files.
+
+The exact next recommended task is to add server-side resume upload size and
+content/type validation before moving on to broader API error-hardening.
+
 ## Live CV archive verification
 
 On 2026-08-02, a real user-authorized Greenhouse application was opened in

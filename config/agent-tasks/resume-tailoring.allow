@@ -22,6 +22,7 @@ scripts/test-resume-*.sh
 scripts/test-cv-archive.mjs
 package.json
 package-lock.json
+next.config.ts
 tsconfig.json
 SESSION.md
 TODO.md

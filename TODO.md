@@ -2,14 +2,6 @@
 
 ## In Progress
 
-- Fix PDF resume re-upload in the Next.js development server. A real local
-  re-upload currently returns HTTP 400 because the bundled pdf.js fake worker
-  cannot find `.next/dev/server/chunks/pdf.worker.mjs`; standalone extraction
-  of the same file succeeds and matches the stored extracted-text hash.
-- Restore a durable stored file for the latest master-resume revision through
-  the normal upload flow after that worker issue is fixed. The temporary,
-  hash-verified path used for live CV-archive testing was restored to its
-  original null value after the test.
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
@@ -49,6 +41,14 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Fixed PDF resume uploads in the Next.js development server by keeping the
+  directly imported `pdfjs-dist` package external, with a focused configuration
+  regression in `npm test`. The user-authorized master PDF was re-uploaded
+  through the normal route; stored bytes match the source, extracted text
+  matches the prior master revision, and Auto-fill selected the durable master
+  PDF for a job without a tailored variant. No employer form was opened or
+  submitted.
 
 - Live-verified per-job CV archiving against a real, user-authorized Greenhouse
   form in Auto-fill (review) mode. The form reached review with the resume
