@@ -23,14 +23,14 @@
   against any real posting.
 - **Add your own `ANTHROPIC_API_KEY` to `.env.local` to activate LLM
   resume tailoring** -- the pipeline wiring (`lib/llmTailoring.ts`,
-  `POST /api/jobs/[id]/resume-variant`) is done and validated, but with
-  no key configured every request transparently falls back to the
-  original deterministic tailoring. No live Claude API call has been made
-  yet in this environment -- verify the actual tailored wording once a
-  key is added.
-- Resume-variant review UI: surface `tailoringMode` (llm vs deterministic)
-  per variant, and add a "regenerate with AI" control -- the API already
-  returns the field, nothing renders it yet.
+  `POST /api/jobs/[id]/resume-variant`) is done and validated, and the job
+  detail page now has a "Regenerate with AI" button plus a persisted
+  "AI-tailored"/"Deterministic" pill per variant, but with no key configured
+  every request still transparently falls back to deterministic (visible now
+  as a real blue notice, and forcing "Regenerate with AI" shows a clear 409
+  instead of doing nothing). No live Claude API call has been made yet in
+  this environment -- verify the actual tailored wording and the violet
+  "AI-tailored" pill once a key is added.
 - Extend the 2026-07-31 Applications-page UI overhaul (stat tiles, weekly
   trend chart, status-colored response pills, `--color-accent`/
   `--color-status-*` tokens in `app/globals.css`) to the rest of the app
@@ -80,6 +80,30 @@
 
 ## Completed
 
+- Surfaced `tailoringMode` and added a "Regenerate with AI" control to the
+  resume-variant review UI (`app/jobs/[id]/page.tsx`): the field previously
+  only existed in one API response and was never persisted, so it couldn't
+  survive a reload -- added a real `tailoring_mode` column to
+  `resume_variants` (`lib/db.ts`, idempotent migration for existing
+  databases, verified live against a simulated pre-existing DB) and threaded
+  it through `createResumeVariant()`/`serializeResumeVariant()`
+  (`lib/resumeVariants.ts`). The job detail page now shows a persisted
+  "AI-tailored"/"Deterministic" pill per variant and a "Regenerate with AI"
+  button that forces `mode: "llm"` (distinct from the default button's
+  silent `auto` fallback, which now also surfaces a real notice when it
+  falls back instead of being silent). Fixed a real latent bug found while
+  wiring the new button: the existing button passed
+  `onClick={generateResumeVariant}` directly, which would have silently fed
+  React's `MouseEvent` in as the new `mode` parameter -- fixed both call
+  sites to `onClick={() => generateResumeVariant(...)}`. Verified live in
+  headless Chromium against a disposable database (no `ANTHROPIC_API_KEY`
+  configured in this environment): confirmed `tailoringMode: "deterministic"`
+  on the default path, a real 409 when forcing `llm` mode, the pill and
+  button render correctly, and the 409 surfaces as a clear UI message
+  rather than doing nothing. Lint, strict TypeScript, and the production
+  build all passed. The `mode: "llm"` success path (a real tailored
+  response, violet "AI-tailored" pill) remains unverified pending a real
+  API key, per the existing TODO item above.
 - Added test coverage for four of explorer-agent's flagged manual-review
   controls, split by actual risk (`Fill`/`Auto-submit` deliberately left
   manual-only, unchanged -- an automated test would submit a real job

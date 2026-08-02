@@ -1,5 +1,70 @@
 # Session Handoff
 
+## Surfaced tailoringMode + "Regenerate with AI" in the resume-variant UI
+
+Requirement (from `TODO.md`): "surface `tailoringMode` (llm vs deterministic)
+per variant, and add a 'regenerate with AI' control -- the API already
+returns the field, nothing renders it yet."
+
+- Found the field wasn't actually durable: `POST /api/jobs/[id]/resume-variant`
+  computed `tailoringMode` and returned it in that one response, but never
+  persisted it, so `GET`/page-reload had no way to know which mode produced
+  the variant sitting in the database. Added a real `tailoring_mode` column
+  to `resume_variants` (`lib/db.ts`, `CHECK (tailoring_mode IN
+  ('deterministic', 'llm'))`, default `'deterministic'`) with the same
+  idempotent `PRAGMA table_info` + `ALTER TABLE ADD COLUMN` pattern already
+  used for `resumes.file_path`/`resume_variants.preferred_format` -- verified
+  live against a simulated pre-existing database (a hand-built old-shape
+  `resume_variants` table with a real inserted row, then started the app
+  against it): the column was added and the existing row correctly defaulted
+  to `'deterministic'`, not left null or erroring.
+- `createResumeVariant()`/`serializeResumeVariant()` in `lib/resumeVariants.ts`
+  now thread `tailoringMode` through and include it in every serialized
+  variant (not just the creation response), and the route passes its
+  already-computed `tailoringMode` into `createResumeVariant()` instead of
+  only returning it standalone.
+- `app/jobs/[id]/page.tsx`: a small dot+text pill next to the variant's
+  status ("AI-tailored" violet / "Deterministic" gray, never color alone)
+  reads the persisted field, so it survives a reload. New "Regenerate with
+  AI" button next to "Create new draft" (visible once a variant exists)
+  calls the same route with an explicit `{mode: "llm"}` body -- distinct
+  from the existing default button, which uses `"auto"` and silently falls
+  back to deterministic on a transient LLM failure. That silent-fallback
+  case is no longer actually silent: a new `tailoringNotice` (blue,
+  distinct from the amber `variantError`, since the draft did succeed) now
+  surfaces the route's `tailoringError` field when `auto` mode had to fall
+  back.
+- **Fixed a real latent bug found while wiring the new button**: the
+  existing primary button was `onClick={generateResumeVariant}` -- passing
+  the function directly hands React's `MouseEvent` as the first argument.
+  Harmless before (the function ignored its arguments), but adding an
+  optional `mode` parameter to support the new button would have made every
+  *existing* click silently pass a `MouseEvent` as `mode`, which the route
+  would then reject as invalid. Changed both call sites to
+  `onClick={() => generateResumeVariant()}` /
+  `onClick={() => generateResumeVariant("llm")}`.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live end-to-end against a disposable database (no
+  `ANTHROPIC_API_KEY` configured in this environment, so only the
+  already-existing deterministic/fallback paths could be exercised for
+  real, not an actual LLM call): seeded a job with a description and one
+  verified experience-evidence row, called the route directly to confirm
+  `tailoringMode: "deterministic"` on the default path and a real `409`
+  (`"AI tailoring requires ANTHROPIC_API_KEY..."`) when forcing
+  `mode: "llm"`, then drove the real page in headless Chromium -- confirmed
+  the "Deterministic" pill renders, the "Regenerate with AI" button is
+  present once a variant exists, and clicking it surfaces the exact 409
+  message in the UI (screenshot inspected directly). Zero unexpected
+  console/page errors (the one logged entry was the browser's own routine
+  "409 Conflict" network log for the intentionally-rejected request, not a
+  JS/React error). Temporary server, disposable data directory, and
+  verification scripts were all removed afterward.
+- **Not yet done**: no live verification with a real `ANTHROPIC_API_KEY`
+  configured -- the `mode: "llm"` success path (an actual tailored
+  response, `tailoringMode: "llm"` persisting and rendering as the violet
+  "AI-tailored" pill) remains unverified against a real Claude API call,
+  same pre-existing gap `TODO.md` already tracked before this change.
+
 ## Test coverage for explorer-agent's manual-review queue (continuation of prior session)
 
 Requirement, continued from a prior conversation (recovered via `SESSION.md`/

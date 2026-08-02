@@ -62,6 +62,7 @@ type ResumeVariant = {
   resumeId: number;
   status: "draft" | "approved" | "superseded" | "rejected";
   preferredFormat: "docx" | "pdf";
+  tailoringMode: "llm" | "deterministic";
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
@@ -149,6 +150,7 @@ export default function JobDetailPage({
   const [resumeVariant, setResumeVariant] = useState<ResumeVariant | null>(null);
   const [variantLoading, setVariantLoading] = useState(false);
   const [variantError, setVariantError] = useState<string | null>(null);
+  const [tailoringNotice, setTailoringNotice] = useState<string | null>(null);
   const [savingVariantItem, setSavingVariantItem] = useState<number | null>(null);
   const [resumeArtifacts, setResumeArtifacts] = useState<ResumeArtifact[]>([]);
   const [artifactLoading, setArtifactLoading] = useState(false);
@@ -344,15 +346,28 @@ export default function JobDetailPage({
     }
   }
 
-  async function generateResumeVariant() {
+  async function generateResumeVariant(mode?: "llm" | "deterministic") {
     setVariantLoading(true);
     setVariantError(null);
+    setTailoringNotice(null);
     try {
-      const res = await fetch(`/api/jobs/${id}/resume-variant`, { method: "POST" });
+      const res = await fetch(`/api/jobs/${id}/resume-variant`, {
+        method: "POST",
+        ...(mode
+          ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) }
+          : {}),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not create tailored resume");
       setResumeVariant(data.variant);
       setResumeArtifacts([]);
+      // "auto" mode silently falls back to the deterministic path on a
+      // transient LLM failure rather than blocking -- surface that as an
+      // informational note (the draft still succeeded) distinct from
+      // variantError, which implies nothing was created.
+      if (data.tailoringError) {
+        setTailoringNotice(`AI tailoring unavailable, used the deterministic draft instead: ${data.tailoringError}`);
+      }
       await loadResumeAnalysis();
     } catch (variantFailure) {
       setVariantError(
@@ -846,18 +861,31 @@ export default function JobDetailPage({
               achievements, dates, titles, or metrics are generated.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={generateResumeVariant}
-            disabled={variantLoading || !job.description}
-            className="shrink-0 rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            {variantLoading
-              ? "Working…"
-              : resumeVariant
-                ? "Create new draft"
-                : "Create tailored draft"}
-          </button>
+          <div className="flex shrink-0 gap-2">
+            {resumeVariant && (
+              <button
+                type="button"
+                onClick={() => generateResumeVariant("llm")}
+                disabled={variantLoading || !job.description}
+                title="Force AI-assisted wording for this draft's summary/experience/project/publication items"
+                className="rounded border border-gray-900 px-4 py-2 text-sm text-gray-900 disabled:opacity-50"
+              >
+                Regenerate with AI
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => generateResumeVariant()}
+              disabled={variantLoading || !job.description}
+              className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              {variantLoading
+                ? "Working…"
+                : resumeVariant
+                  ? "Create new draft"
+                  : "Create tailored draft"}
+            </button>
+          </div>
         </div>
 
         {variantError && (
@@ -871,6 +899,10 @@ export default function JobDetailPage({
           </div>
         )}
 
+        {tailoringNotice && !variantError && (
+          <div className="rounded bg-blue-50 p-3 text-sm text-blue-900">{tailoringNotice}</div>
+        )}
+
         {!resumeVariant && !variantError && (
           <p className="text-sm text-gray-500">
             Create a reviewable version after verifying your career evidence.
@@ -880,8 +912,22 @@ export default function JobDetailPage({
         {resumeVariant && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded bg-gray-50 p-3">
-              <div className="text-sm">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-medium capitalize">{resumeVariant.status}</span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    resumeVariant.tailoringMode === "llm"
+                      ? "bg-violet-50 text-violet-800"
+                      : "bg-gray-200 text-gray-700"
+                  }`}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      resumeVariant.tailoringMode === "llm" ? "bg-violet-600" : "bg-gray-500"
+                    }`}
+                  />
+                  {resumeVariant.tailoringMode === "llm" ? "AI-tailored" : "Deterministic"}
+                </span>
                 <span className="text-gray-500">
                   {" "}
                   · {resumeVariant.items.filter((item) => item.included).length} of{" "}

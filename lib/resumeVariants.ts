@@ -17,6 +17,7 @@ export type ResumeVariantRow = {
   status: ResumeVariantStatus;
   job_fingerprint: string;
   preferred_format: "docx" | "pdf";
+  tailoring_mode: "llm" | "deterministic";
   created_at: string;
   updated_at: string;
   approved_at: string | null;
@@ -178,6 +179,7 @@ export function createResumeVariant(
     requirements: JobRequirementRow[];
     evidence: ResumeEvidenceRow[];
     tailoredOverrides?: Map<number, string>;
+    tailoringMode?: "llm" | "deterministic";
   }
 ): ResumeVariantRow {
   const items = composeVariantItems(inputs.requirements, inputs.evidence, inputs.tailoredOverrides);
@@ -193,13 +195,14 @@ export function createResumeVariant(
     const result = db
       .prepare(
         `INSERT INTO resume_variants
-           (job_id, resume_id, status, job_fingerprint)
-         VALUES (?, ?, 'draft', ?)`
+           (job_id, resume_id, status, job_fingerprint, tailoring_mode)
+         VALUES (?, ?, 'draft', ?, ?)`
       )
       .run(
         inputs.job.id,
         inputs.resume.id,
-        postingFingerprint(inputs.job.description?.trim() ?? "")
+        postingFingerprint(inputs.job.description?.trim() ?? ""),
+        inputs.tailoringMode ?? "deterministic"
       );
     const variantId = Number(result.lastInsertRowid);
     const insertItem = db.prepare(
@@ -381,6 +384,7 @@ export function serializeResumeVariant(
     resumeId: loaded.variant.resume_id,
     status: loaded.variant.status,
     preferredFormat: loaded.variant.preferred_format,
+    tailoringMode: loaded.variant.tailoring_mode,
     createdAt: loaded.variant.created_at,
     updatedAt: loaded.variant.updated_at,
     approvedAt: loaded.variant.approved_at,

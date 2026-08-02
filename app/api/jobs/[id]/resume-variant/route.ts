@@ -169,6 +169,7 @@ export async function POST(
     requirements,
     evidence: inputs.evidence,
     tailoredOverrides,
+    tailoringMode,
   });
   return NextResponse.json({
     variant: serializeResumeVariant(getResumeVariant(inputs.db, created.id)),
