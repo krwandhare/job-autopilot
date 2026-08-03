@@ -56,7 +56,7 @@ Browser UI
 | `POST /api/resume-variants/[id]/artifacts` | Generate DOCX/PDF for an approved variant and round-trip validate every included line. |
 | `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX or PDF artifact without exposing its internal path. |
 | `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
-| `POST /api/jobs/sync-gmail` | With explicitly configured local Gmail OAuth credentials, read bounded unread LinkedIn alert threads, import rate-limited external leads, and mark only fully attempted threads read. |
+| `POST /api/jobs/sync-gmail` | With explicitly configured local Gmail OAuth credentials, read bounded unread LinkedIn alert threads, retain partial imports, report privacy-safe issue categories, and mark only fully attempted threads read. |
 | `POST /api/jobs/import-url` | Validate and normalize one public LinkedIn jobs URL, then import, score, and upsert it. Raw upstream failures are not returned to clients. |
 | `GET /api/applications` | Return submitted-application rows, response statistics, overdue no-response rows, or top unsubmitted jobs by stored fit. |
 | `PATCH /api/applications/[jobId]` | Update bounded local notes, follow-up date, or response type/timestamp for one recorded application. |

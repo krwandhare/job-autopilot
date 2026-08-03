@@ -205,6 +205,10 @@ persist field values, cookies, page HTML, credentials, or application payloads.
    regular `new` autofill queue until the user decides what to do.
 4. A thread is marked read only after every lead selected from that thread was
    attempted; a rate-limited partial thread remains unread for a later run.
+5. Successful imports remain saved when another posting or thread fails. The
+   response reports checked versus fully processed threads and generic issue
+   categories without exposing Gmail thread IDs, posting URLs, OAuth response
+   bodies, or raw upstream errors in failure details.
 
 ### Important limitations
 

@@ -8,6 +8,7 @@ import {
 } from "@/lib/gmail";
 import { extractLeadsFromDigest } from "@/lib/sources/gmailLeads";
 import { importAndTagExternalLead } from "@/lib/jobs/importLead";
+import { gmailSyncIssue, type GmailSyncIssueCode } from "@/lib/gmailSync";
 
 const DEFAULT_QUERY = 'label:"Job Alerts/LinkedinJobAlerts" is:unread';
 const DEFAULT_RATE_LIMIT = 5;
@@ -43,9 +44,9 @@ export async function POST(req: Request) {
   let accessToken: string;
   try {
     accessToken = await getAccessToken(config);
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to authenticate with Gmail" },
+      { error: "Could not authenticate with Gmail. Check the local OAuth configuration and try again." },
       { status: 502 }
     );
   }
@@ -53,9 +54,9 @@ export async function POST(req: Request) {
   let threads;
   try {
     threads = await listThreads(accessToken, query, MAX_THREADS_PER_RUN);
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to search Gmail" },
+      { error: "Could not search Gmail alerts. Check Gmail access and try again." },
       { status: 502 }
     );
   }
@@ -65,14 +66,14 @@ export async function POST(req: Request) {
   let threadsProcessed = 0;
   let rateLimited = false;
   const results: Array<{ url: string; title: string; company: string; tagged: boolean }> = [];
-  const errors: string[] = [];
+  const issues: Array<{ code: GmailSyncIssueCode; message: string }> = [];
 
   threadLoop: for (const thread of threads) {
     let bodies: string[];
     try {
       bodies = await getThreadPlaintextBodies(accessToken, thread.id);
-    } catch (err) {
-      errors.push(`thread ${thread.id}: ${err instanceof Error ? err.message : String(err)}`);
+    } catch {
+      issues.push(gmailSyncIssue("thread_read"));
       continue;
     }
 
@@ -93,9 +94,9 @@ export async function POST(req: Request) {
           company: result.company,
           tagged: result.tagged,
         });
-      } catch (err) {
+      } catch {
         skipped += 1;
-        errors.push(`${lead.url}: ${err instanceof Error ? err.message : String(err)}`);
+        issues.push(gmailSyncIssue("lead_import"));
       }
     }
 
@@ -105,8 +106,8 @@ export async function POST(req: Request) {
     try {
       await markThreadRead(accessToken, thread.id);
       threadsProcessed += 1;
-    } catch (err) {
-      errors.push(`mark-read ${thread.id}: ${err instanceof Error ? err.message : String(err)}`);
+    } catch {
+      issues.push(gmailSyncIssue("mark_read"));
     }
   }
 
@@ -117,6 +118,6 @@ export async function POST(req: Request) {
     skipped,
     rateLimited,
     results,
-    errors,
+    issues,
   });
 }

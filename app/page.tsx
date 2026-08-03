@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { formatGmailSyncSummary } from "@/lib/gmailSync";
 
 type Job = {
   id: number;
@@ -314,10 +315,7 @@ export default function DashboardPage() {
       if (!res.ok) {
         setGmailSyncMessage(data.error ?? "Gmail sync failed");
       } else {
-        const cappedNote = data.rateLimited ? " (rate limit reached — more next run)" : "";
-        setGmailSyncMessage(
-          `Imported ${data.imported} lead(s) from ${data.threadsProcessed} alert email(s)${cappedNote}.`
-        );
+        setGmailSyncMessage(formatGmailSyncSummary(data));
       }
     } catch (err) {
       setGmailSyncMessage(err instanceof Error ? err.message : "Gmail sync failed");

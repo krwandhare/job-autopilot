@@ -950,3 +950,20 @@ Playwright test-runner discovery fix:
   local command-execution approval layer repeatedly stalled. No live database
   or external LinkedIn page was accessed. Next: redact Gmail partial-success
   failures without discarding successfully imported leads.
+
+## 2026-08-03 Gmail partial-success reporting
+
+- Gmail synchronization still retains each successful job import immediately,
+  leaves a rate-limited partial thread unread, and continues after independent
+  posting/thread failures.
+- Failure responses no longer expose Gmail thread IDs, posting URLs, OAuth
+  response bodies, or raw Gmail/LinkedIn errors. Failures use stable generic
+  issue codes and actionable messages; top-level authentication and search
+  failures are also bounded.
+- Dashboard and scheduled-runner output now distinguish threads checked from
+  threads fully processed, report skipped postings, and explain why unread
+  alerts will be retried instead of producing "5 leads from 0 emails."
+- `npm run test:gmail-leads`, scoped ESLint, `npx tsc --noEmit`, scheduler
+  shell syntax, and `git diff --check` passed. No mailbox, live database,
+  LinkedIn page, or employer form was accessed. Next: audit the remaining
+  job/application route error boundaries.

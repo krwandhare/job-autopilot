@@ -43,8 +43,8 @@ try:
         print('error:', d['error'])
     else:
         print(f\"imported={d.get('imported')} threadsProcessed={d.get('threadsProcessed')} rateLimited={d.get('rateLimited')} skipped={d.get('skipped')}\")
-        for e in d.get('errors', []):
-            print(' -', e)
+        for issue in d.get('issues', []):
+            print(' -', issue.get('code'), issue.get('message'))
 except Exception as exc:
     print('unparseable response:', exc)
 " "$response" 2>&1)"

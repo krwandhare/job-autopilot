@@ -5,13 +5,9 @@
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
-- Continue the API error-handling audit with Gmail partial-success reporting,
-  then the remaining job/application routes. Auto-fill, master-resume, filter,
-  source, and one-off LinkedIn mutation boundaries are now bounded and
-  privacy-safe.
-- Decide on the Gmail-sync summary message wording when a digest email's
-  leads exceed the rate limit mid-thread (currently reads "Imported 5
-  lead(s) from 0 alert email(s)", accurate but confusing).
+- Continue the API error-handling audit across the remaining job/application
+  routes. Auto-fill, master-resume, filter, source, one-off LinkedIn, and Gmail
+  sync boundaries now use bounded, privacy-safe client errors.
 - Decide whether to delete the untracked `data/watch-and-integrate.sh`
   scratch file (abandoned background-merge-watcher, never used).
 - Tune the fit-scoring formula in `lib/matching.ts` per user judgment on
@@ -42,6 +38,11 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Preserved Gmail partial-sync successes while replacing raw thread IDs,
+  posting URLs, OAuth bodies, and upstream failures with generic issue
+  categories. Dashboard and scheduler summaries now distinguish alerts checked
+  from alerts fully processed and explain rate-limited retries accurately.
 
 - Hardened filter, source-configuration, and one-off LinkedIn mutations with
   strict JSON shapes, bounded values, positive IDs, normalized public job URLs,

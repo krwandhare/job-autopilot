@@ -4,6 +4,7 @@ config/agent-tasks/claude-applications.allow
 app/api/resume/**
 app/api/jobs/\[id\]/**
 app/api/jobs/import-url/route.ts
+app/api/jobs/sync-gmail/route.ts
 app/api/filters/route.ts
 app/api/sources/route.ts
 app/api/resume-variants/**
@@ -20,6 +21,7 @@ app/jobs/\[id\]/**
 app/autofill/page.tsx
 lib/db.ts
 lib/apiValidation.ts
+lib/gmailSync.ts
 lib/resume.ts
 lib/resumeEvidence.ts
 lib/jobRequirements.ts
@@ -35,6 +37,8 @@ scripts/test-resume-*.sh
 scripts/test-autofill-upload.mjs
 scripts/test-autofill-errors.mjs
 scripts/test-api-validation.mjs
+scripts/test-gmail-leads.mjs
+scripts/gmail-sync-runner.sh
 scripts/test-shared-runtime-routes.sh
 scripts/test-cv-archive.mjs
 package.json
