@@ -111,3 +111,53 @@ export function validateLinkedInJobUrl(value: unknown): string | null {
     return null;
   }
 }
+
+export function boundedPositiveInteger(
+  value: string | null,
+  defaultValue: number,
+  maximum: number
+): number | null {
+  if (value === null) return defaultValue;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= maximum ? parsed : null;
+}
+
+const RESPONSE_TYPES = ["interview", "rejected", "offer", "ghosted"] as const;
+
+export type ValidatedApplicationPatch = {
+  notes?: string | null;
+  followUpAt?: string | null;
+  responseReceivedAt?: string | null;
+  responseType?: (typeof RESPONSE_TYPES)[number] | null;
+};
+
+function nullableDateString(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === "string" &&
+      value.length <= 50 &&
+      value.trim().length > 0 &&
+      Number.isFinite(Date.parse(value)))
+  );
+}
+
+export function validateApplicationPatch(
+  body: Record<string, unknown>
+): ValidatedApplicationPatch | null {
+  const allowed = new Set(["notes", "followUpAt", "responseReceivedAt", "responseType"]);
+  if (Object.keys(body).some((key) => !allowed.has(key))) return null;
+  if (
+    (body.notes !== undefined &&
+      body.notes !== null &&
+      (typeof body.notes !== "string" || body.notes.length > 5_000)) ||
+    (body.followUpAt !== undefined && !nullableDateString(body.followUpAt)) ||
+    (body.responseReceivedAt !== undefined && !nullableDateString(body.responseReceivedAt)) ||
+    (body.responseType !== undefined &&
+      body.responseType !== null &&
+      !RESPONSE_TYPES.includes(body.responseType as (typeof RESPONSE_TYPES)[number]))
+  ) {
+    return null;
+  }
+  return body as ValidatedApplicationPatch;
+}

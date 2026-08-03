@@ -5,9 +5,9 @@
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
-- Continue the API error-handling audit across the remaining job/application
-  routes. Auto-fill, master-resume, filter, source, one-off LinkedIn, and Gmail
-  sync boundaries now use bounded, privacy-safe client errors.
+- Continue the API error-handling audit across remaining resume-artifact and
+  archive routes. Auto-fill, master-resume, job/application, source, one-off
+  LinkedIn, and Gmail sync boundaries now use bounded, privacy-safe errors.
 - Decide whether to delete the untracked `data/watch-and-integrate.sh`
   scratch file (abandoned background-merge-watcher, never used).
 - Tune the fit-scoring formula in `lib/matching.ts` per user judgment on
@@ -38,6 +38,12 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Hardened job/application list and mutation boundaries: bounded integer query
+  parameters, positive route IDs, malformed-JSON handling, exact mutation
+  shapes, bounded notes/action context, parsed dates, and allowed response
+  values. Multi-source sync retains successful results while returning generic
+  source failures instead of raw upstream bodies.
 
 - Preserved Gmail partial-sync successes while replacing raw thread IDs,
   posting URLs, OAuth bodies, and upstream failures with generic issue

@@ -40,9 +40,9 @@ Browser UI
 | `POST /api/sources` | Add a strictly shaped, bounded `greenhouse`, `lever`, or `adzuna` configuration. |
 | `DELETE /api/sources` | Delete a source configuration by positive integer ID, returning 404 when absent. |
 | `POST /api/sources/seed` | Insert curated Greenhouse/Lever configurations that are not already present. |
-| `GET /api/jobs` | Query jobs by optional status and zero-score visibility, sorted by score/fetch time, with 50-row pagination. |
-| `GET /api/jobs/[id]` | Return one job, its latest draft, match details, and the current maximum possible score. |
-| `PATCH /api/jobs/[id]` | Set a validated local status: `new`, `drafted`, `applied`, `rejected`, `skipped`, `watchlist`, `needs_code`, `needs_review`, or `external_lead`. |
+| `GET /api/jobs` | Query jobs with validated status, visibility, and bounded page parameters, sorted by score/fetch time with 50-row pagination. |
+| `GET /api/jobs/[id]` | Validate the positive job ID, then return one job, its latest draft, match details, and the current maximum possible score. |
+| `PATCH /api/jobs/[id]` | Validate an exact, bounded mutation shape before updating status, manual-action context, and the first-`applied` application record. |
 | `GET /api/jobs/[id]/resume-analysis` | Return a stored requirement analysis and recomputed coverage against the latest verified resume evidence. |
 | `POST /api/jobs/[id]/resume-analysis` | Deterministically extract or refresh posting requirements and return evidence-backed coverage. |
 | `GET /api/jobs/[id]/resume-variant` | Return the latest active draft or approved resume variant for a job. |
@@ -55,11 +55,11 @@ Browser UI
 | `GET /api/resume-variants/[id]/artifacts` | Return validation summaries and download availability for a variant. |
 | `POST /api/resume-variants/[id]/artifacts` | Generate DOCX/PDF for an approved variant and round-trip validate every included line. |
 | `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX or PDF artifact without exposing its internal path. |
-| `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
+| `POST /api/jobs/sync` | Fetch every configured source, retain successful results, score and upsert jobs, and return generic per-source failures. |
 | `POST /api/jobs/sync-gmail` | With explicitly configured local Gmail OAuth credentials, read bounded unread LinkedIn alert threads, retain partial imports, report privacy-safe issue categories, and mark only fully attempted threads read. |
 | `POST /api/jobs/import-url` | Validate and normalize one public LinkedIn jobs URL, then import, score, and upsert it. Raw upstream failures are not returned to clients. |
-| `GET /api/applications` | Return submitted-application rows, response statistics, overdue no-response rows, or top unsubmitted jobs by stored fit. |
-| `PATCH /api/applications/[jobId]` | Update bounded local notes, follow-up date, or response type/timestamp for one recorded application. |
+| `GET /api/applications` | Return application rows, statistics, overdue rows, or top-fit jobs using bounded integer query parameters. |
+| `PATCH /api/applications/[jobId]` | Validate an exact patch shape, bounded notes, real date strings, and allowed response types before updating one application. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
 | `GET /api/autofill/next` | Return the highest-score, newest-fetched `new` job, or a specifically requested job for resumption, with match and extracted posting details. |
 | `POST /api/autofill/start` | Create/reuse a visible browser session and run the form scanner/filler. |

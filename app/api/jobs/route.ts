@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type JobRow, type FilterRow, type ResumeRow } from "@/lib/db";
 import { maxPossibleScore, type FilterRules } from "@/lib/matching";
+import { boundedPositiveInteger } from "@/lib/apiValidation";
 
 const VALID_STATUSES = [
   "new",
@@ -20,11 +21,21 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
-  const showAll = searchParams.get("showAll") === "1";
-  const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+  if (status && !VALID_STATUSES.includes(status)) {
+    return NextResponse.json({ error: "Invalid status filter" }, { status: 400 });
+  }
+  const showAllParam = searchParams.get("showAll");
+  if (showAllParam !== null && showAllParam !== "0" && showAllParam !== "1") {
+    return NextResponse.json({ error: "showAll must be 0 or 1" }, { status: 400 });
+  }
+  const showAll = showAllParam === "1";
+  const page = boundedPositiveInteger(searchParams.get("page"), 1, 100_000);
+  if (page === null) {
+    return NextResponse.json({ error: "page must be an integer from 1 to 100000" }, { status: 400 });
+  }
   const offset = (page - 1) * PAGE_SIZE;
 
-  const statusFilter = status && VALID_STATUSES.includes(status) ? status : null;
+  const statusFilter = status;
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];

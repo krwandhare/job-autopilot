@@ -5,6 +5,9 @@ app/api/resume/**
 app/api/jobs/\[id\]/**
 app/api/jobs/import-url/route.ts
 app/api/jobs/sync-gmail/route.ts
+app/api/jobs/sync/route.ts
+app/api/applications/**
+app/api/draft/**
 app/api/filters/route.ts
 app/api/sources/route.ts
 app/api/resume-variants/**
@@ -22,6 +25,7 @@ app/autofill/page.tsx
 lib/db.ts
 lib/apiValidation.ts
 lib/gmailSync.ts
+lib/sourceSync.ts
 lib/resume.ts
 lib/resumeEvidence.ts
 lib/jobRequirements.ts

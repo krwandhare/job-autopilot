@@ -967,3 +967,21 @@ Playwright test-runner discovery fix:
   shell syntax, and `git diff --check` passed. No mailbox, live database,
   LinkedIn page, or employer form was accessed. Next: audit the remaining
   job/application route error boundaries.
+
+## 2026-08-03 job and application API boundaries
+
+- Job lists now reject unknown statuses, invalid visibility flags, and page
+  values outside the bounded positive-integer range. Job detail/draft routes
+  reject invalid IDs before database access.
+- Job status mutations now handle malformed JSON and reject unknown top-level
+  or action-context keys while preserving the existing bounded action fields
+  and first-`applied` application transaction.
+- Application lists use bounded integer limits and no-response windows.
+  Application patches accept only known fields, notes up to 5,000 characters,
+  parseable bounded date strings, and the established response-type enum.
+- Multi-source synchronization still retains successful source results, but
+  replaces raw adapter/upstream failures with generic source-specific guidance.
+- `npm run test:api-validation`, `npm run test:applications`, scoped ESLint,
+  `npx tsc --noEmit`, and `git diff --check` passed. No live database or
+  external service was accessed. Next: audit remaining resume-artifact and CV
+  archive route error boundaries.
