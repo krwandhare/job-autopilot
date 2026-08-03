@@ -31,9 +31,6 @@
   instead of doing nothing). No live Claude API call has been made yet in
   this environment -- verify the actual tailored wording and the violet
   "AI-tailored" pill once a key is added.
-- The root layout's nav (`app/layout.tsx`) wraps awkwardly at a 390px
-  viewport (found while verifying the Applications-page redesign;
-  pre-existing, unrelated to that change).
 - **Re-upload the current resume.** Its `file_path` was accidentally
   overwritten during error-handling audit testing (`f56521d`) and had to be
   nulled out rather than left pointing at a fake test file -- the real file
@@ -75,6 +72,14 @@
 
 ## Completed
 
+- Fixed the root layout nav (`app/layout.tsx`) wrapping/clipping at a 390px
+  viewport: the title wrapped to two lines, "Profile & Filters" broke
+  mid-phrase, and "Applications" was clipped off-screen entirely. Compacted
+  mobile sizing/gaps, shortened "Profile & Filters" to "Profile" below the
+  `sm` breakpoint, and added an `overflow-x-auto` scroll fallback matching
+  the dashboard's Action Center pill row. Verified live: `nav.scrollWidth
+  === clientWidth` at 390px (fits with no scroll needed), all four links
+  still navigate to the correct route, desktop layout unchanged.
 - Extended the 2026-07-31 Applications-page `--color-accent`/
   `--color-status-*` token visual language to the rest of the app
   (`app/page.tsx`, `app/autofill/page.tsx`, `app/jobs/[id]/page.tsx`,
