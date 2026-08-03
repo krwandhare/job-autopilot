@@ -6,7 +6,7 @@ import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
 import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
 import { archiveCvForJob } from "@/lib/cvArchive";
 import { createApplication } from "@/lib/applications";
-import { friendlyAutofillError } from "./http";
+import { friendlyAutofillError, privacySafeUrl } from "./http";
 import {
   getOrCreateSession,
   getSession,
@@ -589,8 +589,8 @@ export async function captureSessionSnapshot(jobId: number): Promise<{
   const screenshot = await page.screenshot({ type: "png" });
 
   return {
-    pageUrl: page.url(),
-    targetUrl: target === page ? page.url() : target.url(),
+    pageUrl: privacySafeUrl(page.url()),
+    targetUrl: privacySafeUrl(target === page ? page.url() : target.url()),
     text,
     screenshotBase64: screenshot.toString("base64"),
   };
@@ -610,7 +610,6 @@ export async function inspectFieldByLabel(
     resolvedLabel: string;
     ancestorClasses: string[];
     controlAncestorHTML: string;
-    checkedProperty: boolean;
   }[];
 } | null> {
   const session = getSession(jobId);
@@ -647,11 +646,22 @@ export async function inspectFieldByLabel(
       return classes;
     }
 
+    function safeMarkup(el: Element, maxLength: number): string {
+      const clone = el.cloneNode(true) as Element;
+      const sensitiveAttributes = [
+        "value", "checked", "selected", "src", "href", "action", "formaction",
+      ];
+      for (const node of [clone, ...Array.from(clone.querySelectorAll("*"))]) {
+        for (const attribute of sensitiveAttributes) node.removeAttribute(attribute);
+      }
+      return clone.outerHTML.slice(0, maxLength);
+    }
+
     function controlAncestorHTML(el: Element): string {
       let cur: Element | null = el.parentElement;
       for (let i = 0; i < 6 && cur; i++) {
         if (/(^| )select__control($| )|-control(\s|$)/.test(cur.className || "")) {
-          return cur.outerHTML.slice(0, 2000);
+          return safeMarkup(cur, 2000);
         }
         cur = cur.parentElement;
       }
@@ -664,11 +674,10 @@ export async function inspectFieldByLabel(
       .filter((m) => m.resolvedLabel.toLowerCase().includes(needle.toLowerCase()))
       .slice(0, 5)
       .map((m) => ({
-        outerHTML: m.el.outerHTML.slice(0, 1000),
+        outerHTML: safeMarkup(m.el, 1000),
         resolvedLabel: m.resolvedLabel,
         ancestorClasses: ancestorClasses(m.el),
         controlAncestorHTML: controlAncestorHTML(m.el),
-        checkedProperty: (m.el as HTMLInputElement).checked,
       }));
 
     return { matches };
@@ -696,6 +705,16 @@ export async function inspectField(
   const target = session.fillTarget ?? session.page;
 
   return target.evaluate((id: string) => {
+    function safeMarkup(el: Element, maxLength: number): string {
+      const clone = el.cloneNode(true) as Element;
+      const sensitiveAttributes = [
+        "value", "checked", "selected", "src", "href", "action", "formaction",
+      ];
+      for (const node of [clone, ...Array.from(clone.querySelectorAll("*"))]) {
+        for (const attribute of sensitiveAttributes) node.removeAttribute(attribute);
+      }
+      return clone.outerHTML.slice(0, maxLength);
+    }
     const el = document.querySelector(`[data-autofill-id="${id}"]`);
     if (!el) return { outerHTML: "(not found)", containerHTML: "" };
     const container =
@@ -707,8 +726,8 @@ export async function inspectField(
     const labelledBy = asInput.getAttribute("aria-labelledby");
     const byLabelledBy = labelledBy ? document.getElementById(labelledBy) : null;
     return {
-      outerHTML: el.outerHTML.slice(0, 1000),
-      containerHTML: container ? container.outerHTML.slice(0, 2000) : "(no container)",
+      outerHTML: safeMarkup(el, 1000),
+      containerHTML: container ? safeMarkup(container, 2000) : "(no container)",
       elementId: asInput.id ?? "",
       byForLabelText: byForLabel?.textContent ?? "(no label[for] match)",
       ariaLabelledBy: labelledBy ?? "",

@@ -67,8 +67,8 @@ Browser UI
 | `POST /api/autofill/upload-file` | Store an ad hoc file and attach it to the live field; a resume-classified file also becomes the latest resume's canonical path. |
 | `POST /api/autofill/finish` | Close and remove the in-memory browser session for a job. It does not update job status or verify submission. |
 | `POST /api/autofill/submit` | Audit visible required/invalid controls, return exact bounded field errors without clicking when validation fails, then conservatively locate/click submit and require confirmation. |
-| `GET /api/autofill/inspect` | Return diagnostic metadata for a field in an open local browser session. |
-| `GET /api/autofill/snapshot` | Return a diagnostic snapshot of an open local browser session. |
+| `GET /api/autofill/inspect` | Return bounded field diagnostics with state-bearing values and URL/form-action attributes removed. |
+| `GET /api/autofill/snapshot` | Return an explicitly local diagnostic screenshot and bounded text with credentials/query/fragment removed from URLs. |
 | `GET /api/actions` | Return prioritized unresolved manual actions and per-status counts for the dashboard Action Center, with safe status-derived fallback reasons. |
 
 ## SQLite persistence

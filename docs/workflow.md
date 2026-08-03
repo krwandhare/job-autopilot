@@ -107,6 +107,12 @@ browser closure and timeout failures are translated into actionable messages;
 unexpected Playwright exceptions are not returned verbatim, so local paths and
 browser internals do not cross the API boundary.
 
+The local Inspect diagnostic strips form values, checked/selected state, and
+URL/form-action attributes from cloned DOM fragments. Snapshot intentionally
+contains a screenshot for the user's remote-review workflow, but returned URLs
+exclude credentials, query parameters, and fragments. Queue response failures
+release any lease acquired during that request.
+
 ### Incomplete or unverified
 
 - Master-resume uploads enforce a 10 MiB ceiling and validate supported

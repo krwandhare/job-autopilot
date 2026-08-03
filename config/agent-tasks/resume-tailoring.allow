@@ -10,6 +10,8 @@ app/api/autofill/answer/route.ts
 app/api/autofill/finish/route.ts
 app/api/autofill/start/route.ts
 app/api/autofill/submit/route.ts
+app/api/autofill/inspect/route.ts
+app/api/autofill/snapshot/route.ts
 app/profile/**
 app/jobs/\[id\]/**
 app/autofill/page.tsx

@@ -65,6 +65,14 @@ assert payload["error"]
 ' "$TEST_DATA/malformed-$endpoint.json"
 done
 
+for endpoint in 'next?jobId=bad' 'inspect?jobId=bad&autofillId=x' 'snapshot?jobId=bad'; do
+  invalid_code="$(
+    curl -sS -o "$TEST_DATA/invalid-get.json" -w '%{http_code}' \
+      "http://127.0.0.1:$PORT_A/api/autofill/$endpoint"
+  )"
+  [ "$invalid_code" = "400" ]
+done
+
 sqlite3 "$TEST_DATA/app.db" "
   INSERT INTO jobs
     (source, source_job_id, title, company, location, remote, url, fetched_at, match_score, status)

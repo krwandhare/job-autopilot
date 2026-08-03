@@ -26,3 +26,12 @@ export function friendlyAutofillError(err: unknown): string {
   }
   return "The employer form or browser session failed unexpectedly. Check the open browser window, then try again.";
 }
+
+export function privacySafeUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "(unavailable)";
+  }
+}

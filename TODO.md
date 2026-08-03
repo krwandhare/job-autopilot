@@ -5,9 +5,9 @@
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
-- Continue the API error-handling audit: Auto-fill Start/Answer/Submit/Finish
-  and Playwright fallback messages are now privacy-safe; Inspect, Snapshot,
-  Next, and remaining non-Auto-fill routes still need the same treatment.
+- Continue the API error-handling audit across remaining non-Auto-fill routes;
+  all Auto-fill routes and Playwright fallback messages now have bounded,
+  privacy-safe handling.
 - Decide on the Gmail-sync summary message wording when a digest email's
   leads exceed the rate limit mid-thread (currently reads "Imported 5
   lead(s) from 0 alert email(s)", accurate but confusing).
@@ -41,6 +41,11 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Hardened Auto-fill Inspect, Snapshot, and Next: bounded identifiers and
+  errors, redacted state-bearing HTML attributes and URL secrets, preserved
+  explicitly local screenshot review, and automatic claim release when queue
+  response preparation fails. Invalid-GET route checks are in `npm test`.
 
 - Hardened the first Auto-fill error-boundary tranche: malformed JSON and
   invalid job IDs receive bounded 400 responses, answer inputs are bounded,

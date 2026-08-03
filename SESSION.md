@@ -1,5 +1,22 @@
 # Session Handoff
 
+## Auto-fill diagnostic and queue error boundaries
+
+On 2026-08-02, the second Auto-fill audit tranche hardened Inspect, Snapshot,
+and Next. All three validate positive job IDs; Inspect also bounds labels and
+restricts generated field IDs before selector use. Browser diagnostic failures
+return bounded JSON instead of raw exceptions. Inspect now clones diagnostic
+markup and removes value/checked/selected plus URL and form-action attributes;
+Snapshot keeps its explicitly requested local screenshot and bounded page text
+but strips credentials, query strings, and fragments from returned URLs.
+
+Next now releases an acquired lease if its job disappears or later resume/job
+preparation fails, avoiding a stuck queue item, and returns a generic retryable
+500 for that preparation failure. Focused URL-redaction checks, invalid-GET
+two-server route checks, the full disposable `npm test` suite, strict
+TypeScript, scoped lint, and the production build pass. The exact next task is
+the remaining non-Auto-fill API error-boundary audit.
+
 ## Auto-fill error-boundary audit
 
 On 2026-08-02, the first API error-handling tranche hardened the Auto-fill

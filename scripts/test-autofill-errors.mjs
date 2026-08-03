@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { friendlyAutofillError, positiveInteger, readJsonObject } from "../lib/autofill/http.ts";
+import {
+  friendlyAutofillError,
+  positiveInteger,
+  privacySafeUrl,
+  readJsonObject,
+} from "../lib/autofill/http.ts";
 
 assert.equal(positiveInteger(12), 12);
 assert.equal(positiveInteger("12"), 12);
@@ -25,5 +30,10 @@ const privatePath = "/private/sensitive/resume.pdf";
 const safe = friendlyAutofillError(new Error(`ENOENT ${privatePath}`));
 assert.equal(safe.includes(privatePath), false);
 assert.match(safe, /failed unexpectedly/);
+assert.equal(
+  privacySafeUrl("https://user:secret@example.invalid/apply?token=private#answer"),
+  "https://example.invalid/apply"
+);
+assert.equal(privacySafeUrl("not a URL"), "(unavailable)");
 
 console.log("Auto-fill privacy-safe error handling checks passed.");
