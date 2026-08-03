@@ -3,6 +3,9 @@ config/agent-tasks/resume-tailoring.allow
 config/agent-tasks/claude-applications.allow
 app/api/resume/**
 app/api/jobs/\[id\]/**
+app/api/jobs/import-url/route.ts
+app/api/filters/route.ts
+app/api/sources/route.ts
 app/api/resume-variants/**
 app/api/autofill/next/route.ts
 app/api/autofill/upload-file/route.ts
@@ -16,6 +19,7 @@ app/profile/**
 app/jobs/\[id\]/**
 app/autofill/page.tsx
 lib/db.ts
+lib/apiValidation.ts
 lib/resume.ts
 lib/resumeEvidence.ts
 lib/jobRequirements.ts
@@ -30,6 +34,7 @@ scripts/test-resume-*.mjs
 scripts/test-resume-*.sh
 scripts/test-autofill-upload.mjs
 scripts/test-autofill-errors.mjs
+scripts/test-api-validation.mjs
 scripts/test-shared-runtime-routes.sh
 scripts/test-cv-archive.mjs
 package.json

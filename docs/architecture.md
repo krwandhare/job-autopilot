@@ -35,10 +35,10 @@ Browser UI
 | `POST /api/resume/evidence` | Idempotently derive line-addressable evidence from one stored resume. |
 | `PATCH /api/resume/evidence` | Edit the normalized representation and mark one evidence item extracted, verified, or rejected. |
 | `GET /api/filters` | Return the latest filter row in UI-shaped JSON. |
-| `PUT /api/filters` | Update the current filter row or insert one if absent. |
+| `PUT /api/filters` | Validate bounded filter fields, then update the current row or insert one if absent. |
 | `GET /api/sources` | List source configurations with parsed JSON. |
-| `POST /api/sources` | Add a `greenhouse`, `lever`, or `adzuna` configuration. |
-| `DELETE /api/sources` | Delete a source configuration by ID. |
+| `POST /api/sources` | Add a strictly shaped, bounded `greenhouse`, `lever`, or `adzuna` configuration. |
+| `DELETE /api/sources` | Delete a source configuration by positive integer ID, returning 404 when absent. |
 | `POST /api/sources/seed` | Insert curated Greenhouse/Lever configurations that are not already present. |
 | `GET /api/jobs` | Query jobs by optional status and zero-score visibility, sorted by score/fetch time, with 50-row pagination. |
 | `GET /api/jobs/[id]` | Return one job, its latest draft, match details, and the current maximum possible score. |
@@ -57,7 +57,7 @@ Browser UI
 | `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX or PDF artifact without exposing its internal path. |
 | `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
 | `POST /api/jobs/sync-gmail` | With explicitly configured local Gmail OAuth credentials, read bounded unread LinkedIn alert threads, import rate-limited external leads, and mark only fully attempted threads read. |
-| `POST /api/jobs/import-url` | Import, score, and upsert exactly one user-supplied LinkedIn URL. |
+| `POST /api/jobs/import-url` | Validate and normalize one public LinkedIn jobs URL, then import, score, and upsert it. Raw upstream failures are not returned to clients. |
 | `GET /api/applications` | Return submitted-application rows, response statistics, overdue no-response rows, or top unsubmitted jobs by stored fit. |
 | `PATCH /api/applications/[jobId]` | Update bounded local notes, follow-up date, or response type/timestamp for one recorded application. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
@@ -345,7 +345,7 @@ highest-ranked local `new` job + latest resume/draft + profile answers
 - Server code can read/write local files and launch a browser; client code should never receive credentials or internal paths.
 - Resume contents and remembered answers are highly sensitive. Current storage is unencrypted local disk.
 - External APIs, LinkedIn HTML, job descriptions, and ATS pages are untrusted inputs.
-- The LinkedIn importer restricts the hostname suffix but has no response-size or fetch-time limit in application code.
+- The LinkedIn importer requires an exact `linkedin.com` host (or subdomain) and a `/jobs/` path, strips URL credentials and fragments, and returns bounded upstream errors. It still has no response-size or fetch-time limit in application code.
 - Uploads sanitize basenames but currently lack explicit size/MIME/content validation and cleanup.
 - CAPTCHA and detected bot-block pages stop automated filling. The system must not bypass them.
 - Sensitive identifiers/password-like fields, acknowledgements, certifications, and ambiguous choices are manual-only. Ordinary option groups are answerable but are never guessed.

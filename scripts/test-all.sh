@@ -34,6 +34,7 @@ test_commands=(
   test:cv-archive
   test:autofill-upload
   test:autofill-errors
+  test:api-validation
   test:queue-runner
   test:shared-runtime
   test:shared-runtime-routes

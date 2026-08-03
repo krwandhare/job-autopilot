@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type FilterRow } from "@/lib/db";
+import { readJsonObject } from "@/lib/autofill/http";
+import { validateFilterConfig } from "@/lib/apiValidation";
 
 export async function GET() {
   const db = getDb();
@@ -24,16 +26,15 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const body = await req.json();
-  const {
-    titleInclude = "",
-    titleExclude = "",
-    locations = [],
-    remoteOnly = false,
-    minSalary = null,
-    requiredSkills = [],
-    excludedCompanies = [],
-  } = body;
+  const body = await readJsonObject(req);
+  if (!body) {
+    return NextResponse.json({ error: "A valid JSON object is required" }, { status: 400 });
+  }
+  const config = validateFilterConfig(body);
+  if (!config) {
+    return NextResponse.json({ error: "Invalid filter configuration" }, { status: 400 });
+  }
+  const { titleInclude, titleExclude, locations, remoteOnly, minSalary, requiredSkills, excludedCompanies } = config;
 
   const db = getDb();
   const existing = db.prepare("SELECT id FROM filters ORDER BY id DESC LIMIT 1").get() as

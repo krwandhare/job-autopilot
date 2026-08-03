@@ -929,3 +929,24 @@ Playwright test-runner discovery fix:
 - `npx playwright test tests/tailored-resume-generator.spec.ts --list` found
   one named test. That test passed headlessly, and `npm run lint`,
   `npx tsc --noEmit`, `npm run build`, and `git diff --check` also passed.
+
+## 2026-08-03 public mutation validation
+
+- Added shared deterministic validation for filter configuration, source
+  configuration, and one-off LinkedIn job URLs. Mutation routes now reject
+  malformed JSON, unexpected keys, oversized values, invalid numeric values,
+  and invalid identifiers before database writes.
+- LinkedIn imports require a public LinkedIn jobs path, remove URL credentials
+  and fragments, and convert raw fetch/parser failures into bounded actionable
+  responses.
+- Added direct validator coverage to the aggregate test command and expanded
+  the disposable shared-runtime route script with mutation rejection cases and
+  hard curl deadlines.
+- `npm run test:api-validation`, `npm run test:autofill-errors`, scoped ESLint,
+  `npx tsc --noEmit`, `bash -n scripts/test-shared-runtime-routes.sh`,
+  `git diff --check`, and `npm run build` passed. The build retained the known
+  non-fatal Turbopack NFT trace warning through `app/api/resume/route.ts`.
+- The shared-runtime localhost route E2E additions were not rerun because the
+  local command-execution approval layer repeatedly stalled. No live database
+  or external LinkedIn page was accessed. Next: redact Gmail partial-success
+  failures without discarding successfully imported leads.

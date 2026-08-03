@@ -178,7 +178,9 @@ persist field values, cookies, page HTML, credentials, or application payloads.
 
 1. Find a public LinkedIn job posting manually.
 2. Paste that single URL into the dashboard and click “Import.”
-3. `POST /api/jobs/import-url` requires a URL whose parsed hostname ends with `linkedin.com`.
+3. `POST /api/jobs/import-url` requires a bounded public URL on `linkedin.com`
+   (or a subdomain) whose path contains `/jobs/`; credentials and fragments are
+   removed before the request.
 4. The server fetches exactly that page without login.
 5. It prefers JobPosting JSON-LD and falls back to Open Graph/title metadata.
 6. The normalized job is scored and upserted, then appears in the dashboard subject to the current filters.

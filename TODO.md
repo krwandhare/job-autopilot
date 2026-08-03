@@ -5,9 +5,10 @@
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
-- Continue the API error-handling audit across remaining non-Auto-fill routes;
-  all Auto-fill routes and Playwright fallback messages now have bounded,
-  privacy-safe handling.
+- Continue the API error-handling audit with Gmail partial-success reporting,
+  then the remaining job/application routes. Auto-fill, master-resume, filter,
+  source, and one-off LinkedIn mutation boundaries are now bounded and
+  privacy-safe.
 - Decide on the Gmail-sync summary message wording when a digest email's
   leads exceed the rate limit mid-thread (currently reads "Imported 5
   lead(s) from 0 alert email(s)", accurate but confusing).
@@ -41,6 +42,12 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Hardened filter, source-configuration, and one-off LinkedIn mutations with
+  strict JSON shapes, bounded values, positive IDs, normalized public job URLs,
+  and privacy-safe upstream errors. Deterministic validator coverage is in the
+  aggregate suite; route E2E assertions were added but not rerun in this
+  session because the local command-execution approval layer stalled.
 
 - Hardened Auto-fill Inspect, Snapshot, and Next: bounded identifiers and
   errors, redacted state-bearing HTML attributes and URL secrets, preserved

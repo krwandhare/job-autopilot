@@ -28,6 +28,7 @@
     "test:cv-archive": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-cv-archive.mjs",
     "test:autofill-upload": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-autofill-upload.mjs",
     "test:autofill-errors": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-autofill-errors.mjs",
+    "test:api-validation": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-api-validation.mjs",
     "test:queue-runner": "bash scripts/test-queue-runner.sh",
     "test:shared-runtime": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-shared-runtime.mjs",
     "test:shared-runtime-routes": "bash scripts/test-shared-runtime-routes.sh"
