@@ -122,6 +122,7 @@ try {
       status TEXT NOT NULL DEFAULT 'draft',
       job_fingerprint TEXT NOT NULL,
       preferred_format TEXT NOT NULL DEFAULT 'docx',
+      tailoring_mode TEXT NOT NULL DEFAULT 'deterministic',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       approved_at TEXT

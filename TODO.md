@@ -55,8 +55,8 @@
   isn't installed here (only the plain `chromium` build is); unrelated to
   any change in this session. Do not run `playwright install` without
   approval; rerun where the headless-shell binary is available.
-- Add an automated test framework, an `npm test` script, and deterministic fixtures for matching, skill extraction, TXT resume parsing, draft generation, and source normalization.
-- Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
+- Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db` -- natural follow-on now that `npm test`/`tests/*.test.ts` exists for pure deterministic units (see Completed); this item is specifically about routes/DB, which `npm test` deliberately does not cover.
+- `scripts/test-resume-artifacts.mjs`'s own hand-rolled `resume_variants` schema is missing the `tailoring_mode` column added to the real schema this session -- currently harmless (that script's positional `INSERT INTO resume_variants VALUES (...)` never references the column by name), but it's now silently out of sync with `lib/db.ts`; `scripts/test-resume-variants.mjs` had the same gap and *was* actively broken by it (fixed this session). Revisit if that script is ever extended to touch tailoring mode.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
 
 ## Later
@@ -71,6 +71,36 @@
 
 ## Completed
 
+- Added an automated test framework: `npm test` runs deterministic unit
+  coverage for matching (`lib/matching.ts`), skill extraction
+  (`lib/skills.ts`), TXT resume parsing (`lib/resume.ts`), draft generation
+  (`lib/draft.ts`), and source normalization
+  (`lib/sources/greenhouse.ts`/`lever.ts`/`adzuna.ts`) using Node's
+  built-in test runner (`node --test`, zero added dependencies -- reuses
+  the exact `--experimental-strip-types` flag already used throughout
+  `scripts/`). 64 tests across `tests/*.test.ts`; source-normalization
+  tests mock `global.fetch` with fixture responses since the fetch and
+  NormalizedJob mapping are combined in one function per source (no
+  separately-exported pure normalizer to call directly). Found and fixed
+  two real issues while building this: (1) `lib/matching.ts` and
+  `lib/sources/greenhouse.ts`/`lever.ts` had extensionless relative
+  imports (`from "./skills"` instead of `"./skills.ts"`) that Next.js's
+  bundler resolves fine but Node's native ESM loader cannot -- fixed by
+  adding the explicit `.ts` extension, matching the convention
+  `lib/resume.ts` already used; (2) running the full suite surfaced a real
+  regression from this session's earlier `tailoring_mode` migration --
+  `scripts/test-resume-variants.mjs`'s own hand-rolled `resume_variants`
+  schema was missing the new column, so its explicit-column
+  `createResumeVariant()`-driven `INSERT` failed outright; fixed by adding
+  the column there too (a sibling script, `test-resume-artifacts.mjs`, has
+  the same gap but isn't actually broken by it -- noted separately above,
+  not fixed, since fixing it would require touching an unrelated positional
+  `INSERT` for no active bug). Updated `AGENTS.md`'s "no test framework"/
+  "no npm test script" statements, which were no longer accurate. `npm run
+  lint`, `npx tsc --noEmit`, `npm test`, and `npm run build` all pass
+  individually; the chained `npm run validate` still short-circuits at the
+  pre-existing, unrelated Ruflo-scaffolding `lint` errors already flagged
+  earlier this session.
 - Added server-side upload limits and content/type validation for both
   file-upload routes (`lib/uploadValidation.ts`, a shared helper checked
   before either route reads the full file into memory): `POST /api/resume`

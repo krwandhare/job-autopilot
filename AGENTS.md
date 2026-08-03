@@ -98,7 +98,14 @@ Never claim that an employer sponsors visas, that compensation is available or g
 - ESLint `9` with Next.js core-web-vitals and TypeScript configurations
 - npm with the committed `package-lock.json`
 
-There is no automated test framework or test suite in the repository at present.
+`npm test` runs deterministic unit coverage for matching, skill extraction,
+TXT resume parsing, draft generation, and source normalization, using
+Node's built-in test runner (`node --test`, no added dependency) against
+`tests/*.test.ts`. It intentionally does not include the many hand-rolled
+`scripts/test-*.mjs`/`.sh` route-E2E and live-verification scripts (each
+already has its own `npm run test:<name>` entry) -- those spin up real
+servers/disposable databases and are heavier and slower than the
+deterministic unit suite `npm test` is meant to run quickly and often.
 
 ## Startup procedure
 
@@ -175,10 +182,20 @@ Run validation proportional to the change:
 
 ```bash
 npm run lint
+npx tsc --noEmit
+npm test
 npm run build
 ```
 
-There is currently no `npm test` script. If a test suite is added, document and run its command.
+`npm test` covers matching, skill extraction, TXT resume parsing, draft
+generation, and source normalization (`tests/*.test.ts`, Node's built-in
+test runner). It is fast and has no side effects, so run it on every
+change that touches those areas or their dependencies -- not just large
+ones. `npm run validate` chains `lint && tsc --noEmit && test && build`
+with `&&`, so a failure at any earlier step (including a pre-existing,
+unrelated `lint` failure in this working directory) will short-circuit and
+skip the later steps; run the commands individually if that happens rather
+than assuming a later step failed.
 
 `next build` fetches the configured Geist fonts from Google Fonts. A network-restricted environment can therefore fail the build even when compilation is otherwise healthy; report that exact limitation and rerun where network access is available rather than claiming success.
 
