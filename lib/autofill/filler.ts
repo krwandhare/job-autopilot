@@ -6,6 +6,7 @@ import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
 import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
 import { archiveCvForJob } from "@/lib/cvArchive";
 import { createApplication } from "@/lib/applications";
+import { friendlyAutofillError } from "./http";
 import {
   getOrCreateSession,
   getSession,
@@ -320,19 +321,6 @@ async function fillMatched(target: FillTarget, field: MatchedField, value: strin
   }
 }
 
-// Playwright's own error text for "the browser/page/frame died mid-operation"
-// (window closed, browser crashed, a frame navigated away underneath us) is
-// technical and gives no next step. The fix is always the same regardless of
-// which of those caused it -- discard the dead session and retry fresh --
-// so surface that instead of the raw message.
-function friendlyErrorMessage(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  if (/closed|destroyed|crashed|disconnected/i.test(message)) {
-    return "The browser window closed or disconnected unexpectedly. Click \"Start filling\" again to open a fresh one.";
-  }
-  return message;
-}
-
 export async function runFiller(
   jobId: number,
   mode: "review" | "submit" = "review"
@@ -349,7 +337,7 @@ export async function runFiller(
       // should never surface as a raw 500 -- discard the dead session so the
       // next attempt starts clean instead of hitting the same failure again.
       await closeSession(jobId);
-      return { status: "error", reason: friendlyErrorMessage(err) };
+      return { status: "error", reason: friendlyAutofillError(err) };
     }
   });
 }
@@ -404,7 +392,10 @@ async function runFillerUnsafe(
     try {
       await page.goto(job.url, { waitUntil: "domcontentloaded", timeout: 30000 });
     } catch {
-      return { status: "error", reason: `Could not load ${job.url}` };
+      return {
+        status: "error",
+        reason: "Could not load the employer application page. Check the posting link and try again.",
+      };
     }
 
     // Lever's stored posting URL is the job *listing*, not the application
@@ -570,6 +561,7 @@ export async function fillFileField(
       await locatorFor(target, field.autofillId).setInputFiles(filePath);
     } catch {
       await closeSession(jobId);
+      throw new Error("The file could not be attached to the employer form.");
     }
   });
 }
@@ -814,7 +806,7 @@ export async function submitApplication(jobId: number): Promise<SubmitResult> {
       return result;
     } catch (err) {
       await closeSession(jobId);
-      return { status: "error", reason: friendlyErrorMessage(err) };
+      return { status: "error", reason: friendlyAutofillError(err) };
     }
   });
 }
@@ -878,12 +870,11 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
 
   try {
     await control.click({ timeout: 5000 });
-  } catch (err) {
+  } catch {
     return {
       status: "unconfirmed",
-      reason: `Found a submit button but clicking it failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      reason:
+        "Found the submit control but could not activate it safely. Review and submit manually in the open browser window.",
     };
   }
 

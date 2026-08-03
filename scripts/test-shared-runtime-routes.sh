@@ -50,6 +50,21 @@ PID_B=$!
 wait_for_server "$PORT_A" "$TEST_DATA/codex.log"
 wait_for_server "$PORT_B" "$TEST_DATA/claude.log"
 
+for endpoint in start answer submit finish; do
+  malformed_code="$(
+    curl -sS -o "$TEST_DATA/malformed-$endpoint.json" -w '%{http_code}' \
+      -X POST "http://127.0.0.1:$PORT_A/api/autofill/$endpoint" \
+      -H 'Content-Type: application/json' -d '{'
+  )"
+  [ "$malformed_code" = "400" ]
+  python3 -c '
+import json, sys
+payload = json.load(open(sys.argv[1]))
+assert isinstance(payload.get("error"), str)
+assert payload["error"]
+' "$TEST_DATA/malformed-$endpoint.json"
+done
+
 sqlite3 "$TEST_DATA/app.db" "
   INSERT INTO jobs
     (source, source_job_id, title, company, location, remote, url, fetched_at, match_score, status)

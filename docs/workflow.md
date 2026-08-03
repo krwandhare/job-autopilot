@@ -101,6 +101,12 @@ also create their own isolated SQLite files. Playwright output is written under
 the same temporary root, which is removed when the run finishes. The command
 never reads or writes the live `data/app.db`.
 
+Auto-fill mutation routes parse JSON through a fail-closed object boundary and
+validate positive job IDs before touching browser or database state. Expected
+browser closure and timeout failures are translated into actionable messages;
+unexpected Playwright exceptions are not returned verbatim, so local paths and
+browser internals do not cross the API boundary.
+
 ### Incomplete or unverified
 
 - Master-resume uploads enforce a 10 MiB ceiling and validate supported

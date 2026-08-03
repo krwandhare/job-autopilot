@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { fillAnsweredField, type MissingField } from "@/lib/autofill/filler";
+import { positiveInteger, readJsonObject } from "@/lib/autofill/http";
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  const body = await readJsonObject(req);
+  if (!body) {
+    return NextResponse.json({ error: "A valid JSON object is required" }, { status: 400 });
+  }
   const { jobId, autofillId, key, label, kind, answer, options, isCombobox, isOptionGroup } = body as {
     jobId: number;
     autofillId: string;
@@ -16,7 +20,19 @@ export async function POST(req: NextRequest) {
     isOptionGroup?: MissingField["isOptionGroup"];
   };
 
-  if (!jobId || !autofillId || !key || answer === undefined) {
+  const normalizedJobId = positiveInteger(jobId);
+  if (
+    !normalizedJobId ||
+    typeof autofillId !== "string" ||
+    !autofillId ||
+    autofillId.length > 200 ||
+    typeof key !== "string" ||
+    !key ||
+    key.length > 100 ||
+    typeof answer !== "string" ||
+    answer.length > 10_000 ||
+    (label !== undefined && (typeof label !== "string" || label.length > 500))
+  ) {
     return NextResponse.json(
       { error: "jobId, autofillId, key, and answer are required" },
       { status: 400 }
@@ -30,7 +46,7 @@ export async function POST(req: NextRequest) {
   ).run(key, label ?? key, answer);
 
   const filled = await fillAnsweredField(
-    Number(jobId),
+    normalizedJobId,
     { autofillId, key, label, kind, options, isCombobox, isOptionGroup },
     answer
   );

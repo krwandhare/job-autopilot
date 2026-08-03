@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { claimJob } from "@/lib/jobClaims";
 import { getRuntimeInstanceId } from "@/lib/runtimePaths";
 import { parkJobWithAction, type JobActionInput } from "@/lib/actions";
+import { positiveInteger, readJsonObject } from "@/lib/autofill/http";
 
 function fieldLabels(result: Extract<RunFillerResult, { missingFields: unknown }>): string[] {
   return [...result.missingFields, ...result.manualFields]
@@ -71,16 +72,15 @@ function actionForResult(
 }
 
 export async function POST(req: NextRequest) {
-  const { jobId, mode } = await req.json();
-  if (!jobId) {
-    return NextResponse.json({ error: "jobId is required" }, { status: 400 });
-  }
+  const body = await readJsonObject(req);
+  if (!body) return NextResponse.json({ error: "A valid JSON object is required" }, { status: 400 });
+  const { jobId, mode } = body;
   if (mode !== undefined && mode !== "review" && mode !== "submit") {
     return NextResponse.json({ error: "mode must be review or submit" }, { status: 400 });
   }
 
-  const normalizedJobId = Number(jobId);
-  if (!Number.isSafeInteger(normalizedJobId) || normalizedJobId <= 0) {
+  const normalizedJobId = positiveInteger(jobId);
+  if (!normalizedJobId) {
     return NextResponse.json({ error: "jobId must be a positive integer" }, { status: 400 });
   }
 

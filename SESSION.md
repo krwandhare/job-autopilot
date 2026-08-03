@@ -1,5 +1,23 @@
 # Session Handoff
 
+## Auto-fill error-boundary audit
+
+On 2026-08-02, the first API error-handling tranche hardened the Auto-fill
+boundary. Start, Answer, Submit, and Finish now reject malformed/non-object JSON
+and invalid job IDs with bounded 400 responses. Answer metadata and values are
+length/type checked before persistence. Unexpected Playwright errors are mapped
+to actionable closed-browser, timeout, or generic session messages rather than
+returning raw exception text, URLs, or filesystem paths. Submit-click failures
+also fall back to manual review without exposing browser internals.
+
+`fillFileField()` now rethrows a bounded failure after closing a broken session;
+this fixes the prior false-success path and lets the upload route remove staged
+bytes. Focused tests cover JSON parsing, numeric validation, path redaction, and
+error mapping. The disposable two-server E2E verifies malformed JSON against all
+four routes, and the full `npm test` suite passes. The exact next recommended
+task is to extend the same boundary to Inspect, Snapshot, Next, and remaining
+non-Auto-fill API routes while preserving useful status semantics.
+
 ## Auto-fill upload hardening
 
 On 2026-08-02, the ad hoc Auto-fill file route was aligned with the hardened

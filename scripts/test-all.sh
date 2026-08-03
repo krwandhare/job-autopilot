@@ -33,6 +33,7 @@ test_commands=(
   test:applications
   test:cv-archive
   test:autofill-upload
+  test:autofill-errors
   test:queue-runner
   test:shared-runtime
   test:shared-runtime-routes
