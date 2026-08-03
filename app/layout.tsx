@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+// Self-hosted via the `geist` package (next/font/local under the hood,
+// vendored .woff2 files in node_modules/geist) instead of next/font/google
+// -- next/font/google makes `next build` itself fetch from Google's
+// servers, which fails outright in a network-restricted build environment
+// even when compilation is otherwise healthy. The package's exported
+// variable names (--font-geist-sans/--font-geist-mono) already match what
+// globals.css expects, so no other change was needed.
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Job Autopilot",
@@ -26,7 +24,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
