@@ -30,18 +30,33 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <nav className="border-b px-8 py-3 flex items-center gap-6">
-          <span className="font-semibold">Job Autopilot</span>
-          <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
+        <nav
+          className="border-b px-4 sm:px-8 py-3 flex items-center gap-3 sm:gap-6 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <span className="shrink-0 text-sm sm:text-base font-semibold">Job Autopilot</span>
+          <Link
+            href="/"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
             Dashboard
           </Link>
-          <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
-            Profile & Filters
+          <Link
+            href="/profile"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
+            <span className="sm:hidden">Profile</span>
+            <span className="hidden sm:inline">Profile & Filters</span>
           </Link>
-          <Link href="/autofill" className="text-sm text-gray-600 hover:text-gray-900">
+          <Link
+            href="/autofill"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
             Auto-fill
           </Link>
-          <Link href="/applications" className="text-sm text-gray-600 hover:text-gray-900">
+          <Link
+            href="/applications"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
             Applications
           </Link>
         </nav>
