@@ -1,5 +1,71 @@
 # Session Handoff
 
+## Route/database integration coverage for /api/filters and /api/jobs/[id]
+
+Requirement (from `TODO.md`, the natural next item after adding the
+`node --test` unit framework above): "Add route/database integration
+coverage using an isolated temporary SQLite database so tests never read
+or mutate `data/app.db`."
+
+- **Design choice, made deliberately rather than defaulting to the shiny
+  new tool**: considered importing `app/api/**/route.ts` handlers directly
+  into `node --test` files (faster than booting a real server), but every
+  route file imports via `@/*` path aliases (`tsconfig.json`'s
+  `moduleResolution: "bundler"` + `paths`), which Next.js's own bundler
+  resolves natively but Node's plain `--experimental-strip-types` ESM
+  loader has no built-in support for -- would need a custom
+  `module.register()` resolve hook to rewrite `@/` and fall back to
+  appending `.ts` for extensionless imports (a much larger dependency
+  graph than the five `lib/` modules the unit tests touch, since route
+  handlers pull in most of `lib/`). Weighed that against the existing,
+  already-proven bash+curl+`npm run start`+temp-`JOB_AUTOPILOT_DATA_DIR`
+  pattern used by every prior route E2E script in this repo (including
+  three added earlier this session) -- zero resolution risk, since it goes
+  through the real Next.js bundler exactly like production. Chose the
+  proven pattern over inventing new infrastructure for marginal speed gain.
+- Before picking routes, grepped every existing `scripts/test-*.sh`
+  script's actual `curl` targets (not assumed from memory) to find genuine
+  gaps -- of ~20 `app/api/**/route.ts` files, roughly a dozen had zero
+  route-level curl coverage. Of those, picked the two that are pure
+  DB-backed CRUD with no external-network or live-Playwright-session
+  dependency and meaningful internal logic worth testing:
+  - `scripts/test-filters-route.sh` (`npm run test:filters-route`):
+    confirms schema init already seeds a default `filters` row (GET is
+    never null on a fresh DB), that `PUT` upserts the single row rather
+    than inserting a new one on a second call (checked via a direct
+    `SELECT COUNT(*)`, not just the API response), that an empty-body PUT
+    resets fields to their defaults rather than merging with the prior
+    row (a real behavioral detail of the route's destructuring defaults,
+    not obvious from the API surface alone), and malformed-JSON handling.
+  - `scripts/test-job-detail-route.sh` (`npm run test:job-detail-route`):
+    404 for a nonexistent job; the full GET response shape; PATCH
+    rejecting an invalid status/malformed body/invalid action context/
+    invalid `applicationSource` (each confirmed to leave the DB row
+    untouched, not just return an error code); and the route's actual
+    side-effect logic -- PATCHing to `"applied"` creates a real
+    `applications` row via `createApplication()`, defaulting `source` to
+    `"external_lead"` when the job's prior status was `external_lead` and
+    `"manual"` otherwise (the route's own documented fallback rule);
+    re-PATCHing an already-`"applied"` job does not create a second
+    `applications` row; and PATCHing an actionable status with an
+    explicit `action` context persists the given reason in `job_actions`.
+    This route is exactly the kind of place a prior real bug in this repo
+    lived (`GET /api/jobs` applying a default filter even for an explicit
+    actionable-status request, documented earlier in this file) -- logic
+    that spans multiple DB tables inside one route handler, which neither
+    a pure-`lib/`-function unit test nor a plain field-persistence check
+    would catch.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed; both
+  new scripts verified passing live against a disposable database (not
+  the real `data/app.db`).
+- **Not yet done, deliberately scoped out**: roughly a dozen more routes
+  still have zero route-level integration coverage (`/api/applications`,
+  `/api/sources`, `/api/resume-variants/[id]`, etc. -- the DB-backed,
+  no-external-dependency ones; the autofill/sync/import-url routes need
+  either a live Playwright session or a mocked external fetch, which is a
+  larger, separate undertaking). Left as an explicit `TODO.md` item rather
+  than attempting to cover every route in one pass.
+
 ## Automated test framework: node --test + deterministic unit fixtures
 
 Requirement (from `TODO.md`): add an automated test framework, an

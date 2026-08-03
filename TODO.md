@@ -55,7 +55,13 @@
   isn't installed here (only the plain `chromium` build is); unrelated to
   any change in this session. Do not run `playwright install` without
   approval; rerun where the headless-shell binary is available.
-- Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db` -- natural follow-on now that `npm test`/`tests/*.test.ts` exists for pure deterministic units (see Completed); this item is specifically about routes/DB, which `npm test` deliberately does not cover.
+- Extend route/database integration coverage to more of the ~20 API routes
+  that still have none at the route-handler level (only `/api/filters` and
+  `/api/jobs/[id]` are covered so far -- see Completed): `/api/applications`
+  and `/api/applications/[jobId]`, `/api/sources`/`/api/sources/seed`,
+  `/api/resume-variants/[id]`/`/approve`, `/api/resume/reprocess`. The
+  autofill/`sync`/`import-url` routes need either a real Playwright session
+  or a mocked external fetch and weren't attempted here.
 - `scripts/test-resume-artifacts.mjs`'s own hand-rolled `resume_variants` schema is missing the `tailoring_mode` column added to the real schema this session -- currently harmless (that script's positional `INSERT INTO resume_variants VALUES (...)` never references the column by name), but it's now silently out of sync with `lib/db.ts`; `scripts/test-resume-variants.mjs` had the same gap and *was* actively broken by it (fixed this session). Revisit if that script is ever extended to touch tailoring mode.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
 
@@ -71,6 +77,34 @@
 
 ## Completed
 
+- Added route/database integration coverage for two previously-untested,
+  DB-backed routes: `scripts/test-filters-route.sh`
+  (`npm run test:filters-route`, GET/PUT `/api/filters` -- default-row
+  existence, upsert-not-insert on a second PUT confirmed directly against
+  the DB row count, empty-body PUT resetting rather than merging, malformed
+  JSON) and `scripts/test-job-detail-route.sh`
+  (`npm run test:job-detail-route`, GET/PATCH `/api/jobs/[id]` -- 404 for a
+  nonexistent job, invalid-status/malformed-body/invalid-action-context/
+  invalid-applicationSource all rejected with a clean 400 and no DB change,
+  and the route's real side effects: PATCHing to "applied" creates a real
+  `applications` row (source defaults to "external_lead" when the job's
+  prior status was `external_lead`, "manual" otherwise), re-applying an
+  already-applied job does not create a second row, and an actionable
+  status with an explicit action context persists the given reason in
+  `job_actions`). Used the existing bash+curl+`npm run
+  start`+temp-`JOB_AUTOPILOT_DATA_DIR` pattern already proven throughout
+  `scripts/`, not the new `node --test` unit framework -- these routes
+  import via `@/*` path aliases that Next.js's bundler resolves natively
+  but Node's plain `--experimental-strip-types` loader cannot without a
+  custom resolve hook, and introducing one wasn't worth the added
+  complexity/risk when a working, precedented pattern already existed.
+  Cross-referenced every existing `scripts/test-*.sh` script's actual
+  `curl` targets first to confirm these two routes genuinely had zero
+  route-level coverage before this (not just the underlying `lib/`
+  functions, already covered by this repo's separate "isolated model
+  test" scripts). Lint, strict TypeScript, and the production build all
+  passed; both new scripts verified passing live against a disposable
+  database.
 - Added an automated test framework: `npm test` runs deterministic unit
   coverage for matching (`lib/matching.ts`), skill extraction
   (`lib/skills.ts`), TXT resume parsing (`lib/resume.ts`), draft generation
