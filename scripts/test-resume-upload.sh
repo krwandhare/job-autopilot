@@ -92,4 +92,52 @@ esac
   printf 'expected uploaded file to exist on disk at %s\n' "$db_file_path" >&2
   exit 1
 }
+
+# --- Upload validation (size/extension) regressions ---
+
+assert_upload_rejected() {
+  local upload_file="$1" filename="$2" mimetype="$3" expected_message="$4" description="$5"
+  local status body
+  body="$(mktemp "${TMPDIR:-/tmp}/job-autopilot-resume-upload-resp.XXXXXX")"
+  status="$(curl -sS -o "$body" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/resume" \
+    -F "file=@${upload_file};filename=${filename};type=${mimetype}")"
+  [ "$status" = "400" ] || {
+    printf '%s: expected 400, got %s (body: %s)\n' "$description" "$status" "$(cat "$body")" >&2
+    rm -f "$body"
+    exit 1
+  }
+  local message
+  message="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["error"])' < "$body")"
+  [ "$message" = "$expected_message" ] || {
+    printf '%s: expected error %q, got %q\n' "$description" "$expected_message" "$message" >&2
+    rm -f "$body"
+    exit 1
+  }
+  rm -f "$body"
+}
+
+# Empty file.
+EMPTY_FIXTURE="$TEST_DATA/empty.txt"
+: > "$EMPTY_FIXTURE"
+assert_upload_rejected "$EMPTY_FIXTURE" "empty.txt" "text/plain" \
+  "The uploaded file is empty." "empty file"
+
+# Oversized file (just over the 10MB cap) -- sparse file, no real 10MB+ write.
+OVERSIZED_FIXTURE="$TEST_DATA/oversized.txt"
+truncate -s 11M "$OVERSIZED_FIXTURE"
+assert_upload_rejected "$OVERSIZED_FIXTURE" "oversized.txt" "text/plain" \
+  "Resume files must be 10MB or smaller." "oversized file"
+
+# Unsupported extension.
+assert_upload_rejected "$FIXTURE" "resume.exe" "application/octet-stream" \
+  "Unsupported resume file type. Use PDF, DOCX, or TXT." "unsupported extension"
+
+# The DB must still show only the one valid upload from earlier -- none of
+# the three rejected uploads above should have created a row.
+resume_count="$(sqlite3 "$TEST_DATA/app.db" "SELECT COUNT(*) FROM resumes;")"
+[ "$resume_count" = "1" ] || {
+  printf 'expected exactly 1 resumes row after rejected uploads, got %s\n' "$resume_count" >&2
+  exit 1
+}
+
 printf 'Resume-upload route E2E passed.\n'

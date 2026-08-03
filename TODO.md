@@ -58,7 +58,6 @@
 - Add an automated test framework, an `npm test` script, and deterministic fixtures for matching, skill extraction, TXT resume parsing, draft generation, and source normalization.
 - Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
-- Add server-side upload limits and content/type validation for resume and autofill file uploads.
 
 ## Later
 
@@ -72,6 +71,27 @@
 
 ## Completed
 
+- Added server-side upload limits and content/type validation for both
+  file-upload routes (`lib/uploadValidation.ts`, a shared helper checked
+  before either route reads the full file into memory): `POST /api/resume`
+  now rejects empty files, files over 10MB, and non-PDF/DOCX/TXT
+  extensions with a clean 400 (previously unlimited size, and the only
+  extension check happened deep inside `extractResumeText()` after the
+  whole file was already buffered). `POST /api/autofill/upload-file`
+  rejects empty files, files over 25MB, and a blocklist of
+  executable/script extensions (`.exe`, `.sh`, `.js`, `.dll`, ...) -- an
+  allowlist isn't appropriate there since that route legitimately attaches
+  whatever file type an employer's ATS field asks for (resume, cover
+  letter, portfolio, transcript). Extended
+  `scripts/test-resume-upload.sh` (empty/oversized/wrong-extension all
+  rejected with the exact expected message, and confirmed none of the 3
+  rejected uploads left a stray `resumes` row) and added
+  `scripts/test-autofill-upload-validation.sh`/`npm run
+  test:autofill-upload-validation` (same three rejections, plus confirming
+  a plausible non-dangerous attachment like a portfolio PDF is *not*
+  rejected by validation, so the guard isn't an accidental resume-only
+  allowlist). Lint, strict TypeScript, and the production build all
+  passed; both test scripts pass live against a disposable database.
 - Fixed the root layout nav (`app/layout.tsx`) wrapping/clipping at a 390px
   viewport: the title wrapped to two lines, "Profile & Filters" broke
   mid-phrase, and "Applications" was clipped off-screen entirely. Compacted

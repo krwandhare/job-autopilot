@@ -5,6 +5,7 @@ import { getDb, type ResumeRow } from "@/lib/db";
 import { fillFileField } from "@/lib/autofill/filler";
 import type { MissingField } from "@/lib/autofill/filler";
 import { getResumesDir } from "@/lib/runtimePaths";
+import { validateAutofillUpload } from "@/lib/uploadValidation";
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[/\\]/g, "_").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -29,6 +30,11 @@ export async function POST(req: NextRequest) {
       { error: "file, jobId, and autofillId are required" },
       { status: 400 }
     );
+  }
+
+  const uploadError = validateAutofillUpload(file);
+  if (uploadError) {
+    return NextResponse.json({ error: uploadError }, { status: 400 });
   }
 
   // Playwright's setInputFiles() attaches this exact file, and the real

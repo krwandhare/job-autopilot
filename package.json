@@ -23,6 +23,7 @@
     "test:jobs-status-filter-routes": "bash scripts/test-jobs-status-filter-routes.sh",
     "test:draft-generation": "bash scripts/test-draft-generation.sh",
     "test:resume-upload": "bash scripts/test-resume-upload.sh",
+    "test:autofill-upload-validation": "bash scripts/test-autofill-upload-validation.sh",
     "test:queue-runner": "bash scripts/test-queue-runner.sh",
     "test:shared-runtime": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-shared-runtime.mjs",
     "test:shared-runtime-routes": "bash scripts/test-shared-runtime-routes.sh",

@@ -1,5 +1,62 @@
 # Session Handoff
 
+## Server-side upload limits and content/type validation
+
+Requirement (from `TODO.md`): add server-side upload limits and content/
+type validation for resume and autofill file uploads -- previously
+`POST /api/resume` had no size limit at all and only validated the
+extension deep inside `extractResumeText()`, after the entire file had
+already been buffered into memory; `POST /api/autofill/upload-file` had no
+validation whatsoever.
+
+- New `lib/uploadValidation.ts`: `validateResumeUpload()` (10MB cap, PDF/
+  DOCX/TXT extension allowlist, empty-file rejection) and
+  `validateAutofillUpload()` (25MB cap, executable/script extension
+  blocklist, empty-file rejection). Deliberately different strategies per
+  route: the resume route can use a strict allowlist since it only ever
+  needs to parse a resume; the autofill upload route legitimately attaches
+  whatever file type an employer's ATS field asks for (resume, cover
+  letter, portfolio, transcript, ...), so an allowlist there would break
+  real use cases -- a blocklist of executable/script extensions is the
+  right shape of guard for that route instead. Both check `file.size`
+  (already-parsed metadata, no buffering needed) before either route reads
+  `file.arrayBuffer()`, so an oversized file is rejected before spending
+  memory/CPU on buffering, parsing, or disk writes.
+- Wired into both routes with a plain 400 + user-facing message, matching
+  this codebase's existing `parseJsonBody()`-style error convention.
+- Extended `scripts/test-resume-upload.sh` (added this session, in an
+  earlier entry below) with three new assertions -- empty file, 11MB
+  oversized file (`truncate -s 11M`, no real disk write needed), and a
+  `.exe`-renamed valid file -- each asserting the exact 400 status and
+  error message, plus confirming none of the three rejected uploads left a
+  stray `resumes` row (still exactly 1, from the earlier valid-upload
+  assertion).
+- New `scripts/test-autofill-upload-validation.sh`
+  (`npm run test:autofill-upload-validation`): same three rejection cases
+  against `POST /api/autofill/upload-file` (empty, 26MB oversized, `.exe`
+  and `.sh` extensions), plus a fourth assertion in the other direction --
+  a plausible non-dangerous attachment (a small fake "portfolio.pdf") must
+  *not* be rejected by validation, confirming the blocklist isn't an
+  accidental resume-only allowlist in disguise. Only the validation step
+  itself is exercised (it runs and rejects before the route ever reaches
+  `fillFileField()`/needs an active Playwright session) -- a full live
+  attach-to-a-real-form path remains covered by this repo's existing
+  manual autofill verification, not by this script.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed;
+  confirmed the only lint findings anywhere in the tree are pre-existing,
+  in the untracked `.claude/helpers/*` Ruflo scaffolding, unrelated to this
+  change. Both new/extended test scripts verified passing live, not just
+  "should pass."
+- **Known limitation, stated plainly**: Next.js's `formData()` still fully
+  parses the incoming multipart body before any handler code (including
+  this new size check) runs, so this doesn't prevent the server from
+  receiving bytes over the wire for an oversized request -- it does
+  prevent the much more expensive downstream work (buffering into a
+  second copy, PDF/DOCX parsing, disk writes, DB inserts) from happening
+  for a file that will be rejected anyway. A true request-body-size cap
+  would need a custom server or middleware layer, which is a larger,
+  separate change not attempted here.
+
 ## Extended the Applications-page color-token visual language app-wide
 
 Requirement (from `TODO.md`): extend the 2026-07-31 Applications-page UI
