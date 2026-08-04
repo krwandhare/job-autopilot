@@ -1,10 +1,10 @@
-import fs from "node:fs";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import {
   getValidatedArtifact,
   type ResumeArtifactFormat,
 } from "@/lib/resumeArtifacts";
+import { readResumeArtifactFile } from "@/lib/artifactDownload";
 
 function parseId(value: string): number | null {
   const id = Number(value);
@@ -28,13 +28,19 @@ export async function GET(
     variantId,
     format as ResumeArtifactFormat
   );
-  if (!artifact || !artifact.file_path || !fs.existsSync(artifact.file_path)) {
+  if (!artifact || !artifact.file_path) {
     return NextResponse.json(
       { error: "A validated artifact is not available" },
       { status: 404 }
     );
   }
-  const buffer = fs.readFileSync(artifact.file_path);
+  const buffer = readResumeArtifactFile(artifact, variantId);
+  if (!buffer) {
+    return NextResponse.json(
+      { error: "The validated artifact is missing or no longer matches its recorded fingerprint" },
+      { status: 409 }
+    );
+  }
   const contentType =
     format === "docx"
       ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

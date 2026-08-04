@@ -6,18 +6,15 @@ import {
   setVariantItemIncluded,
   setVariantPreferredFormat,
 } from "@/lib/resumeVariants";
-
-function parseId(value: unknown): number | null {
-  const id = Number(value);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
-}
+import { positiveInteger, readJsonObject } from "@/lib/autofill/http";
+import { validateVariantPatch } from "@/lib/apiValidation";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const variantId = parseId(id);
+  const variantId = positiveInteger(id);
   if (variantId === null) {
     return NextResponse.json({ error: "Invalid variant id" }, { status: 400 });
   }
@@ -33,15 +30,15 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const variantId = parseId(id);
-  const body: unknown = await req.json().catch(() => null);
-  if (variantId === null || !body || typeof body !== "object") {
+  const variantId = positiveInteger(id);
+  const body = await readJsonObject(req);
+  const patch = body ? validateVariantPatch(body) : null;
+  if (variantId === null || !patch) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  const candidate = body as Record<string, unknown>;
-  if (candidate.preferredFormat === "docx" || candidate.preferredFormat === "pdf") {
+  if (patch.kind === "format") {
     const db = getDb();
-    if (!setVariantPreferredFormat(db, variantId, candidate.preferredFormat)) {
+    if (!setVariantPreferredFormat(db, variantId, patch.preferredFormat)) {
       return NextResponse.json(
         { error: "Only an active draft or approved variant can change format" },
         { status: 409 }
@@ -51,15 +48,8 @@ export async function PATCH(
       variant: serializeResumeVariant(getResumeVariant(db, variantId)),
     });
   }
-  const itemId = parseId(candidate.itemId);
-  if (itemId === null || typeof candidate.included !== "boolean") {
-    return NextResponse.json(
-      { error: "Valid itemId and included are required" },
-      { status: 400 }
-    );
-  }
   const db = getDb();
-  if (!setVariantItemIncluded(db, variantId, itemId, candidate.included)) {
+  if (!setVariantItemIncluded(db, variantId, patch.itemId, patch.included)) {
     return NextResponse.json(
       { error: "Only an item on a draft variant can be changed" },
       { status: 409 }

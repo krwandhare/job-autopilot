@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type JobRow, type FilterRow, type ResumeRow } from "@/lib/db";
 import { maxPossibleScore, type FilterRules } from "@/lib/matching";
+import { boundedPositiveInteger } from "@/lib/apiValidation";
 import { ACTIONABLE_STATUSES } from "@/lib/actions";
 
 const VALID_STATUSES = [
@@ -21,17 +22,21 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
-  const showAll = searchParams.get("showAll") === "1";
-  const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+  if (status && !VALID_STATUSES.includes(status)) {
+    return NextResponse.json({ error: "Invalid status filter" }, { status: 400 });
+  }
+  const showAllParam = searchParams.get("showAll");
+  if (showAllParam !== null && showAllParam !== "0" && showAllParam !== "1") {
+    return NextResponse.json({ error: "showAll must be 0 or 1" }, { status: 400 });
+  }
+  const showAll = showAllParam === "1";
+  const page = boundedPositiveInteger(searchParams.get("page"), 1, 100_000);
+  if (page === null) {
+    return NextResponse.json({ error: "page must be an integer from 1 to 100000" }, { status: 400 });
+  }
   const offset = (page - 1) * PAGE_SIZE;
 
-  const statusFilter = status && VALID_STATUSES.includes(status) ? status : null;
-  // Statuses the Action Center surfaces (needs_code, needs_review,
-  // external_lead, drafted, watchlist) are jobs the user is already
-  // explicitly acting on -- getDashboardActions() never hides these behind
-  // match_score, so filtering the pipeline list to one of them must not
-  // either, or clicking an Action Center tile silently shows an empty list
-  // for a job the dashboard itself just said needs attention.
+  const statusFilter = status;
   const isActionableStatusFilter =
     !!statusFilter && (ACTIONABLE_STATUSES as readonly string[]).includes(statusFilter);
 

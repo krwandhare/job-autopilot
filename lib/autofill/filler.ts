@@ -5,10 +5,13 @@ import type { MatchResult } from "@/lib/matching";
 import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
 import { createApplication } from "@/lib/applications";
 import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
+import { archiveCvForJob } from "@/lib/cvArchive";
+import { friendlyAutofillError, privacySafeUrl } from "./http";
 import {
   getOrCreateSession,
   getSession,
   getAllSessions,
+  auditSubmissionFields,
   closeSession,
   withJobLock,
   type AutofillSession,
@@ -320,19 +323,6 @@ async function fillMatched(target: FillTarget, field: MatchedField, value: strin
   }
 }
 
-// Playwright's own error text for "the browser/page/frame died mid-operation"
-// (window closed, browser crashed, a frame navigated away underneath us) is
-// technical and gives no next step. The fix is always the same regardless of
-// which of those caused it -- discard the dead session and retry fresh --
-// so surface that instead of the raw message.
-function friendlyErrorMessage(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  if (/closed|destroyed|crashed|disconnected/i.test(message)) {
-    return "The browser window closed or disconnected unexpectedly. Click \"Start filling\" again to open a fresh one.";
-  }
-  return message;
-}
-
 export async function runFiller(
   jobId: number,
   mode: "review" | "submit" = "review"
@@ -349,7 +339,7 @@ export async function runFiller(
       // should never surface as a raw 500 -- discard the dead session so the
       // next attempt starts clean instead of hitting the same failure again.
       await closeSession(jobId);
-      return { status: "error", reason: friendlyErrorMessage(err) };
+      return { status: "error", reason: friendlyAutofillError(err) };
     }
   });
 }
@@ -404,7 +394,10 @@ async function runFillerUnsafe(
     try {
       await page.goto(job.url, { waitUntil: "domcontentloaded", timeout: 30000 });
     } catch {
-      return { status: "error", reason: `Could not load ${job.url}` };
+      return {
+        status: "error",
+        reason: "Could not load the employer application page. Check the posting link and try again.",
+      };
     }
 
     // Lever's stored posting URL is the job *listing*, not the application
@@ -464,6 +457,15 @@ async function runFillerUnsafe(
   for (const field of [...scan.matched, ...scan.custom]) {
     if (field.key === "resume") {
       if (resumeAttachment) {
+        // Best-effort: snapshot exactly what's about to be attached, linked
+        // to this job ID, before attaching it -- so a later post-submission
+        // review can see the real file even if the resume is edited or
+        // re-tailored afterward. Must never block the actual attachment.
+        try {
+          archiveCvForJob(db, jobId, resumeAttachment);
+        } catch {
+          // archiving is a convenience, not a precondition for filling
+        }
         const attached = await locatorFor(target, field.autofillId)
           .setInputFiles(resumeAttachment.filePath)
           .then(() => true)
@@ -563,7 +565,7 @@ export async function fillFileField(
       return true;
     } catch {
       await closeSession(jobId);
-      return false;
+      throw new Error("The file could not be attached to the employer form.");
     }
   });
 }
@@ -591,8 +593,8 @@ export async function captureSessionSnapshot(jobId: number): Promise<{
   const screenshot = await page.screenshot({ type: "png" });
 
   return {
-    pageUrl: page.url(),
-    targetUrl: target === page ? page.url() : target.url(),
+    pageUrl: privacySafeUrl(page.url()),
+    targetUrl: privacySafeUrl(target === page ? page.url() : target.url()),
     text,
     screenshotBase64: screenshot.toString("base64"),
   };
@@ -612,7 +614,6 @@ export async function inspectFieldByLabel(
     resolvedLabel: string;
     ancestorClasses: string[];
     controlAncestorHTML: string;
-    checkedProperty: boolean;
   }[];
 } | null> {
   const session = getSession(jobId);
@@ -649,11 +650,22 @@ export async function inspectFieldByLabel(
       return classes;
     }
 
+    function safeMarkup(el: Element, maxLength: number): string {
+      const clone = el.cloneNode(true) as Element;
+      const sensitiveAttributes = [
+        "value", "checked", "selected", "src", "href", "action", "formaction",
+      ];
+      for (const node of [clone, ...Array.from(clone.querySelectorAll("*"))]) {
+        for (const attribute of sensitiveAttributes) node.removeAttribute(attribute);
+      }
+      return clone.outerHTML.slice(0, maxLength);
+    }
+
     function controlAncestorHTML(el: Element): string {
       let cur: Element | null = el.parentElement;
       for (let i = 0; i < 6 && cur; i++) {
         if (/(^| )select__control($| )|-control(\s|$)/.test(cur.className || "")) {
-          return cur.outerHTML.slice(0, 2000);
+          return safeMarkup(cur, 2000);
         }
         cur = cur.parentElement;
       }
@@ -666,11 +678,10 @@ export async function inspectFieldByLabel(
       .filter((m) => m.resolvedLabel.toLowerCase().includes(needle.toLowerCase()))
       .slice(0, 5)
       .map((m) => ({
-        outerHTML: m.el.outerHTML.slice(0, 1000),
+        outerHTML: safeMarkup(m.el, 1000),
         resolvedLabel: m.resolvedLabel,
         ancestorClasses: ancestorClasses(m.el),
         controlAncestorHTML: controlAncestorHTML(m.el),
-        checkedProperty: (m.el as HTMLInputElement).checked,
       }));
 
     return { matches };
@@ -698,6 +709,16 @@ export async function inspectField(
   const target = session.fillTarget ?? session.page;
 
   return target.evaluate((id: string) => {
+    function safeMarkup(el: Element, maxLength: number): string {
+      const clone = el.cloneNode(true) as Element;
+      const sensitiveAttributes = [
+        "value", "checked", "selected", "src", "href", "action", "formaction",
+      ];
+      for (const node of [clone, ...Array.from(clone.querySelectorAll("*"))]) {
+        for (const attribute of sensitiveAttributes) node.removeAttribute(attribute);
+      }
+      return clone.outerHTML.slice(0, maxLength);
+    }
     const el = document.querySelector(`[data-autofill-id="${id}"]`);
     if (!el) return { outerHTML: "(not found)", containerHTML: "" };
     const container =
@@ -709,8 +730,8 @@ export async function inspectField(
     const labelledBy = asInput.getAttribute("aria-labelledby");
     const byLabelledBy = labelledBy ? document.getElementById(labelledBy) : null;
     return {
-      outerHTML: el.outerHTML.slice(0, 1000),
-      containerHTML: container ? container.outerHTML.slice(0, 2000) : "(no container)",
+      outerHTML: safeMarkup(el, 1000),
+      containerHTML: container ? safeMarkup(container, 2000) : "(no container)",
       elementId: asInput.id ?? "",
       byForLabelText: byForLabel?.textContent ?? "(no label[for] match)",
       ariaLabelledBy: labelledBy ?? "",
@@ -729,6 +750,12 @@ export type SubmitResult =
       needsVerificationCode?: boolean;
       needsConsent?: boolean;
       fieldValidationError?: FieldValidationError;
+    }
+  | {
+      status: "validation_error";
+      reasonCode: "UI-validation-error";
+      reason: string;
+      fields: { label: string; error: string }[];
     }
   | { status: "error"; reason: string };
 
@@ -821,7 +848,7 @@ export async function submitVerificationCode(
       return { status: "filled", submit };
     } catch (err) {
       await closeSession(jobId);
-      return { status: "error", reason: friendlyErrorMessage(err) };
+      return { status: "error", reason: friendlyAutofillError(err) };
     }
   });
 }
@@ -904,7 +931,7 @@ export async function submitApplication(jobId: number): Promise<SubmitResult> {
       return result;
     } catch (err) {
       await closeSession(jobId);
-      return { status: "error", reason: friendlyErrorMessage(err) };
+      return { status: "error", reason: friendlyAutofillError(err) };
     }
   });
 }
@@ -979,6 +1006,17 @@ async function attemptSubmitClick(session: AutofillSession): Promise<SubmitResul
   }
 
   const target = await resolveFillTarget(session);
+  const validationIssues = await auditSubmissionFields(target);
+  if (validationIssues.length > 0) {
+    const first = validationIssues[0];
+    return {
+      status: "validation_error",
+      reasonCode: "UI-validation-error",
+      reason: `${first.label}: ${first.error}`,
+      fields: validationIssues,
+    };
+  }
+
   const control = target.getByRole("button", { name: SUBMIT_TEXT_PATTERN }).first();
   const hasControl = await control.count().catch(() => 0);
   if (!hasControl) {
@@ -1007,12 +1045,11 @@ async function attemptSubmitClick(session: AutofillSession): Promise<SubmitResul
 
   try {
     await control.click({ timeout: 5000 });
-  } catch (err) {
+  } catch {
     return {
       status: "unconfirmed",
-      reason: `Found a submit button but clicking it failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      reason:
+        "Found the submit control but could not activate it safely. Review and submit manually in the open browser window.",
     };
   }
 

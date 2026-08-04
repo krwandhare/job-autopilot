@@ -94,15 +94,10 @@ export async function POST(
       { artifacts },
       { status: failed ? 422 : 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Could not generate resume artifacts",
-      },
-      { status: 409 }
+      { error: "Could not generate resume files. Check the approved variant and try again." },
+      { status: 500 }
     );
   }
 }

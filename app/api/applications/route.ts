@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getApplicationStats, getTopJobsByFit, listApplications } from "@/lib/applications";
+import { boundedPositiveInteger } from "@/lib/apiValidation";
 
 export async function GET(req: NextRequest) {
   const db = getDb();
@@ -11,22 +12,28 @@ export async function GET(req: NextRequest) {
   }
 
   if (searchParams.has("topFit")) {
-    const limit = Number(searchParams.get("topFit")) || 20;
+    const limit = boundedPositiveInteger(searchParams.get("topFit"), 20, 200);
+    if (limit === null) {
+      return NextResponse.json({ error: "topFit must be an integer from 1 to 200" }, { status: 400 });
+    }
     return NextResponse.json({ jobs: getTopJobsByFit(db, limit) });
   }
 
   const noResponseDaysParam = searchParams.get("noResponseDays");
-  const noResponseDays = noResponseDaysParam ? Number(noResponseDaysParam) : undefined;
-  if (noResponseDaysParam && (!Number.isFinite(noResponseDays) || noResponseDays! <= 0)) {
-    return NextResponse.json({ error: "noResponseDays must be a positive number" }, { status: 400 });
+  const noResponseDays = boundedPositiveInteger(noResponseDaysParam, 0, 3650);
+  if (noResponseDays === null) {
+    return NextResponse.json({ error: "noResponseDays must be an integer from 1 to 3650" }, { status: 400 });
   }
 
   const limitParam = searchParams.get("limit");
-  const limit = limitParam ? Number(limitParam) : undefined;
-  if (limitParam && (!Number.isFinite(limit) || limit! <= 0)) {
-    return NextResponse.json({ error: "limit must be a positive number" }, { status: 400 });
+  const limit = boundedPositiveInteger(limitParam, 100, 500);
+  if (limit === null) {
+    return NextResponse.json({ error: "limit must be an integer from 1 to 500" }, { status: 400 });
   }
 
-  const applications = listApplications(db, { noResponseDays, limit });
+  const applications = listApplications(db, {
+    ...(noResponseDaysParam ? { noResponseDays } : {}),
+    limit,
+  });
   return NextResponse.json({ applications });
 }

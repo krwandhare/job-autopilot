@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { extractLeadsFromDigest } from "../lib/sources/gmailLeads.ts";
+import { formatGmailSyncSummary, gmailSyncIssue } from "../lib/gmailSync.ts";
 
 // Synthetic fixture mirroring LinkedIn's real digest-email plaintext
 // structure: an unseparated alert-header line followed by job blocks
@@ -76,5 +77,36 @@ assert.deepEqual(extractLeadsFromDigest(entityEncodedDigest), [
     company: "Jack & Jill",
   },
 ]);
+const importIssue = gmailSyncIssue("lead_import");
+assert.deepEqual(importIssue, {
+  code: "lead_import",
+  message: "Could not import one job posting.",
+});
+assert.doesNotMatch(importIssue.message, /thread-secret|linkedin\.com|upstream/i);
+
+assert.equal(
+  formatGmailSyncSummary({
+    threadsChecked: 1,
+    threadsProcessed: 0,
+    imported: 5,
+    skipped: 1,
+    rateLimited: true,
+    issues: [importIssue],
+  }),
+  "Imported 5 lead(s). 0 of 1 alert email fully processed. 1 posting(s) could not be imported. " +
+    "The run limit was reached; remaining alerts will stay unread for the next run."
+);
+
+assert.match(
+  formatGmailSyncSummary({
+    threadsChecked: 2,
+    threadsProcessed: 1,
+    imported: 2,
+    skipped: 0,
+    rateLimited: false,
+    issues: [gmailSyncIssue("thread_read"), gmailSyncIssue("mark_read")],
+  }),
+  /could not be read.*could not be marked read/
+);
 
 console.log("Gmail digest parsing checks passed.");

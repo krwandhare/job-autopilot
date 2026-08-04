@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, type JobRow, type ResumeRow } from "@/lib/db";
 import { generateDraft } from "@/lib/draft";
 import type { MatchResult } from "@/lib/matching";
+import { positiveInteger } from "@/lib/autofill/http";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const jobId = positiveInteger(id);
+  if (!jobId) {
+    return NextResponse.json({ error: "id must be a positive integer" }, { status: 400 });
+  }
   const db = getDb();
 
-  const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as JobRow | undefined;
+  const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(jobId) as JobRow | undefined;
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
@@ -35,7 +40,7 @@ export async function POST(
     .prepare(
       "INSERT INTO drafts (job_id, cover_letter, answers_json) VALUES (?, ?, ?)"
     )
-    .run(id, draft.coverLetter, JSON.stringify(draft.answers));
+    .run(jobId, draft.coverLetter, JSON.stringify(draft.answers));
 
   return NextResponse.json({
     draft: {

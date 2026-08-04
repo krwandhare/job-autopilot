@@ -1,5 +1,163 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Frame } from "playwright";
 
+export type SubmissionValidationIssue = {
+  label: string;
+  error: string;
+};
+
+const MAX_VALIDATION_LABEL_LENGTH = 240;
+const MAX_VALIDATION_ERROR_LENGTH = 500;
+
+// Fail-closed audit used immediately before the real submit click. It checks
+// every visible, enabled native/ARIA-required control plus any control already
+// marked aria-invalid by the ATS. Calling reportValidity() lets native invalid
+// events run so frameworks can render their own field-level message; the
+// second pass then prefers that rendered message over the browser fallback.
+// Only bounded labels and error text cross the page boundary -- never values,
+// HTML, credentials, or application payloads.
+export async function auditSubmissionFields(
+  target: Page | Frame
+): Promise<SubmissionValidationIssue[]> {
+  const candidateIndexes = await target.evaluate(() => {
+    const controls = Array.from(
+      document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        "input, select, textarea"
+      )
+    );
+
+    const visible = (control: HTMLElement) =>
+      control.getClientRects().length > 0 &&
+      getComputedStyle(control).visibility !== "hidden" &&
+      getComputedStyle(control).display !== "none";
+
+    const indexes: number[] = [];
+    controls.forEach((control, index) => {
+      if (control.disabled || !visible(control)) return;
+      const required = control.required || control.getAttribute("aria-required") === "true";
+      const invalid = control.getAttribute("aria-invalid") === "true" || !control.checkValidity();
+      if (!required && !invalid) return;
+      indexes.push(index);
+      if (invalid || required) control.reportValidity();
+    });
+    return indexes;
+  });
+
+  if (candidateIndexes.length === 0) return [];
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  return target.evaluate(
+    ({ indexes, maxLabel, maxError }) => {
+      const controls = Array.from(
+        document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+          "input, select, textarea"
+        )
+      );
+      const clean = (text: string, max: number) => text.replace(/\s+/g, " ").trim().slice(0, max);
+
+      function referencedText(control: HTMLElement, attribute: string): string {
+        const ids = (control.getAttribute(attribute) ?? "").split(/\s+/).filter(Boolean);
+        return ids
+          .map((id) => document.getElementById(id)?.textContent ?? "")
+          .filter(Boolean)
+          .join(" ");
+      }
+
+      function labelFor(control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): string {
+        const explicit = control.id
+          ? document.querySelector(`label[for="${CSS.escape(control.id)}"]`)?.textContent ?? ""
+          : "";
+        const labelledBy = referencedText(control, "aria-labelledby");
+        const wrapping = control.closest("label")?.textContent ?? "";
+        const container = control.closest(
+          "fieldset, [class*='field'], [class*='question'], [class*='form-group']"
+        );
+        const question =
+          container?.querySelector("legend, :scope > label, [class*='label'], [class*='question']")
+            ?.textContent ?? "";
+        return clean(
+          labelledBy || question || explicit || wrapping || control.getAttribute("aria-label") ||
+            control.name || control.id || "Required field",
+          maxLabel
+        );
+      }
+
+      function renderedError(control: HTMLElement): string {
+        const ariaError = referencedText(control, "aria-errormessage");
+        if (ariaError) return ariaError;
+
+        const describedIds = (control.getAttribute("aria-describedby") ?? "")
+          .split(/\s+/)
+          .filter(Boolean);
+        for (const id of describedIds) {
+          const node = document.getElementById(id);
+          if (
+            node &&
+            (node.getAttribute("role") === "alert" ||
+              /error|invalid|feedback/i.test(`${node.id} ${node.className}`))
+          ) {
+            const text = node.textContent ?? "";
+            if (text.trim()) return text;
+          }
+        }
+
+        const container = control.closest(
+          "fieldset, [class*='field'], [class*='question'], [class*='form-group']"
+        );
+        const errorNode = container?.querySelector<HTMLElement>(
+          "[role='alert'], [aria-live='assertive'], [class*='error'], [class*='invalid'], [data-error]"
+        );
+        return errorNode?.textContent ?? "";
+      }
+
+      function isEmptyRequired(
+        control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      ): boolean {
+        if (!control.required && control.getAttribute("aria-required") !== "true") return false;
+        if (control instanceof HTMLInputElement && control.type === "checkbox") {
+          return !control.checked;
+        }
+        if (control instanceof HTMLInputElement && control.type === "radio") {
+          if (!control.name) return !control.checked;
+          return !Array.from(document.getElementsByName(control.name)).some(
+            (item) => item instanceof HTMLInputElement && item.checked
+          );
+        }
+        return !control.value.trim();
+      }
+
+      const issues: { label: string; error: string }[] = [];
+      const seen = new Set<string>();
+      for (const index of indexes) {
+        const control = controls[index];
+        if (!control || control.disabled || control.getClientRects().length === 0) continue;
+        const invalid =
+          isEmptyRequired(control) ||
+          control.getAttribute("aria-invalid") === "true" ||
+          !control.checkValidity();
+        if (!invalid) continue;
+
+        const label = labelFor(control);
+        const rendered = renderedError(control);
+        const nativeMessage = control.validationMessage;
+        const error = clean(
+          rendered || nativeMessage || `${label} is required or invalid.`,
+          maxError
+        );
+        const key = `${label}\u0000${error}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        issues.push({ label, error });
+      }
+      return issues;
+    },
+    {
+      indexes: candidateIndexes,
+      maxLabel: MAX_VALIDATION_LABEL_LENGTH,
+      maxError: MAX_VALIDATION_ERROR_LENGTH,
+    }
+  );
+}
+
 export type AutofillSession = {
   browser: Browser;
   context: BrowserContext;

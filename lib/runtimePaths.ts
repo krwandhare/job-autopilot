@@ -28,6 +28,12 @@ export function getResumesDir(): string {
   return resumesDir;
 }
 
+export function getCvArchiveDir(): string {
+  const cvArchiveDir = path.join(getDataDir(), "cv-archive");
+  fs.mkdirSync(cvArchiveDir, { recursive: true });
+  return cvArchiveDir;
+}
+
 export function getRuntimeInstanceId(
   configuredId = process.env.JOB_AUTOPILOT_INSTANCE_ID
 ): string {

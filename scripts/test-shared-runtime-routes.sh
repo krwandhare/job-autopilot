@@ -9,6 +9,10 @@ PORT_B="${JOB_AUTOPILOT_E2E_PORT_B:-43103}"
 PID_A=""
 PID_B=""
 
+curl_test() {
+  command curl --connect-timeout 2 --max-time 10 "$@"
+}
+
 cleanup() {
   if [ -n "$PID_A" ]; then kill "$PID_A" >/dev/null 2>&1 || true; fi
   if [ -n "$PID_B" ]; then kill "$PID_B" >/dev/null 2>&1 || true; fi
@@ -21,7 +25,7 @@ trap cleanup EXIT
 wait_for_server() {
   local port="$1" log_file="$2"
   for _ in $(seq 1 50); do
-    if curl -fsS "http://127.0.0.1:$port/api/actions" >/dev/null 2>&1; then
+    if curl_test -fsS "http://127.0.0.1:$port/api/actions" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.2
@@ -50,6 +54,67 @@ PID_B=$!
 wait_for_server "$PORT_A" "$TEST_DATA/codex.log"
 wait_for_server "$PORT_B" "$TEST_DATA/claude.log"
 
+for endpoint in start answer submit finish; do
+  malformed_code="$(
+    curl_test -sS -o "$TEST_DATA/malformed-$endpoint.json" -w '%{http_code}' \
+      -X POST "http://127.0.0.1:$PORT_A/api/autofill/$endpoint" \
+      -H 'Content-Type: application/json' -d '{'
+  )"
+  [ "$malformed_code" = "400" ]
+  python3 -c '
+import json, sys
+payload = json.load(open(sys.argv[1]))
+assert isinstance(payload.get("error"), str)
+assert payload["error"]
+' "$TEST_DATA/malformed-$endpoint.json"
+done
+
+for endpoint in 'next?jobId=bad' 'inspect?jobId=bad&autofillId=x' 'snapshot?jobId=bad'; do
+  invalid_code="$(
+    curl_test -sS -o "$TEST_DATA/invalid-get.json" -w '%{http_code}' \
+      "http://127.0.0.1:$PORT_A/api/autofill/$endpoint"
+  )"
+  [ "$invalid_code" = "400" ]
+done
+
+for mutation in 'PUT filters' 'POST sources' 'DELETE sources' 'POST jobs/import-url'; do
+  method="${mutation%% *}"
+  endpoint="${mutation#* }"
+  invalid_code="$(
+    curl_test -sS -o "$TEST_DATA/invalid-mutation.json" -w '%{http_code}' \
+      -X "$method" "http://127.0.0.1:$PORT_A/api/$endpoint" \
+      -H 'Content-Type: application/json' -d '{'
+  )"
+  [ "$invalid_code" = "400" ]
+done
+
+source_secret_code="$(
+  curl_test -sS -o "$TEST_DATA/source-secret.json" -w '%{http_code}' \
+    -X POST "http://127.0.0.1:$PORT_A/api/sources" \
+    -H 'Content-Type: application/json' \
+    -d '{"type":"greenhouse","config":{"companySlug":"synthetic","token":"must-not-store"}}'
+)"
+[ "$source_secret_code" = "400" ]
+[ "$(sqlite3 "$TEST_DATA/app.db" 'SELECT COUNT(*) FROM source_configs;')" = "0" ]
+
+invalid_filter_code="$(
+  curl_test -sS -o "$TEST_DATA/invalid-filter.json" -w '%{http_code}' \
+    -X PUT "http://127.0.0.1:$PORT_A/api/filters" \
+    -H 'Content-Type: application/json' -d '{"locations":[{"unexpected":true}]}'
+)"
+[ "$invalid_filter_code" = "400" ]
+# Database initialization creates one default filter row. Rejected input must
+# leave that baseline untouched rather than creating or mutating another row.
+[ "$(sqlite3 "$TEST_DATA/app.db" 'SELECT COUNT(*) FROM filters;')" = "1" ]
+
+invalid_linkedin_code="$(
+  curl_test -sS -o "$TEST_DATA/invalid-linkedin.json" -w '%{http_code}' \
+    -X POST "http://127.0.0.1:$PORT_A/api/jobs/import-url" \
+    -H 'Content-Type: application/json' \
+    -d '{"url":"https://example.invalid/jobs/123456"}'
+)"
+[ "$invalid_linkedin_code" = "400" ]
+
 sqlite3 "$TEST_DATA/app.db" "
   INSERT INTO jobs
     (source, source_job_id, title, company, location, remote, url, fetched_at, match_score, status)
@@ -60,8 +125,8 @@ sqlite3 "$TEST_DATA/app.db" "
      'https://example.invalid/2', '2026-07-30 11:00:00', 85, 'new');
 "
 
-next_a="$(curl -fsS "http://127.0.0.1:$PORT_A/api/autofill/next")"
-next_b="$(curl -fsS "http://127.0.0.1:$PORT_B/api/autofill/next")"
+next_a="$(curl_test -fsS "http://127.0.0.1:$PORT_A/api/autofill/next")"
+next_b="$(curl_test -fsS "http://127.0.0.1:$PORT_B/api/autofill/next")"
 job_a="$(printf '%s' "$next_a" | json_job_id)"
 job_b="$(printf '%s' "$next_b" | json_job_id)"
 
@@ -69,23 +134,23 @@ job_b="$(printf '%s' "$next_b" | json_job_id)"
 [ "$job_b" = "2" ]
 
 conflict_code="$(
-  curl -sS -o "$TEST_DATA/conflict.json" -w '%{http_code}' \
+  curl_test -sS -o "$TEST_DATA/conflict.json" -w '%{http_code}' \
     "http://127.0.0.1:$PORT_B/api/autofill/next?jobId=1"
 )"
 [ "$conflict_code" = "409" ]
 
-curl -fsS -X POST "http://127.0.0.1:$PORT_A/api/autofill/finish" \
+curl_test -fsS -X POST "http://127.0.0.1:$PORT_A/api/autofill/finish" \
   -H "Content-Type: application/json" -d '{"jobId":1}' >/dev/null
-curl -fsS -X POST "http://127.0.0.1:$PORT_B/api/autofill/finish" \
+curl_test -fsS -X POST "http://127.0.0.1:$PORT_B/api/autofill/finish" \
   -H "Content-Type: application/json" -d '{"jobId":2}' >/dev/null
 
 resume_code="$(
-  curl -sS -o "$TEST_DATA/resume.json" -w '%{http_code}' \
+  curl_test -sS -o "$TEST_DATA/resume.json" -w '%{http_code}' \
     "http://127.0.0.1:$PORT_B/api/autofill/next?jobId=1"
 )"
 [ "$resume_code" = "200" ]
 
-curl -fsS -X PATCH "http://127.0.0.1:$PORT_B/api/jobs/1" \
+curl_test -fsS -X PATCH "http://127.0.0.1:$PORT_B/api/jobs/1" \
   -H "Content-Type: application/json" \
   -d '{
     "status":"needs_review",
@@ -98,7 +163,7 @@ curl -fsS -X PATCH "http://127.0.0.1:$PORT_B/api/jobs/1" \
     }
   }' >/dev/null
 
-actions="$(curl -fsS "http://127.0.0.1:$PORT_A/api/actions")"
+actions="$(curl_test -fsS "http://127.0.0.1:$PORT_A/api/actions")"
 printf '%s' "$actions" | python3 -c '
 import json, sys
 payload = json.load(sys.stdin)
@@ -109,7 +174,7 @@ assert items[0]["reasonCode"] == "unanswered_questions"
 assert items[0]["details"] == ["Synthetic screening question"]
 '
 
-curl -fsS -X POST "http://127.0.0.1:$PORT_B/api/autofill/finish" \
+curl_test -fsS -X POST "http://127.0.0.1:$PORT_B/api/autofill/finish" \
   -H "Content-Type: application/json" -d '{"jobId":1}' >/dev/null
 
 claim_count="$(sqlite3 -readonly "$TEST_DATA/app.db" "SELECT COUNT(*) FROM job_claims;")"

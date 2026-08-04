@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type SourceConfigRow } from "@/lib/db";
-import { parseJsonBody } from "@/lib/apiUtils";
+import { positiveInteger, readJsonObject } from "@/lib/autofill/http";
+import { validateSourceConfig } from "@/lib/apiValidation";
 
 export async function GET() {
   const db = getDb();
@@ -15,30 +16,30 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const parsed = await parseJsonBody(req);
-  if (!parsed.ok) return parsed.response;
-  const { type, config } = parsed.body as { type?: unknown; config?: Record<string, unknown> };
-
-  if (typeof type !== "string" || !["greenhouse", "lever", "adzuna"].includes(type)) {
-    return NextResponse.json({ error: "Invalid source type" }, { status: 400 });
+  const body = await readJsonObject(req);
+  const validated = validateSourceConfig(body?.type, body?.config);
+  if (!validated) {
+    return NextResponse.json({ error: "Invalid source configuration" }, { status: 400 });
   }
 
   const db = getDb();
   const result = db
     .prepare("INSERT INTO source_configs (type, config_json) VALUES (?, ?)")
-    .run(type, JSON.stringify(config ?? {}));
+    .run(validated.type, JSON.stringify(validated.config));
 
   return NextResponse.json({ id: result.lastInsertRowid });
 }
 
 export async function DELETE(req: NextRequest) {
-  const parsed = await parseJsonBody(req);
-  if (!parsed.ok) return parsed.response;
-  const { id } = parsed.body as { id?: unknown };
-  if (!Number.isSafeInteger(id)) {
-    return NextResponse.json({ error: "id must be an integer" }, { status: 400 });
+  const body = await readJsonObject(req);
+  const id = positiveInteger(body?.id);
+  if (!id) {
+    return NextResponse.json({ error: "id must be a positive integer" }, { status: 400 });
   }
   const db = getDb();
-  db.prepare("DELETE FROM source_configs WHERE id = ?").run(id);
+  const result = db.prepare("DELETE FROM source_configs WHERE id = ?").run(id);
+  if (result.changes === 0) {
+    return NextResponse.json({ error: "Source not found" }, { status: 404 });
+  }
   return NextResponse.json({ ok: true });
 }

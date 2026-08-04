@@ -32,6 +32,36 @@ JOB_AUTOPILOT_DATA_DIR="$TEST_DATA" JOB_AUTOPILOT_INSTANCE_ID=resume-analysis-e2
 SERVER_PID=$!
 wait_for_server
 
+printf 'this is not a PDF' >"$TEST_DATA/disguised.pdf"
+invalid_status="$(
+  curl -sS -o "$TEST_DATA/invalid-upload.json" -w '%{http_code}' \
+    -X POST "http://127.0.0.1:$PORT/api/resume" \
+    -F "file=@$TEST_DATA/disguised.pdf;type=application/pdf"
+)"
+test "$invalid_status" = "400"
+python3 -c '
+import json, sys
+payload = json.load(open(sys.argv[1]))
+assert payload["error"] == "The selected file is not a valid PDF document."
+' "$TEST_DATA/invalid-upload.json"
+test "$(sqlite3 "$TEST_DATA/app.db" 'SELECT COUNT(*) FROM resumes;')" = "0"
+test ! -d "$TEST_DATA/resumes"
+
+invalid_autofill_status="$(
+  curl -sS -o "$TEST_DATA/invalid-autofill-upload.json" -w '%{http_code}' \
+    -X POST "http://127.0.0.1:$PORT/api/autofill/upload-file" \
+    -F "file=@$TEST_DATA/disguised.pdf;type=application/pdf" \
+    -F 'jobId=1' -F 'autofillId=synthetic-file' -F 'key=resume' \
+    -F 'label=Resume' -F 'kind=file'
+)"
+test "$invalid_autofill_status" = "400"
+python3 -c '
+import json, sys
+payload = json.load(open(sys.argv[1]))
+assert payload["error"] == "The selected file is not a valid PDF document."
+' "$TEST_DATA/invalid-autofill-upload.json"
+test ! -d "$TEST_DATA/resumes"
+
 resume_json="$(
   curl -fsS -X POST "http://127.0.0.1:$PORT/api/resume" \
     -F "file=@$ROOT/fixtures/resume-tailoring/sample-resume.txt;type=text/plain"

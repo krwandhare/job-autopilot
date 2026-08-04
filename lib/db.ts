@@ -234,6 +234,55 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_resume_variant_artifacts_variant
       ON resume_variant_artifacts(variant_id, format);
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      website TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      company_id INTEGER REFERENCES companies(id),
+      applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resume_version TEXT,
+      cover_letter_used INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'manual',
+      notes TEXT,
+      follow_up_at TEXT,
+      response_received_at TEXT,
+      response_type TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_job_id
+      ON applications(job_id);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_follow_up
+      ON applications(follow_up_at);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_no_response
+      ON applications(response_received_at, applied_at);
+
+    CREATE TABLE IF NOT EXISTS cv_archive (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      source TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      format TEXT,
+      variant_id INTEGER,
+      sha256 TEXT NOT NULL,
+      archived_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (source IN ('tailored', 'master'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cv_archive_job
+      ON cv_archive(job_id, archived_at DESC, id DESC);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -460,4 +509,16 @@ export type ResumeVariantArtifactRow = {
   validation_status: "passed" | "failed";
   validation_json: string;
   created_at: string;
+};
+
+export type CvArchiveRow = {
+  id: number;
+  job_id: number;
+  source: "tailored" | "master";
+  original_filename: string;
+  file_path: string;
+  format: string | null;
+  variant_id: number | null;
+  sha256: string;
+  archived_at: string;
 };
