@@ -8,7 +8,7 @@ Job Autopilot is a local-first Next.js App Router application. Client components
 Browser UI
   -> Next.js route handlers
      -> SQLite (`data/app.db`) and local resume files
-     -> Greenhouse / Lever / Adzuna / one LinkedIn page
+     -> Greenhouse / Lever / Adzuna / Gmail API / one LinkedIn page
      -> visible Playwright Chromium -> employer or ATS application page
 ```
 
@@ -16,12 +16,13 @@ Browser UI
 
 | Route | File | Responsibility |
 | --- | --- | --- |
-| `/` | `app/page.tsx` | Dashboard: configure/delete/seed sources, run synchronization, import one LinkedIn URL, filter and paginate jobs, and open job details. |
+| `/` | `app/page.tsx` | Action Center for manual application steps and decisions, followed by source management, LinkedIn import, and the filterable job pipeline. |
 | `/profile` | `app/profile/page.tsx` | Upload the latest resume, review/edit detected skills, and save matching filters. |
-| `/jobs/[id]` | `app/jobs/[id]/page.tsx` | Display normalized job data, local status, score/reasons, matched/missing skills, and the latest generated draft. |
+| `/jobs/[id]` | `app/jobs/[id]/page.tsx` | Display normalized job data, local status, score/reasons, resume tailoring, attached-CV history, and the latest generated draft. |
 | `/autofill` | `app/autofill/page.tsx` | Work through the highest-ranked `new` job, launch filling, collect missing answers/files, show manual fields, and close/skip sessions. |
+| `/applications` | `app/applications/page.tsx` | Review locally recorded submissions, response status, follow-up dates, summary statistics, and top unsubmitted jobs by stored match score. |
 
-`app/layout.tsx` provides metadata, Google-hosted Geist fonts through `next/font`, and navigation. All four pages are client components except the root layout.
+`app/layout.tsx` provides metadata, Google-hosted Geist fonts through `next/font`, and navigation. All five pages are client components except the root layout.
 
 ## API routes
 
@@ -30,30 +31,53 @@ Browser UI
 | `GET /api/resume` | Return the latest resume row. |
 | `POST /api/resume` | Parse and store a PDF/DOCX/TXT resume, detect skills, save the original bytes, and record `file_path`. |
 | `PATCH /api/resume` | Replace the detected/editable skills JSON for a resume ID. |
+| `GET /api/resume/evidence` | Return extracted evidence for a selected or latest resume without mutating it. |
+| `POST /api/resume/evidence` | Idempotently derive line-addressable evidence from one stored resume. |
+| `PATCH /api/resume/evidence` | Edit the normalized representation and mark one evidence item extracted, verified, or rejected. |
 | `GET /api/filters` | Return the latest filter row in UI-shaped JSON. |
-| `PUT /api/filters` | Update the current filter row or insert one if absent. |
+| `PUT /api/filters` | Validate bounded filter fields, then update the current row or insert one if absent. |
 | `GET /api/sources` | List source configurations with parsed JSON. |
-| `POST /api/sources` | Add a `greenhouse`, `lever`, or `adzuna` configuration. |
-| `DELETE /api/sources` | Delete a source configuration by ID. |
+| `POST /api/sources` | Add a strictly shaped, bounded `greenhouse`, `lever`, or `adzuna` configuration. |
+| `DELETE /api/sources` | Delete a source configuration by positive integer ID, returning 404 when absent. |
 | `POST /api/sources/seed` | Insert curated Greenhouse/Lever configurations that are not already present. |
-| `GET /api/jobs` | Query jobs by optional status and zero-score visibility, sorted by score/fetch time, with 50-row pagination. |
-| `GET /api/jobs/[id]` | Return one job, its latest draft, match details, and the current maximum possible score. |
-| `PATCH /api/jobs/[id]` | Set a validated local status: `new`, `drafted`, `applied`, `rejected`, `skipped`, `watchlist`, `needs_code`, `needs_review`, or `external_lead`. |
-| `POST /api/jobs/sync` | Fetch every configured source, score results, and upsert jobs. |
-| `POST /api/jobs/import-url` | Import, score, and upsert exactly one user-supplied LinkedIn URL. |
+| `GET /api/jobs` | Query jobs with validated status, visibility, and bounded page parameters, sorted by score/fetch time with 50-row pagination. |
+| `GET /api/jobs/[id]` | Validate the positive job ID, then return one job, its latest draft, match details, and the current maximum possible score. |
+| `PATCH /api/jobs/[id]` | Validate an exact, bounded mutation shape before updating status, manual-action context, and the first-`applied` application record. |
+| `GET /api/jobs/[id]/resume-analysis` | Return a stored requirement analysis and recomputed coverage against the latest verified resume evidence. |
+| `POST /api/jobs/[id]/resume-analysis` | Deterministically extract or refresh posting requirements and return evidence-backed coverage. |
+| `GET /api/jobs/[id]/resume-variant` | Return the latest active draft or approved resume variant for a job. |
+| `POST /api/jobs/[id]/resume-variant` | Compose a new draft exclusively from the latest resume's verified evidence. |
+| `GET /api/jobs/[id]/cv-archive` | Return privacy-bounded metadata for CV snapshots attached to this exact job, newest first, without filesystem paths. |
+| `GET /api/jobs/[id]/cv-archive/[archiveId]/download` | Download an exact-job archived CV only after its path, existence, and recorded SHA-256 fingerprint are revalidated. |
+| `GET /api/resume-variants/[id]` | Return one variant and its ordered audit items. |
+| `PATCH /api/resume-variants/[id]` | Accept exactly one validated format change or item-inclusion change while variant state permits it. |
+| `POST /api/resume-variants/[id]/approve` | Approve a current, non-stale, evidence-valid job-specific variant. |
+| `GET /api/resume-variants/[id]/artifacts` | Return validation summaries and download availability for a variant. |
+| `POST /api/resume-variants/[id]/artifacts` | Generate DOCX/PDF for an approved variant, round-trip validate every included line, and return bounded generation failures. |
+| `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX/PDF artifact after path containment, filename, existence, and SHA-256 verification. |
+| `POST /api/jobs/sync` | Fetch every configured source, retain successful results, score and upsert jobs, and return generic per-source failures. |
+| `POST /api/jobs/sync-gmail` | With explicitly configured local Gmail OAuth credentials, read bounded unread LinkedIn alert threads, retain partial imports, report privacy-safe issue categories, and mark only fully attempted threads read. |
+| `POST /api/jobs/import-url` | Validate and normalize one public LinkedIn jobs URL, then import, score, and upsert it. Raw upstream failures are not returned to clients. |
+| `GET /api/applications` | Return application rows, statistics, overdue rows, or top-fit jobs using bounded integer query parameters. |
+| `PATCH /api/applications/[jobId]` | Validate an exact patch shape, bounded notes, real date strings, and allowed response types before updating one application. |
 | `POST /api/draft/[id]` | Generate and persist a deterministic draft from the latest resume and stored match result. |
 | `GET /api/autofill/next` | Return the highest-score, newest-fetched `new` job, or a specifically requested job for resumption, with match and extracted posting details. |
 | `POST /api/autofill/start` | Create/reuse a visible browser session and run the form scanner/filler. |
 | `POST /api/autofill/answer` | Upsert a remembered answer by semantic key and attempt to fill the corresponding live field. |
 | `POST /api/autofill/upload-file` | Store an ad hoc file and attach it to the live field; a resume-classified file also becomes the latest resume's canonical path. |
 | `POST /api/autofill/finish` | Close and remove the in-memory browser session for a job. It does not update job status or verify submission. |
-| `POST /api/autofill/submit` | In explicitly selected submit mode, conservatively locate and click the submit control and require a confirmation signal; otherwise return an unconfirmed/manual result. |
-| `GET /api/autofill/inspect` | Return diagnostic metadata for a field in an open local browser session. |
-| `GET /api/autofill/snapshot` | Return a diagnostic snapshot of an open local browser session. |
+| `POST /api/autofill/submit` | Audit visible required/invalid controls, return exact bounded field errors without clicking when validation fails, then conservatively locate/click submit and require confirmation. |
+| `GET /api/autofill/inspect` | Return bounded field diagnostics with state-bearing values and URL/form-action attributes removed. |
+| `GET /api/autofill/snapshot` | Return an explicitly local diagnostic screenshot and bounded text with credentials/query/fragment removed from URLs. |
+| `GET /api/actions` | Return prioritized unresolved manual actions and per-status counts for the dashboard Action Center, with safe status-derived fallback reasons. |
 
 ## SQLite persistence
 
-`lib/db.ts` opens `data/app.db` through `better-sqlite3`, sets WAL mode, caches the connection on `global.__db`, and initializes:
+`lib/runtimePaths.ts` resolves the runtime directory. It defaults to the
+current worktree's `data/`, while `JOB_AUTOPILOT_DATA_DIR` points concurrent
+worktrees at one shared directory. `lib/db.ts` opens `app.db` there through
+`better-sqlite3`, sets WAL mode and a five-second busy timeout, caches the
+connection on `global.__db`, and initializes:
 
 - `resumes`: original filename, extracted text, detected/editable skills JSON, upload time, and migrated `file_path`.
 - `filters`: a single currently used row containing title/location/remote/salary/skill/company rules.
@@ -61,10 +85,61 @@ Browser UI
 - `drafts`: immutable generated cover letters and JSON screening answers associated with a job.
 - `source_configs`: source type and JSON configuration.
 - `profile_answers`: one remembered answer per semantic field key.
+- `job_actions`: structured unresolved/resolved manual-action reasons, details,
+  source, and timestamps associated with jobs.
+- `job_claims`: one expiring autofill lease per job and per runtime owner,
+  including an unguessable token, heartbeat, and expiry timestamps.
+- `resume_evidence`: line-addressable facts derived from one immutable master
+  resume, retaining source text separately from the editable normalized value
+  and an explicit extracted/verified/rejected status.
+- `job_requirement_analyses`: one posting-description fingerprint and analysis
+  timestamp per job.
+- `job_requirements`: ordered required, preferred, or contextual posting
+  expectations with conservative normalized terms and the original source
+  line.
+- `resume_variants`: versioned job/resume associations with draft, approved,
+  superseded, or rejected status and the source posting fingerprint.
+- `resume_variant_items`: ordered source/after pairs with evidence ID,
+  inclusion, rationale, normalized terms, and change type for a complete local
+  audit trail.
+- `resume_variant_artifacts`: per-format path, safe filename, checksum,
+  pass/fail status, bounded validation metadata, and creation time for an
+  approved variant.
+- `companies`: exact-name convenience records for application reporting; this
+  is not an authoritative employer identity system.
+- `applications`: one local submission record per job with source, applied
+  time, resume label, cover-letter flag, notes, follow-up date, and optional
+  response outcome.
+- `cv_archive`: one row per distinct resume file ever attached to a job's
+  application form, linking the sanitized archived copy directly to the job
+  ID for later post-submission review.
 
 Initialization inserts a default filter row if none exists and adds `resumes.file_path` to older databases if necessary. There is no general migration framework. Foreign-key intent is expressed for drafts, but the code does not explicitly enable SQLite's `foreign_keys` pragma.
 
+`job_actions` is created idempotently. The dashboard reads the latest unresolved
+record for each actionable job. Existing jobs without a record remain useful:
+their local status produces a conservative fallback explanation. Changing a
+job to a non-actionable status resolves its open action records; callers may
+attach validated structured action context when patching an actionable status.
+
+Autofill start outcomes persist only safe local metadata: blocker category,
+generic explanation, and up to ten field labels. Missing answers, manual
+agreements, browser challenges, load/session failures, and review-ready forms
+are parked as `needs_review`. A submit-time verification-code challenge is
+parked as `needs_code`. The unattended queue runner can replace that context
+with a more specific queue outcome such as unconfirmed submission. Answer
+values, page HTML, cookies, credentials, and form payloads are never stored in
+`job_actions`. Confirmed local completion resolves open actions.
+
 Synchronization and URL import use upserts. They update normalized fields and scores without deleting stale jobs or overwriting the job's local status.
+
+`lib/jobClaims.ts` acquires leases inside SQLite `BEGIN IMMEDIATE`
+transactions. Queue selection excludes active leases, so two database
+connections cannot select the same job. Queue display uses a five-minute
+reservation; starting autofill renews it to two hours. Finishing deletes only
+the current runtime owner's lease. Expired leases can be reclaimed after a
+server crash. `JOB_AUTOPILOT_INSTANCE_ID` should be stable and unique for each
+simultaneous server; otherwise a hostname/process-ID fallback is used.
 
 ## Resume processing
 
@@ -76,6 +151,12 @@ Synchronization and URL import use upserts. They update normalized fields and sc
 
 `lib/skills.ts` performs case-insensitive boundary matching against a curated vocabulary and a conservative canonical alias map (for example, NodeJS → Node.js, K8s → Kubernetes, and continuous integration → CI/CD). Users can edit the detected list in `/profile`. Extracted text and skills are stored in SQLite; original bytes are written to `data/resumes/<resume-id>/<sanitized-original-name>`. The route does not currently enforce file-size, MIME, retention, or cleanup limits.
 
+`lib/resumeEvidence.ts` deterministically converts known resume sections,
+lines, bullets, and detected skills into evidence records. Contact-like lines
+are excluded. Extraction is idempotent and never rewrites the uploaded file or
+stored source text. The Profile UI lets the user clarify and explicitly verify
+or reject each item; later tailoring may use only verified evidence.
+
 ## Job-source integrations
 
 All adapters return `NormalizedJob` from `lib/sources/types.ts`.
@@ -84,6 +165,9 @@ All adapters return `NormalizedJob` from `lib/sources/types.ts`.
 - `lever.ts` calls the public postings API and uses the hosted listing URL.
 - `adzuna.ts` calls the first US search page by default, uses environment credentials, and defaults to 20 results.
 - `linkedinUrl.ts` accepts a manually supplied hostname ending in `linkedin.com`, fetches only that page without login, and extracts JobPosting JSON-LD with Open Graph/title fallbacks.
+- `gmailLeads.ts` parses plaintext LinkedIn alert digests into deduplicated
+  public job URLs. `lib/gmail.ts` is an optional local Gmail REST client using
+  user-configured OAuth credentials; it is separate from agent Gmail access.
 - `html.ts` decodes a limited entity set and strips tags for normalized descriptions.
 - `seedCompanies.ts` is a static curated Greenhouse/Lever slug list; it is not a discovery crawler.
 
@@ -104,6 +188,55 @@ Target skills are `requiredSkills` when configured, otherwise the latest resume'
 
 Scores are computed on source synchronization or LinkedIn import. Saving new filters or resume skills does not itself rescore existing rows; another sync/import is required.
 
+## Resume requirement analysis
+
+`lib/jobRequirements.ts` splits a posting into ordered expectations and
+classifies known skills, experience, education, certification,
+responsibility, and general qualification text. Explicit cues and section
+headings distinguish required, preferred, and contextual items. A SHA-256
+fingerprint reuses unchanged analysis and invalidates stored rows when the
+posting description changes.
+
+Coverage is separate from the job match score. It considers only
+`resume_evidence` rows the user marked verified. Known terms use conservative
+boundary/alias matching; text-only requirements need substantial token overlap
+with one verified evidence item. Experience duration is not calculated from
+resume dates. Results are evidence found, partial, not evidenced, or needs
+review and are not represented as an employer ATS probability.
+
+## Resume variant composition
+
+`lib/resumeVariants.ts` composes from verified evidence only. Requirement
+coverage determines relevance ordering: required expectations outrank
+preferred and contextual expectations within conventional section order.
+Automatic text changes are limited to whitespace, first-letter
+capitalization, and terminal punctuation. Each item retains the exact
+normalized evidence snapshot, its resulting text, rationale, and matched
+terms.
+
+Draft items can be included or excluded. Approval is a separate transaction
+that refuses a changed posting, a newer master resume, modified/unverified
+evidence, or a variant with nothing included. Approved variants are immutable
+and unique per job; a later approval supersedes the older approved variant.
+
+## Resume artifact generation
+
+`lib/resumeArtifacts.ts` renders approved variants only. It preserves the
+master resume's pre-section contact block unchanged and refuses export when no
+recognizable contact detail exists. Included items are grouped under
+conventional section headings. Skills may follow relevance order; narrative
+sections preserve source order.
+
+DOCX is generated as single-column Open XML with Arial body text and no tables,
+graphics, columns, headers, or footers. PDF is printed from local static HTML
+through the already-installed Playwright Chromium with an explicit white page,
+Letter margins, standard fonts, no remote assets, and selectable text.
+
+Each in-memory artifact is reparsed by `lib/resume.ts`. All contact-header and
+included variant lines must appear after normalized whitespace comparison.
+Only passed artifacts are written and downloadable; the client never receives
+the private filesystem path.
+
 ## Draft generation
 
 `lib/draft.ts` is deterministic. It takes the first two sentence-like segments of the resume, incorporates up to six matched skills, and produces:
@@ -116,7 +249,16 @@ Draft generation never interprets a target skill omitted from the posting as a s
 
 ## Autofill pipeline
 
-`lib/autofill/session.ts` keeps visible Playwright Chromium sessions in a process-global map keyed by job ID. Sessions are ephemeral and unsuitable for serverless/multi-process deployment.
+`lib/autofill/session.ts` keeps visible Playwright Chromium sessions in a
+process-global map keyed by job ID. Sessions remain ephemeral, but SQLite job
+claims stop a second local server from starting the same job while the first
+lease is active. This is local coordination, not a distributed browser-session
+store, and remains unsuitable for serverless deployment.
+
+Immediately before submission, `session.ts` audits visible enabled
+native/ARIA-required controls (including consent checkboxes and radio groups)
+and controls marked `aria-invalid`. It triggers native validity reporting,
+prefers bounded ATS-rendered field errors, and never returns values or HTML.
 
 `lib/autofill/filler.ts`:
 
@@ -125,24 +267,52 @@ Draft generation never interprets a target skill omitted from the posting as a s
 3. checks common load failures and CAPTCHA/bot-block signals;
 4. resolves the page or a lazily loaded Greenhouse/Lever iframe;
 5. asks `fieldMatcher.ts` to scan and tag controls with temporary `data-autofill-id` attributes;
-6. fills the stored resume, latest draft or generated cover letter, and remembered profile answers;
+6. selects an exact-job approved, passed, current resume artifact when
+   available, otherwise the latest master resume, then fills that file, the
+   latest draft or generated cover letter, and remembered profile answers;
 7. returns missing fields and manual-only fields to the UI.
 
 `fieldMatcher.ts` classifies semantic fields, native inputs/selects, React-style comboboxes, search-as-you-type controls, custom questions, sensitive exclusions, and grouped radio/checkbox controls. It collapses each option group into one answerable question while retaining policy acknowledgements and certifications as manual-only controls with their full parent question. Submit-mode orchestration has a narrow text allowlist for Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy acknowledgements; it does not generalize to other agreements. Stored answers are checked against live options and re-surfaced when they no longer apply.
 
-In opt-in submit mode, the filler locates and clicks a narrowly matched submit button only after all fillable questions are resolved and no manual-only controls remain. It requires a navigation or confirmation-text signal; otherwise it leaves the browser open and reports an unconfirmed result. `finish` only closes the browser and never proves employer receipt.
+The queue preview and filler both call
+`selectResumeAttachmentForJob()`—they cannot disagree about the file. The
+selector requires the exact job, current posting fingerprint, latest master
+resume, unchanged verified evidence, approved status, passed round-trip
+validation, and an existing local file. It honors the saved DOCX/PDF
+preference, tries the other validated format if that file is missing, and then
+falls back to the master resume. It never selects another job's variant.
+
+Immediately before that selected file is attached to the live form, the
+filler makes a best-effort call into `lib/cvArchive.ts`, which copies the
+exact bytes into `data/cv-archive/<jobId>/` and records a `cv_archive` row
+(source, sanitized filename, format, variant ID, and a content hash). This
+snapshot is what a post-submission review should trust, since a later resume
+edit or re-tailoring pass would otherwise change what
+`selectResumeAttachmentForJob()` returns for the same job. Archiving is
+content-addressed and idempotent per job (re-attaching identical bytes reuses
+the existing row and file), and an archiving failure never blocks the actual
+form attachment.
+
+In opt-in submit mode, the filler runs the session-level field audit before locating or clicking a narrowly matched submit button. Validation failures return `UI-validation-error` and leave the browser open without a click. Valid forms still require a navigation or confirmation-text signal after clicking; otherwise the result is unconfirmed. `finish` only closes the browser and never proves employer receipt.
 
 ## Module responsibilities
 
 | Module | Responsibility |
 | --- | --- |
 | `lib/db.ts` | Connection, schema, compatibility alteration, and database row types. |
+| `lib/runtimePaths.ts` | Shared/default data paths and validated runtime identity. |
+| `lib/jobClaims.ts` | Atomic claim, renewal, expiry, and owner-safe release primitives. |
 | `lib/resume.ts` | File-format-specific text extraction. |
+| `lib/resumeEvidence.ts` | Deterministic evidence extraction, idempotent persistence, and API serialization. |
+| `lib/jobRequirements.ts` | Posting requirement extraction, fingerprinted persistence, and verified-evidence coverage. |
+| `lib/resumeVariants.ts` | Evidence-constrained ordering, variant audit persistence, stale checks, and approval. |
+| `lib/resumeArtifacts.ts` | ATS-safe DOCX/PDF rendering, round-trip validation, artifact persistence, and validated lookup. |
+| `lib/cvArchive.ts` | Content-addressed, per-job snapshot of the exact resume file attached to a form, for post-submission review. |
 | `lib/skills.ts` | Curated vocabulary, conservative aliases, boundary-aware detection, and posting-match checks. |
 | `lib/matching.ts` | Filter types, scoring, hard failures, and score ceiling. |
 | `lib/draft.ts` | Template-based cover letters and screening answers. |
 | `lib/sources/*` | External fetch/parsing and normalization. |
-| `lib/autofill/session.ts` | Playwright browser lifecycle. |
+| `lib/autofill/session.ts` | Playwright lifecycle, per-job serialization, and pre-submit required-field auditing. |
 | `lib/autofill/captcha.ts` | Visible CAPTCHA and bot-block heuristics. |
 | `lib/autofill/fieldMatcher.ts` | Live form discovery, classification, and select/combobox interaction. |
 | `lib/autofill/filler.ts` | Database-to-form orchestration and error recovery. |
@@ -151,6 +321,11 @@ In opt-in submit mode, the filler locates and clicks a narrowly matched submit b
 
 ```text
 Resume upload -> extract text -> detect/edit skills -> SQLite + local file
+                              -> evidence extraction -> user verification
+Job description -> requirement extraction -> verified-evidence coverage
+Verified evidence + coverage -> draft variant -> human review -> approved variant
+Approved variant -> DOCX/PDF render -> reparse all expected text -> validated download
+Exact job + current approved artifact -> autofill attachment (otherwise master resume)
 Filters ----------------------------------------------------------+
 Source config -> external source -> NormalizedJob -> scoreJob -----+-> jobs table
 LinkedIn URL -> one public page -> NormalizedJob -> scoreJob ------+
@@ -170,7 +345,7 @@ highest-ranked local `new` job + latest resume/draft + profile answers
 - Server code can read/write local files and launch a browser; client code should never receive credentials or internal paths.
 - Resume contents and remembered answers are highly sensitive. Current storage is unencrypted local disk.
 - External APIs, LinkedIn HTML, job descriptions, and ATS pages are untrusted inputs.
-- The LinkedIn importer restricts the hostname suffix but has no response-size or fetch-time limit in application code.
+- The LinkedIn importer requires an exact `linkedin.com` host (or subdomain) and a `/jobs/` path, strips URL credentials and fragments, and returns bounded upstream errors. It still has no response-size or fetch-time limit in application code.
 - Uploads sanitize basenames but currently lack explicit size/MIME/content validation and cleanup.
 - CAPTCHA and detected bot-block pages stop automated filling. The system must not bypass them.
 - Sensitive identifiers/password-like fields, acknowledgements, certifications, and ambiguous choices are manual-only. Ordinary option groups are answerable but are never guessed.

@@ -8,7 +8,7 @@ const ENTITIES: Record<string, string> = {
   nbsp: " ",
 };
 
-function decodeEntities(text: string): string {
+export function decodeEntities(text: string): string {
   return text.replace(/&(#?\w+);/g, (match, entity) => {
     if (entity in ENTITIES) return ENTITIES[entity];
     if (entity.startsWith("#x") || entity.startsWith("#X")) {

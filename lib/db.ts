@@ -1,17 +1,12 @@
 import Database from "better-sqlite3";
-import path from "node:path";
-import fs from "node:fs";
-
-const dataDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-const dbPath = path.join(dataDir, "app.db");
+import { getDatabasePath } from "@/lib/runtimePaths";
 
 declare global {
   var __db: Database.Database | undefined;
 }
 
 function init(db: Database.Database) {
+  db.pragma("busy_timeout = 5000");
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS resumes (
@@ -75,6 +70,219 @@ function init(db: Database.Database) {
       answer TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS job_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      action_type TEXT NOT NULL,
+      reason_code TEXT NOT NULL,
+      reason_text TEXT NOT NULL,
+      details_json TEXT NOT NULL DEFAULT '[]',
+      source TEXT NOT NULL DEFAULT 'status',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_job_actions_open_job
+      ON job_actions(job_id, resolved_at, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS job_claims (
+      job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      owner_id TEXT NOT NULL,
+      lease_token TEXT NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      heartbeat_at INTEGER NOT NULL,
+      lease_expires_at INTEGER NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_job_claims_owner
+      ON job_claims(owner_id);
+
+    CREATE INDEX IF NOT EXISTS idx_job_claims_expiry
+      ON job_claims(lease_expires_at);
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      website TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      company_id INTEGER REFERENCES companies(id),
+      applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resume_version TEXT,
+      cover_letter_used INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'manual',
+      notes TEXT,
+      follow_up_at TEXT,
+      response_received_at TEXT,
+      response_type TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_job_id
+      ON applications(job_id);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_follow_up
+      ON applications(follow_up_at);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_no_response
+      ON applications(response_received_at, applied_at);
+
+    CREATE TABLE IF NOT EXISTS resume_evidence (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+      evidence_kind TEXT NOT NULL,
+      section TEXT NOT NULL,
+      source_text TEXT NOT NULL,
+      normalized_text TEXT NOT NULL,
+      source_start_line INTEGER,
+      source_end_line INTEGER,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      verification_status TEXT NOT NULL DEFAULT 'extracted',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (verification_status IN ('extracted', 'verified', 'rejected'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_evidence_resume
+      ON resume_evidence(resume_id, source_start_line, id);
+
+    CREATE TABLE IF NOT EXISTS job_requirement_analyses (
+      job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      description_fingerprint TEXT NOT NULL,
+      analyzed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS job_requirements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      requirement_kind TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      requirement_text TEXT NOT NULL,
+      terms_json TEXT NOT NULL DEFAULT '[]',
+      source_text TEXT NOT NULL,
+      source_order INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (priority IN ('required', 'preferred', 'context'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_job_requirements_job
+      ON job_requirements(job_id, source_order, id);
+
+    CREATE TABLE IF NOT EXISTS resume_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'draft',
+      job_fingerprint TEXT NOT NULL,
+      preferred_format TEXT NOT NULL DEFAULT 'docx',
+      tailoring_mode TEXT NOT NULL DEFAULT 'deterministic',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      approved_at TEXT,
+      CHECK (status IN ('draft', 'approved', 'superseded', 'rejected')),
+      CHECK (preferred_format IN ('docx', 'pdf')),
+      CHECK (tailoring_mode IN ('deterministic', 'llm'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_resume_variants_approved_job
+      ON resume_variants(job_id) WHERE status = 'approved';
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variants_job
+      ON resume_variants(job_id, created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS resume_variant_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      variant_id INTEGER NOT NULL REFERENCES resume_variants(id) ON DELETE CASCADE,
+      evidence_id INTEGER NOT NULL REFERENCES resume_evidence(id),
+      evidence_kind TEXT NOT NULL,
+      section TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      original_text TEXT NOT NULL,
+      tailored_text TEXT NOT NULL,
+      rationale TEXT NOT NULL,
+      change_type TEXT NOT NULL,
+      matched_terms_json TEXT NOT NULL DEFAULT '[]',
+      included INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variant_items_variant
+      ON resume_variant_items(variant_id, position, id);
+
+    CREATE TABLE IF NOT EXISTS resume_variant_artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      variant_id INTEGER NOT NULL REFERENCES resume_variants(id) ON DELETE CASCADE,
+      format TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      validation_status TEXT NOT NULL,
+      validation_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(variant_id, format),
+      CHECK (format IN ('docx', 'pdf')),
+      CHECK (validation_status IN ('passed', 'failed'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resume_variant_artifacts_variant
+      ON resume_variant_artifacts(variant_id, format);
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      website TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      company_id INTEGER REFERENCES companies(id),
+      applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resume_version TEXT,
+      cover_letter_used INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'manual',
+      notes TEXT,
+      follow_up_at TEXT,
+      response_received_at TEXT,
+      response_type TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_job_id
+      ON applications(job_id);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_follow_up
+      ON applications(follow_up_at);
+
+    CREATE INDEX IF NOT EXISTS idx_applications_no_response
+      ON applications(response_received_at, applied_at);
+
+    CREATE TABLE IF NOT EXISTS cv_archive (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      source TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      format TEXT,
+      variant_id INTEGER,
+      sha256 TEXT NOT NULL,
+      archived_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (source IN ('tailored', 'master'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cv_archive_job
+      ON cv_archive(job_id, archived_at DESC, id DESC);
   `);
 
   const filterCount = db.prepare("SELECT COUNT(*) as c FROM filters").get() as { c: number };
@@ -89,11 +297,39 @@ function init(db: Database.Database) {
   if (!resumeCols.some((c) => c.name === "file_path")) {
     db.exec("ALTER TABLE resumes ADD COLUMN file_path TEXT");
   }
+
+  const variantItemCols = db.prepare("PRAGMA table_info(resume_variant_items)").all() as {
+    name: string;
+  }[];
+  if (!variantItemCols.some((column) => column.name === "evidence_kind")) {
+    db.exec(
+      "ALTER TABLE resume_variant_items ADD COLUMN evidence_kind TEXT NOT NULL DEFAULT 'other'"
+    );
+  }
+
+  const variantCols = db.prepare("PRAGMA table_info(resume_variants)").all() as {
+    name: string;
+  }[];
+  if (!variantCols.some((column) => column.name === "preferred_format")) {
+    db.exec(
+      "ALTER TABLE resume_variants ADD COLUMN preferred_format TEXT NOT NULL DEFAULT 'docx'"
+    );
+  }
+  if (!variantCols.some((column) => column.name === "tailoring_mode")) {
+    // SQLite can't add a CHECK-constrained column via ALTER TABLE on an
+    // existing table -- the CREATE TABLE above enforces it for new
+    // databases; existing rows just get the safe 'deterministic' default,
+    // which is accurate for every variant created before this column
+    // existed (LLM tailoring never persisted its mode before now).
+    db.exec(
+      "ALTER TABLE resume_variants ADD COLUMN tailoring_mode TEXT NOT NULL DEFAULT 'deterministic'"
+    );
+  }
 }
 
 export function getDb(): Database.Database {
   if (!global.__db) {
-    const db = new Database(dbPath);
+    const db = new Database(getDatabasePath());
     init(db);
     global.__db = db;
   }
@@ -160,4 +396,129 @@ export type ProfileAnswerRow = {
   label: string;
   answer: string;
   updated_at: string;
+};
+
+export type JobActionRow = {
+  id: number;
+  job_id: number;
+  action_type: string;
+  reason_code: string;
+  reason_text: string;
+  details_json: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+};
+
+export type JobClaimRow = {
+  job_id: number;
+  owner_id: string;
+  lease_token: string;
+  claimed_at: number;
+  heartbeat_at: number;
+  lease_expires_at: number;
+};
+
+export type CompanyRow = {
+  id: number;
+  name: string;
+  website: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type ApplicationRow = {
+  id: number;
+  job_id: number;
+  company_id: number | null;
+  applied_at: string;
+  resume_version: string | null;
+  cover_letter_used: number;
+  source: string;
+  notes: string | null;
+  follow_up_at: string | null;
+  response_received_at: string | null;
+  response_type: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ResumeEvidenceRow = {
+  id: number;
+  resume_id: number;
+  evidence_kind: string;
+  section: string;
+  source_text: string;
+  normalized_text: string;
+  source_start_line: number | null;
+  source_end_line: number | null;
+  metadata_json: string;
+  verification_status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobRequirementRow = {
+  id: number;
+  job_id: number;
+  requirement_kind: string;
+  priority: string;
+  requirement_text: string;
+  terms_json: string;
+  source_text: string;
+  source_order: number;
+  created_at: string;
+};
+
+export type ResumeVariantRow = {
+  id: number;
+  job_id: number;
+  resume_id: number;
+  status: "draft" | "approved" | "superseded" | "rejected";
+  job_fingerprint: string;
+  preferred_format: "docx" | "pdf";
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+};
+
+export type ResumeVariantItemRow = {
+  id: number;
+  variant_id: number;
+  evidence_id: number;
+  evidence_kind: string;
+  section: string;
+  position: number;
+  original_text: string;
+  tailored_text: string;
+  rationale: string;
+  change_type: string;
+  matched_terms_json: string;
+  included: number;
+  created_at: string;
+};
+
+export type ResumeVariantArtifactRow = {
+  id: number;
+  variant_id: number;
+  format: "docx" | "pdf";
+  file_path: string;
+  filename: string;
+  sha256: string;
+  validation_status: "passed" | "failed";
+  validation_json: string;
+  created_at: string;
+};
+
+export type CvArchiveRow = {
+  id: number;
+  job_id: number;
+  source: "tailored" | "master";
+  original_filename: string;
+  file_path: string;
+  format: string | null;
+  variant_id: number | null;
+  sha256: string;
+  archived_at: string;
 };

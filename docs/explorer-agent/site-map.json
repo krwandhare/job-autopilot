@@ -1,0 +1,619 @@
+{
+  "generatedAt": "2026-08-01T20:07:37.456Z",
+  "baseUrl": "http://localhost:3099",
+  "pagesVisited": 5,
+  "maxPages": 40,
+  "nodes": [
+    {
+      "route": "/",
+      "elements": [
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Sync jobs",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Sync Gmail leads",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Refresh actions",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "0Verification",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "0Needs review",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "0External",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "0Drafts",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "0Decisions",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Add all known companies",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Add",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Import",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "e.g. stripe",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "e.g. netflix",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "keywords (what)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "location (where)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "https://www.linkedin.com/jobs/view/...",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "label": "Show non-matches (score 0)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "boolean-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "select",
+          "type": "select",
+          "label": "",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "selection",
+          "sensitive": false,
+          "flagForReview": false
+        }
+      ],
+      "resourceActions": [],
+      "flags": {
+        "hasSensitiveInput": false,
+        "hasComplexTransition": true
+      }
+    },
+    {
+      "route": "/profile",
+      "elements": [
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Off",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Save filters",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "input",
+          "type": "file",
+          "label": "",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "file-upload",
+          "sensitive": true,
+          "flagForReview": true,
+          "reviewReason": "handles an uploaded file -- treat as personal data"
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "Title must include (comma-separated)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "Title must exclude (comma-separated)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "Locations (comma-separated)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "number",
+          "label": "Minimum salary (optional)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "text",
+          "label": "Excluded companies (comma-separated)",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "text-input",
+          "sensitive": false,
+          "flagForReview": false
+        }
+      ],
+      "resourceActions": [],
+      "flags": {
+        "hasSensitiveInput": true,
+        "hasComplexTransition": true
+      }
+    },
+    {
+      "route": "/autofill",
+      "elements": [
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Show details",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Fill",
+          "title": "Auto-fill (review before submit)",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Auto-submit",
+          "title": "Auto-fill & submit -- also clicks the real submit button once everything's filled, no review step",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Later",
+          "title": "Save for later -- partial match, keep it for review instead of skipping outright",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Skip",
+          "title": "Skip this job",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        }
+      ],
+      "resourceActions": [],
+      "flags": {
+        "hasSensitiveInput": false,
+        "hasComplexTransition": true
+      }
+    },
+    {
+      "route": "/applications",
+      "elements": [
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Company",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Domain",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Title",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "select",
+          "type": "select",
+          "label": "Sort byApplication dateStatus",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "selection",
+          "sensitive": false,
+          "flagForReview": false
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "label": "No response in 14+ days",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "boolean-input",
+          "sensitive": false,
+          "flagForReview": false
+        }
+      ],
+      "resourceActions": [],
+      "flags": {
+        "hasSensitiveInput": false,
+        "hasComplexTransition": false
+      }
+    },
+    {
+      "route": "/jobs/[id]",
+      "elements": [
+        {
+          "tag": "button",
+          "type": "button",
+          "label": "Generate draft",
+          "title": "",
+          "requirement": "action-button",
+          "sensitive": false,
+          "flagForReview": true,
+          "reviewReason": "label suggests a state-mutating action"
+        },
+        {
+          "tag": "select",
+          "type": "select",
+          "label": "",
+          "name": "",
+          "required": false,
+          "title": "",
+          "requirement": "selection",
+          "sensitive": false,
+          "flagForReview": false
+        }
+      ],
+      "resourceActions": [],
+      "flags": {
+        "hasSensitiveInput": false,
+        "hasComplexTransition": true
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "/",
+      "to": "/"
+    },
+    {
+      "from": "/",
+      "to": "/profile"
+    },
+    {
+      "from": "/",
+      "to": "/autofill"
+    },
+    {
+      "from": "/",
+      "to": "/applications"
+    },
+    {
+      "from": "/",
+      "to": "/jobs/[id]"
+    },
+    {
+      "from": "/profile",
+      "to": "/"
+    },
+    {
+      "from": "/profile",
+      "to": "/profile"
+    },
+    {
+      "from": "/profile",
+      "to": "/autofill"
+    },
+    {
+      "from": "/profile",
+      "to": "/applications"
+    },
+    {
+      "from": "/autofill",
+      "to": "/"
+    },
+    {
+      "from": "/autofill",
+      "to": "/profile"
+    },
+    {
+      "from": "/autofill",
+      "to": "/autofill"
+    },
+    {
+      "from": "/autofill",
+      "to": "/applications"
+    },
+    {
+      "from": "/autofill",
+      "to": "/jobs/[id]"
+    },
+    {
+      "from": "/applications",
+      "to": "/"
+    },
+    {
+      "from": "/applications",
+      "to": "/profile"
+    },
+    {
+      "from": "/applications",
+      "to": "/autofill"
+    },
+    {
+      "from": "/applications",
+      "to": "/applications"
+    },
+    {
+      "from": "/applications",
+      "to": "/jobs/[id]"
+    },
+    {
+      "from": "/jobs/[id]",
+      "to": "/"
+    },
+    {
+      "from": "/jobs/[id]",
+      "to": "/profile"
+    },
+    {
+      "from": "/jobs/[id]",
+      "to": "/autofill"
+    },
+    {
+      "from": "/jobs/[id]",
+      "to": "/applications"
+    }
+  ],
+  "unreachedRoutes": [],
+  "manualReviewQueue": [
+    {
+      "route": "/",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Sync jobs"
+      },
+      "reason": "label suggests a state-mutating action"
+    },
+    {
+      "route": "/",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Sync Gmail leads"
+      },
+      "reason": "label suggests a state-mutating action"
+    },
+    {
+      "route": "/",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Import"
+      },
+      "reason": "label suggests a state-mutating action"
+    },
+    {
+      "route": "/profile",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Save filters"
+      },
+      "reason": "label suggests a state-mutating action"
+    },
+    {
+      "route": "/profile",
+      "element": {
+        "tag": "input",
+        "type": "file",
+        "label": ""
+      },
+      "reason": "handles an uploaded file -- treat as personal data"
+    },
+    {
+      "route": "/autofill",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Fill"
+      },
+      "reason": "label suggests a state-mutating action"
+    },
+    {
+      "route": "/autofill",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Auto-submit"
+      },
+      "reason": "label suggests a state-mutating action"
+    },
+    {
+      "route": "/autofill",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Later"
+      },
+      "reason": "label suggests a state-mutating action"
+    },
+    {
+      "route": "/jobs/[id]",
+      "element": {
+        "tag": "button",
+        "type": "button",
+        "label": "Generate draft"
+      },
+      "reason": "label suggests a state-mutating action"
+    }
+  ]
+}

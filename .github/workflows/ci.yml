@@ -36,5 +36,8 @@ jobs:
       - name: Run TypeScript checks
         run: npx tsc --noEmit
 
+      - name: Test guarded integration automation
+        run: npm run test:integration-automation
+
       - name: Build application
         run: npm run build

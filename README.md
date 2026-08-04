@@ -31,6 +31,23 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Data is stored locally in `data/app.db` (SQLite) — nothing leaves your machine except the outbound reads to the job-source APIs above.
 
+### Concurrent local development
+
+When Codex and Claude run separate worktrees at the same time, start them with
+distinct instance IDs and ports:
+
+```bash
+npm run dev:shared -- codex 3002
+npm run dev:shared -- claude 3003
+```
+
+Both commands resolve the primary worktree's ignored `data/` directory, so the
+servers share the same SQLite database and resume storage. Expiring SQLite
+leases reserve autofill jobs atomically: opening the queue reserves a job for
+five minutes, starting its browser session extends the lease to two hours, and
+finishing releases it. A second instance receives a conflict instead of
+opening the same job.
+
 ### Adzuna key
 
 Free at https://developer.adzuna.com/ — put `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env.local`.

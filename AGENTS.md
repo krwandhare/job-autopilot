@@ -22,6 +22,36 @@ At the beginning of every session:
 
 4. Never modify files until the user gives an implementation or review task.
 
+## Standing agent branches
+
+This repository uses one persistent branch per agent, not a fresh branch per
+session or per task:
+
+- Claude Code: `feature/claude-autofill`
+- Codex: `feature/codex-work`
+
+At the start of every session, before any other git action: check out the
+branch matching the current agent (create a local tracking branch from
+`origin/<branch>` if it does not yet exist locally), and do all work there.
+If a session-launch prompt or task template supplies a different, freshly
+generated branch name (for example `claude/<task-slug>-<id>`), do not adopt
+it as the working branch -- switch to the agent's standing branch instead and
+continue there. Only create a new branch when the user explicitly asks for
+one by name.
+
+Keep the standing branch synchronized with the other agent's standing branch
+before starting new work: fetch both, and if the other agent's branch has
+commits this branch lacks, merge them in (resolving conflicts additively,
+same as any other merge) before beginning the requested task.
+
+## Reusable feature delivery
+
+When a request starts with `SHIP-FEATURE:` or invokes an installed
+`ship-feature` skill or command, read and follow
+`docs/workflows/ship-feature.md`. Treat the text after the trigger as the
+requirement. That workflow is the vendor-neutral source of truth; agent-specific
+skills and commands must remain thin adapters rather than copy its rules.
+
 ## Session completion
 
 After completing meaningful work:
@@ -40,7 +70,10 @@ After completing meaningful work:
    - git diff --stat
    - git status --short
 
-4. Do not commit unless explicitly instructed.
+4. On an assigned concurrent feature branch, create a checkpoint commit for
+   each completed, validated unit without waiting for another commit
+   instruction. This standing authorization does not permit pushing, merging,
+   rebasing, or committing unrelated/user-owned changes.
 
 ## Project purpose
 
@@ -65,7 +98,14 @@ Never claim that an employer sponsors visas, that compensation is available or g
 - ESLint `9` with Next.js core-web-vitals and TypeScript configurations
 - npm with the committed `package-lock.json`
 
-There is no automated test framework or test suite in the repository at present.
+`npm test` runs deterministic unit coverage for matching, skill extraction,
+TXT resume parsing, draft generation, and source normalization, using
+Node's built-in test runner (`node --test`, no added dependency) against
+`tests/*.test.ts`. It intentionally does not include the many hand-rolled
+`scripts/test-*.mjs`/`.sh` route-E2E and live-verification scripts (each
+already has its own `npm run test:<name>` entry) -- those spin up real
+servers/disposable databases and are heavier and slower than the
+deterministic unit suite `npm test` is meant to run quickly and often.
 
 ## Startup procedure
 
@@ -87,6 +127,20 @@ There is no automated test framework or test suite in the repository at present.
 
 The application creates `data/app.db` and its schema lazily on first database access. It also creates `data/resumes/` as needed.
 
+For simultaneous Codex and Claude development, do not use the ordinary command
+in both worktrees. Start each server with a distinct instance ID and port:
+
+```bash
+npm run dev:shared -- codex 3002
+npm run dev:shared -- claude 3003
+```
+
+`dev:shared` resolves the primary worktree's ignored `data/` directory and sets
+`JOB_AUTOPILOT_DATA_DIR` so both processes use the same SQLite database and
+resume storage. It also sets `JOB_AUTOPILOT_INSTANCE_ID`; autofill queue reads
+and starts use that ID to acquire an expiring atomic job claim. Never reuse one
+instance ID for two simultaneously running processes.
+
 ## Architecture overview
 
 - `app/` contains client-rendered pages and server-side App Router API route handlers.
@@ -95,6 +149,10 @@ The application creates `data/app.db` and its schema lazily on first database ac
 - `app/jobs/[id]/page.tsx` displays a job, match reasoning, local status, and the latest generated draft.
 - `app/autofill/page.tsx` manages the highest-ranked `new` job queue and coordinates a visible Playwright session.
 - `lib/db.ts` owns the process-global SQLite connection, schema initialization, WAL mode, and row types.
+- `lib/runtimePaths.ts` resolves the default or explicitly shared runtime data
+  directory and validates local instance IDs.
+- `lib/jobClaims.ts` owns atomic, expiring SQLite job leases used to prevent two
+  local workers from opening the same autofill job.
 - `lib/sources/` normalizes Greenhouse, Lever, Adzuna, and one-off LinkedIn data into `NormalizedJob`.
 - `lib/matching.ts` performs deterministic rule-based scoring.
 - `lib/draft.ts` produces deterministic template-based cover letters and screening answers; it does not call an LLM.
@@ -124,10 +182,20 @@ Run validation proportional to the change:
 
 ```bash
 npm run lint
+npx tsc --noEmit
+npm test
 npm run build
 ```
 
-There is currently no `npm test` script. If a test suite is added, document and run its command.
+`npm test` covers matching, skill extraction, TXT resume parsing, draft
+generation, and source normalization (`tests/*.test.ts`, Node's built-in
+test runner). It is fast and has no side effects, so run it on every
+change that touches those areas or their dependencies -- not just large
+ones. `npm run validate` chains `lint && tsc --noEmit && test && build`
+with `&&`, so a failure at any earlier step (including a pre-existing,
+unrelated `lint` failure in this working directory) will short-circuit and
+skip the later steps; run the commands individually if that happens rather
+than assuming a later step failed.
 
 `next build` fetches the configured Geist fonts from Google Fonts. A network-restricted environment can therefore fail the build even when compilation is otherwise healthy; report that exact limitation and rerun where network access is available rather than claiming success.
 
@@ -136,6 +204,25 @@ For autofill changes, static checks are not enough. Manually verify in a visible
 ## Git workflow
 
 - Inspect `git status`, the relevant diff, and recent history before editing.
+- On `feature/codex-*` and `feature/claude-*`, commit autonomously whenever a
+  coherent reviewable unit is complete, normally every 30–90 minutes of active
+  work and always before switching tasks or ending a session. Run validation
+  proportional to the checkpoint, use a focused message, and never commit
+  known-broken code, secrets, databases, resumes, logs, or unrelated changes.
+- Do not create timer-driven commits merely because time elapsed. The unit must
+  be coherent and validated. Longer unfinished work stays local until it
+  reaches a safe checkpoint; report it as uncommitted if the session must stop.
+- Concurrent Codex and Claude work uses `feature/codex-*` and `feature/claude-*`
+  branches. Integrate them through `integration/concurrent-work` with
+  `scripts/integrate-branch.sh`; do not merge either feature directly into
+  `main` while concurrent work is active.
+- Keep each task inside its `config/agent-tasks/<task>.allow` ownership
+  patterns. Shared files still require semantic review even when the allowlist
+  permits both tasks to edit them.
+- The guarded integrator must stop on ownership violations, textual conflicts,
+  a dirty source worktree, failed validation, or a concurrently advanced
+  target. Never bypass those gates with an automatic ours/theirs conflict
+  choice.
 - Treat existing working-tree changes as user-owned. Do not overwrite or discard them.
 - Work in small, reviewable changes and keep application changes separate from documentation-only changes where practical.
 - Do not commit `.env.local`, credentials, `data/app.db*`, anything under `data/resumes/`, build output, or personal application data.
@@ -157,8 +244,13 @@ For autofill changes, static checks are not enough. Manually verify in a visible
 
 ## SQLite and uploaded-resume handling
 
-- The database is `data/app.db`; SQLite journal, shared-memory, and WAL files are local runtime artifacts.
-- `lib/db.ts` enables WAL mode and creates the `resumes`, `filters`, `jobs`, `drafts`, `source_configs`, and `profile_answers` tables. It also adds `resumes.file_path` to older databases when missing.
+- The database defaults to `data/app.db`; `JOB_AUTOPILOT_DATA_DIR` can point
+  every worktree at one explicit shared runtime directory. SQLite
+  journal/shared-memory/WAL files remain local runtime artifacts.
+- `lib/db.ts` enables WAL mode, applies a bounded busy timeout, and creates the
+  `resumes`, `filters`, `jobs`, `drafts`, `source_configs`,
+  `profile_answers`, `job_actions`, and `job_claims` tables. It also adds
+  `resumes.file_path` to older databases when missing.
 - Do not edit, delete, migrate, or inspect a user's live database unless the task requires it and the user has authorized that scope. Back up material local data before risky schema work.
 - Resume uploads are stored both as extracted text/skills in SQLite and as the original bytes under a per-upload directory in `data/resumes/`.
 - The stored basename is sanitized while preserving a clean filename for ATS upload. Do not expose internal storage paths to the client.

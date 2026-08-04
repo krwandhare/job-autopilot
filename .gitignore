@@ -42,12 +42,23 @@ yarn-error.log*
 /data/*.db-shm
 /data/*.db-wal
 /data/resumes/
+/data/cv-archive/
 !/data/.gitkeep
 
 # background queue runner
 /data/queue-runner.log
 /data/queue-runner.pid
+/data/gmail-sync-runner.log
+/data/gmail-sync-runner.pid
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Ruflo local secrets and runtime data
+.env
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/

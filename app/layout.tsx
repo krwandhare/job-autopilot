@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+// Self-hosted via the `geist` package (next/font/local under the hood,
+// vendored .woff2 files in node_modules/geist) instead of next/font/google
+// -- next/font/google makes `next build` itself fetch from Google's
+// servers, which fails outright in a network-restricted build environment
+// even when compilation is otherwise healthy. The package's exported
+// variable names (--font-geist-sans/--font-geist-mono) already match what
+// globals.css expects, so no other change was needed.
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Job Autopilot",
@@ -26,20 +24,38 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <nav className="border-b px-8 py-3 flex items-center gap-6">
-          <span className="font-semibold">Job Autopilot</span>
-          <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
+        <nav
+          className="border-b px-4 sm:px-8 py-3 flex items-center gap-3 sm:gap-6 overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <span className="shrink-0 text-sm sm:text-base font-semibold">Job Autopilot</span>
+          <Link
+            href="/"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
             Dashboard
           </Link>
-          <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
-            Profile & Filters
+          <Link
+            href="/profile"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
+            <span className="sm:hidden">Profile</span>
+            <span className="hidden sm:inline">Profile & Filters</span>
           </Link>
-          <Link href="/autofill" className="text-sm text-gray-600 hover:text-gray-900">
+          <Link
+            href="/autofill"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
             Auto-fill
+          </Link>
+          <Link
+            href="/applications"
+            className="shrink-0 text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+          >
+            Applications
           </Link>
         </nav>
         <main className="flex-1">{children}</main>

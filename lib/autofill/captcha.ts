@@ -8,6 +8,15 @@ export type CaptchaCheck = {
   // (e.g. auto-moving the job to a dedicated "needs a code" queue the user
   // can batch through later, rather than just reporting generic failure).
   isVerificationCode?: boolean;
+  // True specifically for a post-submit "you must accept the terms/consent
+  // checkbox" validation error. Every checkbox this app can see during
+  // field scanning is already left as a manual field (see fieldMatcher.ts),
+  // so submit mode never attempts a click while one is visibly unchecked --
+  // this instead catches the case where the checkbox wasn't part of the
+  // scanned form at click time (e.g. it only renders as part of a
+  // validation-error banner after a failed submit attempt), the same way
+  // the verification-code prompt below can only be seen post-submit.
+  isConsentRequired?: boolean;
 };
 
 const CAPTCHA_PROVIDER_PATTERN = /recaptcha|hcaptcha|turnstile|arkoselabs|funcaptcha/i;
@@ -81,6 +90,28 @@ export async function detectCaptcha(page: Page): Promise<CaptchaCheck> {
         blocked: true,
         reason: `Bot-detection page detected ("${pattern.source}")`,
         isVerificationCode: true,
+      };
+    }
+  }
+
+  // Post-submit consent/terms-checkbox validation error: a dedicated,
+  // narrowly-scoped hook so this is reported as its own actionable reason
+  // rather than falling through to the generic blockPhrases case above (or,
+  // if none of those match either, a plain unconfirmed-timeout failure with
+  // no specific reason at all). Checking the box itself must stay manual --
+  // see AGENTS.md on grouped checkbox/consent fields -- this only names
+  // what's blocking so the human doesn't have to go hunting for it.
+  const consentRequiredPhrases = [
+    /please accept the terms to proceed/i,
+    /you must agree to the terms/i,
+    /accept (the )?(terms|consent) (and conditions )?to (proceed|continue|submit)/i,
+  ];
+  for (const pattern of consentRequiredPhrases) {
+    if (pattern.test(bodyText)) {
+      return {
+        blocked: true,
+        reason: `Bot-detection page detected ("${pattern.source}")`,
+        isConsentRequired: true,
       };
     }
   }

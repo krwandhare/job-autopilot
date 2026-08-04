@@ -1,0 +1,8 @@
+# Claude owns autofill behavior and its route/UI surface.
+app/api/autofill/**
+app/autofill/**
+lib/autofill/**
+scripts/queue-runner.sh
+SESSION.md
+TODO.md
+docs/**
