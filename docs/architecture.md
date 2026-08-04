@@ -50,11 +50,11 @@ Browser UI
 | `GET /api/jobs/[id]/cv-archive` | Return privacy-bounded metadata for CV snapshots attached to this exact job, newest first, without filesystem paths. |
 | `GET /api/jobs/[id]/cv-archive/[archiveId]/download` | Download an exact-job archived CV only after its path, existence, and recorded SHA-256 fingerprint are revalidated. |
 | `GET /api/resume-variants/[id]` | Return one variant and its ordered audit items. |
-| `PATCH /api/resume-variants/[id]` | Include or exclude one item while the variant remains a draft. |
+| `PATCH /api/resume-variants/[id]` | Accept exactly one validated format change or item-inclusion change while variant state permits it. |
 | `POST /api/resume-variants/[id]/approve` | Approve a current, non-stale, evidence-valid job-specific variant. |
 | `GET /api/resume-variants/[id]/artifacts` | Return validation summaries and download availability for a variant. |
-| `POST /api/resume-variants/[id]/artifacts` | Generate DOCX/PDF for an approved variant and round-trip validate every included line. |
-| `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX or PDF artifact without exposing its internal path. |
+| `POST /api/resume-variants/[id]/artifacts` | Generate DOCX/PDF for an approved variant, round-trip validate every included line, and return bounded generation failures. |
+| `GET /api/resume-variants/[id]/download/[format]` | Download only a passed DOCX/PDF artifact after path containment, filename, existence, and SHA-256 verification. |
 | `POST /api/jobs/sync` | Fetch every configured source, retain successful results, score and upsert jobs, and return generic per-source failures. |
 | `POST /api/jobs/sync-gmail` | With explicitly configured local Gmail OAuth credentials, read bounded unread LinkedIn alert threads, retain partial imports, report privacy-safe issue categories, and mark only fully attempted threads read. |
 | `POST /api/jobs/import-url` | Validate and normalize one public LinkedIn jobs URL, then import, score, and upsert it. Raw upstream failures are not returned to clients. |

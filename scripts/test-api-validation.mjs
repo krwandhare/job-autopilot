@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   boundedPositiveInteger,
   validateApplicationPatch,
   validateFilterConfig,
   validateLinkedInJobUrl,
   validateSourceConfig,
+  validateVariantPatch,
 } from "../lib/apiValidation.ts";
 import { sourceSyncFailure } from "../lib/sourceSync.ts";
+import { readResumeArtifactFile } from "../lib/artifactDownload.ts";
 
 assert.deepEqual(validateFilterConfig({}), {
   titleInclude: "",
@@ -67,8 +73,42 @@ assert.equal(validateApplicationPatch({ followUpAt: "not-a-date" }), null);
 assert.equal(validateApplicationPatch({ responseType: "pending" }), null);
 assert.equal(validateApplicationPatch({ unexpected: "value" }), null);
 
+assert.deepEqual(validateVariantPatch({ preferredFormat: "pdf" }), {
+  kind: "format",
+  preferredFormat: "pdf",
+});
+assert.deepEqual(validateVariantPatch({ itemId: 7, included: false }), {
+  kind: "item",
+  itemId: 7,
+  included: false,
+});
+assert.equal(validateVariantPatch({ preferredFormat: "pdf", included: true }), null);
+assert.equal(validateVariantPatch({ itemId: "7", included: true }), null);
+
 const safeSyncFailure = sourceSyncFailure("greenhouse");
 assert.match(safeSyncFailure, /Greenhouse/);
 assert.doesNotMatch(safeSyncFailure, /secret|https?:|stack/i);
+
+const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), "job-autopilot-artifact-access-"));
+try {
+  const variantDir = path.join(artifactRoot, "variants", "7");
+  fs.mkdirSync(variantDir, { recursive: true });
+  const artifactPath = path.join(variantDir, "tailored.pdf");
+  const bytes = Buffer.from("synthetic resume bytes");
+  fs.writeFileSync(artifactPath, bytes);
+  const artifact = {
+    file_path: artifactPath,
+    filename: "tailored.pdf",
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+  assert.deepEqual(readResumeArtifactFile(artifact, 7, artifactRoot), bytes);
+  assert.equal(readResumeArtifactFile({ ...artifact, file_path: "/etc/hosts" }, 7, artifactRoot), null);
+  fs.writeFileSync(artifactPath, "changed bytes");
+  assert.equal(readResumeArtifactFile(artifact, 7, artifactRoot), null);
+  fs.rmSync(artifactPath);
+  assert.equal(readResumeArtifactFile(artifact, 7, artifactRoot), null);
+} finally {
+  fs.rmSync(artifactRoot, { recursive: true, force: true });
+}
 
 console.log("Non-Auto-fill API validation checks passed.");

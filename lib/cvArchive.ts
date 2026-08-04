@@ -95,12 +95,14 @@ export function getCvArchiveForJob(
 }
 
 export function verifyCvArchiveFile(row: CvArchiveRow): Buffer | null {
-  const expectedJobDir = path.resolve(getCvArchiveDir(), String(row.job_id));
-  const resolvedFilePath = path.resolve(row.file_path);
-  if (!resolvedFilePath.startsWith(`${expectedJobDir}${path.sep}`)) return null;
-  if (!fs.existsSync(resolvedFilePath)) return null;
-
-  const bytes = fs.readFileSync(resolvedFilePath);
-  const actualSha256 = createHash("sha256").update(bytes).digest("hex");
-  return actualSha256 === row.sha256 ? bytes : null;
+  try {
+    const expectedJobDir = path.resolve(getCvArchiveDir(), String(row.job_id));
+    const resolvedFilePath = path.resolve(row.file_path);
+    if (!resolvedFilePath.startsWith(`${expectedJobDir}${path.sep}`)) return null;
+    const bytes = fs.readFileSync(resolvedFilePath);
+    const actualSha256 = createHash("sha256").update(bytes).digest("hex");
+    return actualSha256 === row.sha256 ? bytes : null;
+  } catch {
+    return null;
+  }
 }

@@ -985,3 +985,22 @@ Playwright test-runner discovery fix:
   `npx tsc --noEmit`, and `git diff --check` passed. No live database or
   external service was accessed. Next: audit remaining resume-artifact and CV
   archive route error boundaries.
+
+## 2026-08-03 resume artifact and archive boundaries
+
+- Resume-variant PATCH accepts exactly one preferred-format change or one
+  numeric item-inclusion change. Mixed, unknown, malformed, and ambiguous
+  payloads receive bounded 400 responses.
+- Artifact generation no longer exposes renderer, browser, filesystem, or
+  resume-processing exception text. Failed generation returns generic retry
+  guidance while validation failures retain their structured 422 summaries.
+- Artifact downloads now require the stored path to remain inside the exact
+  variant directory, require its basename to match the recorded filename, and
+  verify the stored SHA-256 before serving bytes. Missing, moved, changed, and
+  unreadable files fail safely.
+- CV archive verification now catches filesystem races/read failures while
+  preserving its exact-job containment and fingerprint checks.
+- `npm run test:api-validation`, `npm run test:cv-archive`,
+  `npm run test:resume-variants`, scoped ESLint, and `npx tsc --noEmit` passed.
+  No live database or personal resume was accessed. Next: finish the remaining
+  miscellaneous API error-boundary audit.

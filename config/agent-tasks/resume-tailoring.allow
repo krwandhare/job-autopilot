@@ -24,6 +24,7 @@ app/jobs/\[id\]/**
 app/autofill/page.tsx
 lib/db.ts
 lib/apiValidation.ts
+lib/artifactDownload.ts
 lib/gmailSync.ts
 lib/sourceSync.ts
 lib/resume.ts

@@ -161,3 +161,32 @@ export function validateApplicationPatch(
   }
   return body as ValidatedApplicationPatch;
 }
+
+export type ValidatedVariantPatch =
+  | { kind: "format"; preferredFormat: "docx" | "pdf" }
+  | { kind: "item"; itemId: number; included: boolean };
+
+export function validateVariantPatch(
+  body: Record<string, unknown>
+): ValidatedVariantPatch | null {
+  const keys = Object.keys(body);
+  if (
+    keys.length === 1 &&
+    keys[0] === "preferredFormat" &&
+    (body.preferredFormat === "docx" || body.preferredFormat === "pdf")
+  ) {
+    return { kind: "format", preferredFormat: body.preferredFormat };
+  }
+  if (
+    keys.length === 2 &&
+    keys.includes("itemId") &&
+    keys.includes("included") &&
+    typeof body.itemId === "number" &&
+    Number.isSafeInteger(body.itemId) &&
+    body.itemId > 0 &&
+    typeof body.included === "boolean"
+  ) {
+    return { kind: "item", itemId: body.itemId, included: body.included };
+  }
+  return null;
+}
