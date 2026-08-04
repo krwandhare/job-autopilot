@@ -57,4 +57,24 @@ assert.deepEqual(extractLeadsFromDigest(summaryOnlyDigest), []);
 const duplicated = `${digest}\n${BLOCK_SEP()}\n${digest}`;
 assert.equal(extractLeadsFromDigest(duplicated).length, 2);
 
+// LinkedIn's text/plain MIME part is generated from the HTML alternative
+// without decoding entities, so a real "&" in a title/company arrives
+// literally as "&amp;" -- must be decoded, not shown to the user as-is.
+const entityEncodedDigest = [
+  "Your job alert for Backend EngineerManage your job alerts: https://www.linkedin.com/comm/jobs/alerts?lipi=abc",
+  "",
+  "Jack &amp; Jill hiring Senior Backend Engineer at Raya",
+  "Jack &amp; Jill",
+  "Remote",
+  "View job: https://www.linkedin.com/comm/jobs/view/4444444444/?trackingId=abc",
+].join("\n");
+assert.deepEqual(extractLeadsFromDigest(entityEncodedDigest), [
+  {
+    jobId: "4444444444",
+    url: "https://www.linkedin.com/jobs/view/4444444444/",
+    title: "Jack & Jill hiring Senior Backend Engineer at Raya",
+    company: "Jack & Jill",
+  },
+]);
+
 console.log("Gmail digest parsing checks passed.");

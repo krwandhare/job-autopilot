@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type FilterRow } from "@/lib/db";
+import { parseJsonBody } from "@/lib/apiUtils";
 
 export async function GET() {
   const db = getDb();
@@ -24,7 +25,9 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const body = await req.json();
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body as Record<string, unknown>;
   const {
     titleInclude = "",
     titleExclude = "",

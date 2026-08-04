@@ -5,13 +5,19 @@ import { getDb, type ResumeRow } from "@/lib/db";
 import { fillFileField } from "@/lib/autofill/filler";
 import type { MissingField } from "@/lib/autofill/filler";
 import { getResumesDir } from "@/lib/runtimePaths";
+import { validateAutofillUpload } from "@/lib/uploadValidation";
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[/\\]/g, "_").replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 export async function POST(req: NextRequest) {
-  const formData = await req.formData();
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid or malformed form data" }, { status: 400 });
+  }
   const file = formData.get("file");
   const jobId = Number(formData.get("jobId"));
   const autofillId = String(formData.get("autofillId") ?? "");
@@ -26,7 +32,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const uploadError = validateAutofillUpload(file);
+  if (uploadError) {
+    return NextResponse.json({ error: uploadError }, { status: 400 });
+  }
+
   // Playwright's setInputFiles() attaches this exact file, and the real
   // application form reports its on-disk *basename* to the employer's ATS
   // as the uploaded filename -- so it must stay the user's original clean
@@ -35,9 +45,17 @@ export async function POST(req: NextRequest) {
   // looks unprofessional and reveals automation was used. Uniqueness on
   // disk comes from a per-upload subfolder instead of mangling the filename.
   const uploadDir = path.join(getResumesDir(), `autofill-${jobId}-${Date.now()}`);
-  fs.mkdirSync(uploadDir, { recursive: true });
   const filePath = path.join(uploadDir, sanitizeFilename(file.name));
-  fs.writeFileSync(filePath, buffer);
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    fs.mkdirSync(uploadDir, { recursive: true });
+    fs.writeFileSync(filePath, buffer);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to save the uploaded file" },
+      { status: 500 }
+    );
+  }
 
   // Picking a file for the resume field here also saves it as the app's
   // canonical stored resume, so every future job auto-attaches it without
@@ -52,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await fillFileField(jobId, { autofillId, key, label, kind }, filePath);
+  const filled = await fillFileField(jobId, { autofillId, key, label, kind }, filePath);
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, filled });
 }

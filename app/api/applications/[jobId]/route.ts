@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { updateApplication } from "@/lib/applications";
+import { parseJsonBody } from "@/lib/apiUtils";
 
 const RESPONSE_TYPES = ["interview", "rejected", "offer", "ghosted"] as const;
 
@@ -14,7 +15,9 @@ export async function PATCH(
     return NextResponse.json({ error: "jobId must be a positive integer" }, { status: 400 });
   }
 
-  const body: unknown = await req.json();
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }

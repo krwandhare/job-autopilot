@@ -171,12 +171,27 @@ assert python["requirement"]["priority"] == "required"
 assert python["status"] == "not_evidenced"
 '
 
+# Explicit mode="llm" must fail closed (never fabricate a variant) when no
+# ANTHROPIC_API_KEY is configured, rather than silently falling back. This
+# probe creates no variant either way, so it's safe to run before the real
+# creation call below.
+llm_mode_status="$(
+  curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:$PORT/api/jobs/1/resume-variant" \
+    -H "Content-Type: application/json" \
+    -d '{"mode":"llm"}'
+)"
+if [ "$llm_mode_status" != "409" ]; then
+  printf 'expected 409 for mode="llm" with no ANTHROPIC_API_KEY, got %s\n' "$llm_mode_status" >&2
+  exit 1
+fi
+
 variant="$(
   curl -fsS -X POST "http://127.0.0.1:$PORT/api/jobs/1/resume-variant"
 )"
 printf '%s' "$variant" | python3 -c '
 import json, sys
-variant = json.load(sys.stdin)["variant"]
+payload = json.load(sys.stdin)
+variant = payload["variant"]
 assert variant["status"] == "draft"
 assert len(variant["items"]) >= 7
 assert all(item["included"] for item in variant["items"])
@@ -185,7 +200,13 @@ assert any(
   "required" in item["rationale"] and "Kubernetes" in item["matchedTerms"]
   for item in variant["items"]
 )
+# No ANTHROPIC_API_KEY is configured in this disposable test environment,
+# so the default "auto" tailoring mode must fall back to the original
+# deterministic path -- not silently omit the field or claim LLM mode.
+assert payload["tailoringMode"] == "deterministic"
+assert "tailoringError" not in payload
 '
+
 variant_id="$(
   printf '%s' "$variant" |
     python3 -c 'import json,sys; print(json.load(sys.stdin)["variant"]["id"])'

@@ -183,11 +183,13 @@ function init(db: Database.Database) {
       status TEXT NOT NULL DEFAULT 'draft',
       job_fingerprint TEXT NOT NULL,
       preferred_format TEXT NOT NULL DEFAULT 'docx',
+      tailoring_mode TEXT NOT NULL DEFAULT 'deterministic',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       approved_at TEXT,
       CHECK (status IN ('draft', 'approved', 'superseded', 'rejected')),
-      CHECK (preferred_format IN ('docx', 'pdf'))
+      CHECK (preferred_format IN ('docx', 'pdf')),
+      CHECK (tailoring_mode IN ('deterministic', 'llm'))
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_resume_variants_approved_job
@@ -262,6 +264,16 @@ function init(db: Database.Database) {
   if (!variantCols.some((column) => column.name === "preferred_format")) {
     db.exec(
       "ALTER TABLE resume_variants ADD COLUMN preferred_format TEXT NOT NULL DEFAULT 'docx'"
+    );
+  }
+  if (!variantCols.some((column) => column.name === "tailoring_mode")) {
+    // SQLite can't add a CHECK-constrained column via ALTER TABLE on an
+    // existing table -- the CREATE TABLE above enforces it for new
+    // databases; existing rows just get the safe 'deterministic' default,
+    // which is accurate for every variant created before this column
+    // existed (LLM tailoring never persisted its mode before now).
+    db.exec(
+      "ALTER TABLE resume_variants ADD COLUMN tailoring_mode TEXT NOT NULL DEFAULT 'deterministic'"
     );
   }
 }

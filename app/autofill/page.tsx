@@ -46,9 +46,13 @@ type Phase =
   | "starting"
   | "blocked"
   | "needs_input"
+  | "needs_verification_code"
+  | "needs_field_fix"
   | "ready_for_review"
   | "queue_empty"
   | "error";
+
+type FieldValidationError = { label: string; message: string };
 
 // A dropped connection (phone locks, tab backgrounds mid-request, Wi-Fi
 // hiccup) makes fetch() itself reject -- browsers word that rejection
@@ -61,8 +65,42 @@ function friendlyNetworkError(err: unknown): string {
   return `Lost connection to the server (${message}). Check your network connection and try again.`;
 }
 
+// Shares the dashboard's --color-accent/--color-status-* tokens
+// (app/globals.css, app/page.tsx's ACTION_META) for the same outcome
+// semantics -- status-warning (#fab219) fails WCAG text-on-white contrast,
+// so its tint keeps dark amber text rather than text-status-warning.
+const STATUS_PILL_TONE: Record<"critical" | "warning" | "good", { dot: string; classes: string }> = {
+  critical: {
+    dot: "bg-status-critical",
+    classes: "border-status-critical/30 bg-status-critical/10 text-status-critical",
+  },
+  warning: {
+    dot: "bg-status-warning",
+    classes: "border-status-warning/40 bg-status-warning/10 text-amber-800",
+  },
+  good: {
+    dot: "bg-status-good",
+    classes: "border-status-good/30 bg-status-good/10 text-green-700",
+  },
+};
+
+// Collapses the two things previously shown as separate always-visible
+// warnings (no attachable resume, skills the posting wants that the resume
+// doesn't have) into one status read, so the card only ever needs one pill.
+function getStatusPill(job: QueueJob): { text: string; tone: "critical" | "warning" | "good" } {
+  if (!job.resumeAttachment) {
+    return { text: "No resume attached", tone: "critical" };
+  }
+  const gapCount = job.skillsInPostingNotInResume.length;
+  if (gapCount > 0) {
+    return { text: `${gapCount} skill gap${gapCount === 1 ? "" : "s"} vs. this posting`, tone: "warning" };
+  }
+  return { text: "Resume attached, no skill gaps", tone: "good" };
+}
+
 export default function AutofillPage() {
   const [job, setJob] = useState<QueueJob | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [phase, setPhase] = useState<Phase>("idle");
   const [reason, setReason] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<MissingField[]>([]);
@@ -72,6 +110,7 @@ export default function AutofillPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [completionAction, setCompletionAction] = useState<"applied" | "close" | null>(null);
   const [completionError, setCompletionError] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // "review" (default) always leaves the real submit click to the human.
   // "submit" is an opt-in, per-job escape hatch that also clicks the real
@@ -82,6 +121,10 @@ export default function AutofillPage() {
   const modeRef = useRef<"review" | "submit">("review");
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const [submitNote, setSubmitNote] = useState<string | null>(null);
+  const [verificationCodeDraft, setVerificationCodeDraft] = useState("");
+  const [verificationCodeSubmitting, setVerificationCodeSubmitting] = useState(false);
+  const [verificationCodeError, setVerificationCodeError] = useState<string | null>(null);
+  const [fieldValidationError, setFieldValidationError] = useState<FieldValidationError | null>(null);
 
   async function loadNextJob() {
     setPhase("idle");
@@ -91,8 +134,13 @@ export default function AutofillPage() {
     setMissingFields([]);
     setManualFields([]);
     setDrafts({});
+    setFieldValidationError(null);
     setAutoSubmitting(false);
     setSubmitNote(null);
+    setDetailsOpen(false);
+    setVerificationCodeDraft("");
+    setVerificationCodeSubmitting(false);
+    setVerificationCodeError(null);
     modeRef.current = "review";
     try {
       // A jobId in the URL resumes that specific job (e.g. one sitting in
@@ -110,7 +158,9 @@ export default function AutofillPage() {
       const data = await res.json();
       if (!res.ok) {
         setJob(null);
-        setReason(data.error ?? `Could not load the job (HTTP ${res.status}).`);
+        setReason(
+          data.error ?? "Could not load the next job. Try again, or check the dashboard."
+        );
         setPhase("error");
         return;
       }
@@ -123,6 +173,8 @@ export default function AutofillPage() {
     } catch (err) {
       setReason(friendlyNetworkError(err));
       setPhase("error");
+    } finally {
+      setInitialLoading(false);
     }
   }
 
@@ -131,16 +183,15 @@ export default function AutofillPage() {
     loadNextJob();
   }, []);
 
-  async function startFilling(mode: "review" | "submit") {
+  // Core of "Start filling", split out from startFilling() so resuming
+  // after a verification code is entered can re-enter the exact same flow
+  // without re-showing the submit-mode confirm dialog (the user already
+  // opted into that mode once for this job).
+  async function runStart(mode: "review" | "submit") {
     if (!job) return;
-    if (mode === "submit") {
-      const confirmed = window.confirm(
-        "This will automatically fill the application, acknowledge Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy when present, and click Submit once every other field is resolved -- no review step. Continue?"
-      );
-      if (!confirmed) return;
-    }
     modeRef.current = mode;
     setSubmitNote(null);
+    setVerificationCodeError(null);
     setPhase("starting");
 
     let res: Response;
@@ -148,6 +199,7 @@ export default function AutofillPage() {
       status: string;
       reason?: string;
       error?: string;
+      needsVerificationCode?: boolean;
       missingFields?: MissingField[];
       manualFields?: MissingField[];
     };
@@ -165,8 +217,19 @@ export default function AutofillPage() {
     }
 
     if (!res.ok) {
-      setReason(data.error ?? `Could not start filling this job (HTTP ${res.status}).`);
+      setReason(data.error ?? "Could not start filling this job. Try again in a moment.");
       setPhase("error");
+      return;
+    }
+
+    if (data.status === "blocked" && data.needsVerificationCode) {
+      // A human-in-the-loop pause, not a dead end: the page still shows the
+      // emailed-code prompt from an earlier attempt (or this one). Alert the
+      // user right here instead of the generic "blocked" banner, and offer
+      // an input that injects the code and resumes -- see
+      // submitVerificationCodeAndResume() below.
+      setReason(data.reason ?? null);
+      setPhase("needs_verification_code");
       return;
     }
 
@@ -183,6 +246,16 @@ export default function AutofillPage() {
     if (data.status === "ready_for_review") {
       await maybeAutoSubmit(data.manualFields ?? []);
     }
+  }
+
+  async function startFilling(mode: "review" | "submit") {
+    if (mode === "submit") {
+      const confirmed = window.confirm(
+        "This will automatically fill the application, acknowledge Twilio's Applicant Privacy Policy and Candidate AI Responsible Use Policy when present, and click Submit once every other field is resolved -- no review step. Continue?"
+      );
+      if (!confirmed) return;
+    }
+    await runStart(mode);
   }
 
   // Called every time the fill flow reaches "ready_for_review" -- right
@@ -207,7 +280,12 @@ export default function AutofillPage() {
     }
 
     setAutoSubmitting(true);
-    let data: { status: string; reason?: string };
+    let data: {
+      status: string;
+      reason?: string;
+      needsVerificationCode?: boolean;
+      fieldValidationError?: FieldValidationError;
+    };
     try {
       const res = await fetch("/api/autofill/submit", {
         method: "POST",
@@ -227,12 +305,109 @@ export default function AutofillPage() {
     if (data.status === "submitted") {
       setSubmitNote("Submitted. Marking Applied and loading the next job…");
       await markAppliedAndNext();
+    } else if (data.needsVerificationCode) {
+      // Pause the loop right here and alert the user in this same view --
+      // they're already watching this exact page, so this is the most
+      // "real-time" this alert can be. Resuming (submitVerificationCodeAndResume,
+      // below) re-enters the same submit flow via runStart().
+      setReason(data.reason ?? null);
+      setPhase("needs_verification_code");
+    } else if (data.fieldValidationError) {
+      // Same real-time, same-page pause as the verification-code case above,
+      // but for a specific invalid required field (including an unchecked
+      // consent checkbox) the DOM audit in lib/autofill/fieldValidation.ts
+      // caught after the submit click.
+      setFieldValidationError(data.fieldValidationError);
+      setReason(data.reason ?? null);
+      setPhase("needs_field_fix");
     } else {
       setSubmitNote(
         data.reason ??
           "Could not confirm the submission went through -- check the open browser window before marking this Applied."
       );
     }
+  }
+
+  // Injects a human-supplied emailed verification code into the open
+  // browser window and immediately resumes the submit click in the same
+  // backend call -- the code itself always comes from the user (their
+  // inbox, typed here), this only saves the alt-tab into the separate
+  // visible browser window.
+  async function submitVerificationCodeAndResume() {
+    if (!job) return;
+    const code = verificationCodeDraft.trim();
+    if (!code) return;
+    setVerificationCodeSubmitting(true);
+    setVerificationCodeError(null);
+    let data: {
+      status?: string;
+      error?: string;
+      submit?: {
+        status: string;
+        reason?: string;
+        needsVerificationCode?: boolean;
+        fieldValidationError?: FieldValidationError;
+      };
+    };
+    try {
+      const res = await fetch("/api/autofill/verification-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, code }),
+      });
+      data = await res.json();
+      if (!res.ok) {
+        setVerificationCodeError(data.error ?? "Could not enter the code. Try again.");
+        setVerificationCodeSubmitting(false);
+        return;
+      }
+    } catch (err) {
+      setVerificationCodeError(friendlyNetworkError(err));
+      setVerificationCodeSubmitting(false);
+      return;
+    }
+    setVerificationCodeSubmitting(false);
+
+    if (data.status !== "filled" || !data.submit) {
+      setVerificationCodeError(
+        data.status === "field_not_found"
+          ? "Could not find the code field automatically. Type the code directly into the open browser window, then use \"I entered it in the browser\" below."
+          : "Could not enter the code. Try again, or type it directly into the open browser window."
+      );
+      return;
+    }
+
+    setVerificationCodeDraft("");
+    const submit = data.submit;
+    if (submit.status === "submitted") {
+      setPhase("ready_for_review");
+      setSubmitNote("Submitted. Marking Applied and loading the next job…");
+      await markAppliedAndNext();
+    } else if (submit.needsVerificationCode) {
+      // The employer asked for another code (or the same one didn't take)
+      // -- stay right here so the user can try again immediately.
+      setReason(submit.reason ?? null);
+      setVerificationCodeError("That code didn't go through -- check it and try again.");
+    } else if (submit.fieldValidationError) {
+      setFieldValidationError(submit.fieldValidationError);
+      setReason(submit.reason ?? null);
+      setPhase("needs_field_fix");
+    } else {
+      // Filled and clicked, but couldn't confirm success -- same "review
+      // it yourself" outcome as a normal unconfirmed submit attempt.
+      setPhase("ready_for_review");
+      setSubmitNote(
+        submit.reason ??
+          "Entered the code and clicked submit, but couldn't confirm it went through -- check the open browser window."
+      );
+    }
+  }
+
+  // Fallback for when the code was typed directly into the real browser
+  // window instead (e.g. the field couldn't be located automatically) --
+  // just resumes the same flow without attempting to inject anything.
+  async function resumeAfterManualEntry() {
+    await runStart(modeRef.current);
   }
 
   async function answerField(field: MissingField, answer: string) {
@@ -268,7 +443,7 @@ export default function AutofillPage() {
     if (!res.ok) {
       setFieldErrors((e) => ({
         ...e,
-        [field.autofillId]: data.error ?? `Could not save this answer (HTTP ${res.status}).`,
+        [field.autofillId]: data.error ?? "Could not save this answer. Try again.",
       }));
       return;
     }
@@ -312,11 +487,19 @@ export default function AutofillPage() {
       return;
     }
     setSaving(null);
+    const data = await res.json().catch(() => ({}) as { error?: string; filled?: boolean });
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}) as { error?: string });
       setFieldErrors((e) => ({
         ...e,
-        [field.autofillId]: data.error ?? `Could not upload this file (HTTP ${res.status}).`,
+        [field.autofillId]: data.error ?? "Could not upload this file. Try again.",
+      }));
+      return;
+    }
+    if (data.filled === false) {
+      setFieldErrors((e) => ({
+        ...e,
+        [field.autofillId]:
+          "The file was saved, but couldn't be attached to the live form -- the browser window may have closed. Check it and try again.",
       }));
       return;
     }
@@ -450,7 +633,7 @@ export default function AutofillPage() {
     }
     if (!statusRes.ok) {
       const data = await statusRes.json().catch(() => ({}) as { error?: string });
-      setReason(data.error ?? `Could not skip this job (HTTP ${statusRes.status}).`);
+      setReason(data.error ?? "Could not skip this job. Try again.");
       setPhase("error");
       return;
     }
@@ -488,7 +671,7 @@ export default function AutofillPage() {
     }
     if (!statusRes.ok) {
       const data = await statusRes.json().catch(() => ({}) as { error?: string });
-      setReason(data.error ?? `Could not save this job for later (HTTP ${statusRes.status}).`);
+      setReason(data.error ?? "Could not save this job for later. Try again.");
       setPhase("error");
       return;
     }
@@ -505,6 +688,8 @@ export default function AutofillPage() {
     loadNextJob();
   }
 
+  const statusPill = job ? getStatusPill(job) : null;
+
   return (
     <div className="max-w-2xl mx-auto p-8 space-y-6">
       <div>
@@ -518,20 +703,28 @@ export default function AutofillPage() {
         </p>
       </div>
 
-      {phase === "queue_empty" && (
+      {initialLoading && (
+        <div className="border rounded-lg p-6 space-y-3 animate-pulse">
+          <div className="h-5 w-2/3 bg-gray-200 rounded" />
+          <div className="h-4 w-1/3 bg-gray-200 rounded" />
+          <div className="h-4 w-1/2 bg-gray-200 rounded" />
+        </div>
+      )}
+
+      {!initialLoading && phase === "queue_empty" && (
         <div className="border rounded-lg p-6 text-sm text-gray-500">
           No jobs with status &quot;New&quot; left to work through. Sync more jobs, or change some
           statuses back to New on the{" "}
-          <Link href="/" className="text-blue-600 hover:underline">
+          <Link href="/" className="text-accent hover:underline">
             dashboard
           </Link>
           .
         </div>
       )}
 
-      {!job && phase === "error" && (
+      {!initialLoading && !job && phase === "error" && (
         <div className="border rounded-lg p-6 space-y-3">
-          <p className="text-sm text-red-600">{reason}</p>
+          <p className="text-sm text-status-critical">{reason}</p>
           <button
             onClick={loadNextJob}
             className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
@@ -544,112 +737,157 @@ export default function AutofillPage() {
       {job && (
         <div className="border rounded-lg p-4 space-y-4">
           <div>
-            <p className="font-medium">{job.title}</p>
+            <p className="text-base font-semibold text-gray-950">{job.title}</p>
             <p className="text-sm text-gray-500">
               {job.company} · {job.location ?? "Unknown location"} · {job.source}
               {job.matchScore !== null && ` · score ${job.matchScore}`}
             </p>
             {job.status === "needs_code" && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+              <p className="text-xs text-amber-700 bg-status-warning/10 border border-status-warning/40 rounded px-2 py-1 mt-2 inline-block">
                 Resuming -- this one was previously blocked on an emailed verification code.
               </p>
             )}
             {job.status === "needs_review" && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 inline-block">
+              <p className="text-xs text-amber-700 bg-status-warning/10 border border-status-warning/40 rounded px-2 py-1 mt-2 inline-block">
                 Resuming -- the background queue runner couldn&apos;t resolve this one on its own and left it for you.
               </p>
             )}
-            <div className="mt-2 space-y-1 text-sm">
-              <p>
-                <span className="font-medium">Salary range:</span>{" "}
-                {job.salaryText ?? "Not listed"}
-              </p>
-              <p>
-                <span className="font-medium">Resume attachment:</span>{" "}
-                {job.resumeAttachment ? (
-                  <>
-                    {job.resumeAttachment.filename}{" "}
-                    <span
-                      className={
-                        job.resumeAttachment.source === "tailored"
-                          ? "text-green-700"
-                          : "text-gray-500"
-                      }
-                    >
-                      (
-                      {job.resumeAttachment.source === "tailored"
-                        ? `approved for this job · ${job.resumeAttachment.format?.toUpperCase()}`
-                        : "master resume fallback"}
-                      )
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-red-700">No attachable resume file</span>
-                )}
-              </p>
-              <p>
-                <span className="font-medium">Your skills mentioned in posting:</span>{" "}
-                {job.matchedSkills.length > 0 ? job.matchedSkills.join(", ") : "None"}
-              </p>
-              <p>
-                <span className="font-medium">Skills this posting mentions that aren&apos;t in your resume:</span>{" "}
-                {job.skillsInPostingNotInResume.length > 0
-                  ? job.skillsInPostingNotInResume.join(", ")
-                  : "None detected"}
-              </p>
-              {job.responsibilities && (
-                <p>
-                  <span className="font-medium">Roles &amp; responsibilities:</span>{" "}
-                  {job.responsibilities}
-                </p>
-              )}
-              {job.qualifications && (
-                <p>
-                  <span className="font-medium">Qualifications:</span> {job.qualifications}
-                </p>
-              )}
-              {!job.responsibilities && !job.qualifications && (
-                <p className="text-gray-400">
-                  Couldn&apos;t auto-detect labeled responsibilities/qualifications sections in this
-                  posting — check the full description on the job page.
-                </p>
-              )}
-            </div>
-            <Link
-              href={`/jobs/${job.id}`}
-              className="text-sm text-blue-600 hover:underline"
+
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((open) => !open)}
+              aria-expanded={detailsOpen}
+              aria-controls="autofill-job-detail-body"
+              className="mt-2 flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800"
             >
-              View job details
-            </Link>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={`h-3.5 w-3.5 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              {detailsOpen ? "Hide details" : "Show details"}
+            </button>
+
+            {detailsOpen && (
+              <div id="autofill-job-detail-body" className="mt-2 space-y-1 text-sm">
+                <p>
+                  <span className="font-medium">Salary range:</span>{" "}
+                  {job.salaryText ?? "Not listed"}
+                </p>
+                <p>
+                  <span className="font-medium">Resume attachment:</span>{" "}
+                  {job.resumeAttachment ? (
+                    <>
+                      {job.resumeAttachment.filename}{" "}
+                      <span
+                        className={
+                          job.resumeAttachment.source === "tailored"
+                            ? "text-green-700"
+                            : "text-gray-500"
+                        }
+                      >
+                        (
+                        {job.resumeAttachment.source === "tailored"
+                          ? `approved for this job · ${job.resumeAttachment.format?.toUpperCase()}`
+                          : "master resume fallback"}
+                        )
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-status-critical">No attachable resume file</span>
+                  )}
+                </p>
+                <p>
+                  <span className="font-medium">Your skills mentioned in posting:</span>{" "}
+                  {job.matchedSkills.length > 0 ? job.matchedSkills.join(", ") : "None"}
+                </p>
+                <p>
+                  <span className="font-medium">Skills this posting mentions that aren&apos;t in your resume:</span>{" "}
+                  {job.skillsInPostingNotInResume.length > 0
+                    ? job.skillsInPostingNotInResume.join(", ")
+                    : "None detected"}
+                </p>
+                {job.responsibilities && (
+                  <p>
+                    <span className="font-medium">Roles &amp; responsibilities:</span>{" "}
+                    {job.responsibilities}
+                  </p>
+                )}
+                {job.qualifications && (
+                  <p>
+                    <span className="font-medium">Qualifications:</span> {job.qualifications}
+                  </p>
+                )}
+                {!job.responsibilities && !job.qualifications && (
+                  <p className="text-gray-400">
+                    Couldn&apos;t auto-detect labeled responsibilities/qualifications sections in this
+                    posting — check the full description on the job page.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {phase === "idle" && (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <button
                 onClick={() => startFilling("review")}
-                className="bg-gray-900 text-white text-sm px-4 py-2 rounded"
+                title="Auto-fill (review before submit)"
+                className="flex flex-col items-center gap-1 rounded-lg bg-gray-900 px-2 py-2.5 text-white hover:bg-gray-800"
               >
-                Auto-fill (review before submit)
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                  <path d="M13 2 3 14h7l-1 8 11-14h-7l1-6z" />
+                </svg>
+                <span className="text-[11px] font-medium">Fill</span>
               </button>
               <button
                 onClick={() => startFilling("submit")}
-                className="bg-red-700 text-white text-sm px-4 py-2 rounded"
-                title="Also clicks the real submit button once everything's filled -- no review step"
+                title="Auto-fill & submit -- also clicks the real submit button once everything's filled, no review step"
+                className="flex flex-col items-center gap-1 rounded-lg bg-status-critical px-2 py-2.5 text-white hover:bg-red-800"
               >
-                Auto-fill &amp; submit
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                  <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
+                </svg>
+                <span className="text-center text-[11px] leading-tight font-medium">
+                  Auto-
+                  <br />
+                  submit
+                </span>
               </button>
               <button
                 onClick={saveForLaterAndNext}
-                className="border text-sm px-4 py-2 rounded"
-                title="Partial match -- keep it for review later instead of skipping outright"
+                title="Save for later -- partial match, keep it for review instead of skipping outright"
+                className="flex flex-col items-center gap-1 rounded-lg border border-gray-300 px-2 py-2.5 text-gray-700 hover:bg-gray-50"
               >
-                Save for later
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                  <path d="M6 2a2 2 0 00-2 2v18l8-5 8 5V4a2 2 0 00-2-2H6z" />
+                </svg>
+                <span className="text-[11px] font-medium">Later</span>
               </button>
               <button
                 onClick={skipJob}
-                className="border text-sm px-4 py-2 rounded"
+                title="Skip this job"
+                className="flex flex-col items-center gap-1 rounded-lg border border-gray-300 px-2 py-2.5 text-gray-500 hover:bg-gray-50"
               >
-                Skip this job
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+                <span className="text-[11px] font-medium">Skip</span>
               </button>
             </div>
           )}
@@ -664,7 +902,7 @@ export default function AutofillPage() {
 
           {(phase === "blocked" || phase === "error") && (
             <div className="space-y-3">
-              <p className="text-sm text-red-600">{reason}</p>
+              <p className="text-sm text-status-critical">{reason}</p>
               <div className="flex gap-2">
                 <button
                   onClick={finishAndNext}
@@ -673,6 +911,121 @@ export default function AutofillPage() {
                   Done with this one, next job
                 </button>
                 <button onClick={skipJob} className="border text-sm px-4 py-2 rounded">
+                  Skip this job
+                </button>
+              </div>
+            </div>
+          )}
+
+          {phase === "needs_verification_code" && (
+            <div className="space-y-3 rounded-lg border border-status-warning/40 bg-status-warning/10 p-4">
+              <div className="flex items-start gap-2">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-amber-600"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6Zm0 8a1 1 0 100-2 1 1 0 000 2Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">
+                    Verification code needed
+                  </p>
+                  <p className="mt-0.5 text-sm text-amber-800">
+                    {reason ??
+                      "The employer emailed a one-time verification code. Check your inbox, then enter it below or directly in the open browser window."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoComplete="one-time-code"
+                  value={verificationCodeDraft}
+                  onChange={(e) => setVerificationCodeDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && verificationCodeDraft.trim() && !verificationCodeSubmitting) {
+                      submitVerificationCodeAndResume();
+                    }
+                  }}
+                  placeholder="Paste the code here"
+                  disabled={verificationCodeSubmitting}
+                  className="flex-1 rounded border border-status-warning/40 px-3 py-2 text-sm disabled:opacity-50"
+                  suppressHydrationWarning
+                />
+                <button
+                  type="button"
+                  onClick={submitVerificationCodeAndResume}
+                  disabled={verificationCodeSubmitting || !verificationCodeDraft.trim()}
+                  className="shrink-0 rounded bg-amber-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {verificationCodeSubmitting ? "Entering code…" : "Enter code & continue"}
+                </button>
+              </div>
+
+              {verificationCodeError && (
+                <p className="text-sm text-status-critical">{verificationCodeError}</p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-status-warning/30 pt-3">
+                <button
+                  type="button"
+                  onClick={resumeAfterManualEntry}
+                  disabled={verificationCodeSubmitting}
+                  className="rounded border border-status-warning/40 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  I entered it directly in the browser — continue
+                </button>
+                <button onClick={skipJob} className="rounded border border-status-warning/40 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100">
+                  Skip this job
+                </button>
+              </div>
+            </div>
+          )}
+
+          {phase === "needs_field_fix" && (
+            <div className="space-y-3 rounded-lg border border-status-critical/40 bg-status-critical/10 p-4">
+              <div className="flex items-start gap-2">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-status-critical"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6Zm0 8a1 1 0 100-2 1 1 0 000 2Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-red-900">
+                    {fieldValidationError?.label ?? "The form rejected this submission"}
+                  </p>
+                  <p className="mt-0.5 text-sm text-red-800">
+                    {fieldValidationError?.message ??
+                      reason ??
+                      "A required field is invalid. Fix it in the open browser window, then continue."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-status-critical/30 pt-3">
+                <button
+                  type="button"
+                  onClick={resumeAfterManualEntry}
+                  className="rounded border border-status-critical/40 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100"
+                >
+                  Fixed it in the browser — continue
+                </button>
+                <button onClick={skipJob} className="rounded border border-status-critical/40 bg-white px-3 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100">
                   Skip this job
                 </button>
               </div>
@@ -786,7 +1139,7 @@ export default function AutofillPage() {
                     </div>
                   )}
                   {fieldErrors[field.autofillId] && (
-                    <p className="text-xs text-red-600">{fieldErrors[field.autofillId]}</p>
+                    <p className="text-xs text-status-critical">{fieldErrors[field.autofillId]}</p>
                   )}
                 </div>
               ))}
@@ -804,12 +1157,12 @@ export default function AutofillPage() {
                 proof that the employer received the application.
               </p>
               {submitNote && (
-                <p className="text-sm text-amber-700 border border-amber-200 bg-amber-50 rounded p-3">
+                <p className="text-sm text-amber-700 border border-status-warning/40 bg-status-warning/10 rounded p-3">
                   {submitNote}
                 </p>
               )}
               {manualFields.length > 0 && (
-                <div className="text-sm text-amber-700 border border-amber-200 bg-amber-50 rounded p-3">
+                <div className="text-sm text-amber-700 border border-status-warning/40 bg-status-warning/10 rounded p-3">
                   <p className="font-medium">These need your own input (never auto-filled):</p>
                   <ul className="list-disc list-inside">
                     {manualFields.map((f) => (
@@ -818,7 +1171,7 @@ export default function AutofillPage() {
                   </ul>
                 </div>
               )}
-              {completionError && <p className="text-sm text-red-600">{completionError}</p>}
+              {completionError && <p className="text-sm text-status-critical">{completionError}</p>}
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={markAppliedAndNext}
@@ -839,6 +1192,23 @@ export default function AutofillPage() {
                     : "Close without marking Applied"}
                 </button>
               </div>
+            </div>
+          )}
+
+          {statusPill && (
+            <div className="flex flex-col items-start gap-1 border-t pt-3">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${STATUS_PILL_TONE[statusPill.tone].classes}`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 rounded-full ${STATUS_PILL_TONE[statusPill.tone].dot}`}
+                />
+                {statusPill.text}
+              </span>
+              <Link href={`/jobs/${job.id}`} className="text-sm text-accent hover:underline">
+                View job details
+              </Link>
             </div>
           )}
         </div>

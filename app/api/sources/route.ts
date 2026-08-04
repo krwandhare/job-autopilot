@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type SourceConfigRow } from "@/lib/db";
+import { parseJsonBody } from "@/lib/apiUtils";
 
 export async function GET() {
   const db = getDb();
@@ -14,10 +15,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { type, config } = body as { type: string; config: Record<string, unknown> };
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { type, config } = parsed.body as { type?: unknown; config?: Record<string, unknown> };
 
-  if (!["greenhouse", "lever", "adzuna"].includes(type)) {
+  if (typeof type !== "string" || !["greenhouse", "lever", "adzuna"].includes(type)) {
     return NextResponse.json({ error: "Invalid source type" }, { status: 400 });
   }
 
@@ -30,7 +32,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { id } = await req.json();
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { id } = parsed.body as { id?: unknown };
+  if (!Number.isSafeInteger(id)) {
+    return NextResponse.json({ error: "id must be an integer" }, { status: 400 });
+  }
   const db = getDb();
   db.prepare("DELETE FROM source_configs WHERE id = ?").run(id);
   return NextResponse.json({ ok: true });

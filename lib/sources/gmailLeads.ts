@@ -5,6 +5,7 @@
 // dashes. The very first block is preceded by an unseparated alert-header
 // line ("Your job alert for X ... Manage your job alerts: <url>") which
 // must be stripped so it isn't mistaken for a job title.
+import { decodeEntities } from "./html.ts";
 
 const BLOCK_SEPARATOR = "---------------------------------------------------------";
 const VIEW_JOB_PATTERN = /View job:\s*(https:\/\/www\.linkedin\.com\/comm\/jobs\/view\/(\d+))[^\s]*/;
@@ -37,8 +38,11 @@ export function extractLeadsFromDigest(plaintextBody: string): ParsedLead[] {
       .filter((line) => !line.includes("trackingId"))
       .filter((line) => !line.includes("Manage your job alerts"));
 
-    const title = lines[0] ?? "";
-    const company = lines[1] ?? "";
+    // LinkedIn's text/plain MIME part is generated from the HTML
+    // alternative without decoding entities, so a title/company containing
+    // e.g. "&" arrives literally as "&amp;" -- decode before use.
+    const title = decodeEntities(lines[0] ?? "");
+    const company = decodeEntities(lines[1] ?? "");
 
     // The alert-summary header ("Your job alert for X ... N new jobs match
     // your preferences") isn't a real job posting; its "company" line is a

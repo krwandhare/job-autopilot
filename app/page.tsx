@@ -56,38 +56,52 @@ const STATUS_LABELS: Record<string, string> = {
   external_lead: "External Lead (LinkedIn, etc.)",
 };
 
-const ACTION_META: Record<
-  string,
-  { shortLabel: string; eyebrow: string; accent: string; panel: string }
-> = {
+// `dot` is a solid-color status indicator; `badge` is a tinted
+// background/text pairing sized for text-on-color contrast (a solid accent
+// like amber-500 fails WCAG for white text, so pills use a light tint with a
+// dark-enough text color instead, per the accent-plus-label convention
+// already used on the Applications page). needs_code/needs_review/drafted
+// are genuine outcome states (blocking/warning/in-progress) and share the
+// Applications page's --color-accent/--color-status-* tokens accordingly.
+// external_lead and watchlist are categorical, not outcome states (an
+// external lead isn't "bad" and a watchlist item isn't "in progress"), so
+// they intentionally keep their own distinct raw colors rather than being
+// forced onto a 4-color outcome palette that isn't designed to represent
+// them -- collapsing them onto reused tokens would make two visually
+// distinct Action Center categories harder to tell apart at a glance.
+// status-warning (#fab219) fails WCAG text-on-white contrast entirely (~1.8:1),
+// so its badge keeps the existing dark amber-800 text rather than
+// text-status-warning; status-critical/accent both pass and use the token
+// directly for badge text.
+const ACTION_META: Record<string, { shortLabel: string; dot: string; badge: string; panel: string }> = {
   needs_code: {
     shortLabel: "Verification",
-    eyebrow: "Verification code required",
-    accent: "bg-red-600",
-    panel: "border-red-200 bg-red-50/60",
+    dot: "bg-status-critical",
+    badge: "border-status-critical/30 bg-status-critical/10 text-status-critical",
+    panel: "border-status-critical/30 bg-status-critical/10",
   },
   needs_review: {
     shortLabel: "Needs review",
-    eyebrow: "Application needs your review",
-    accent: "bg-amber-500",
-    panel: "border-amber-200 bg-amber-50/60",
+    dot: "bg-status-warning",
+    badge: "border-status-warning/40 bg-status-warning/10 text-amber-800",
+    panel: "border-status-warning/40 bg-status-warning/10",
   },
   external_lead: {
     shortLabel: "External",
-    eyebrow: "External application",
-    accent: "bg-violet-500",
+    dot: "bg-violet-500",
+    badge: "border-violet-200 bg-violet-50 text-violet-700",
     panel: "border-violet-200 bg-violet-50/60",
   },
   drafted: {
     shortLabel: "Drafts",
-    eyebrow: "Draft ready to review",
-    accent: "bg-blue-500",
-    panel: "border-blue-200 bg-blue-50/60",
+    dot: "bg-accent",
+    badge: "border-accent/30 bg-accent/10 text-accent",
+    panel: "border-accent/30 bg-accent/10",
   },
   watchlist: {
     shortLabel: "Decisions",
-    eyebrow: "Decision needed",
-    accent: "bg-slate-500",
+    dot: "bg-slate-500",
+    badge: "border-slate-200 bg-slate-50 text-slate-700",
     panel: "border-slate-200 bg-slate-50/70",
   },
 };
@@ -157,6 +171,7 @@ export default function DashboardPage() {
   // add/remove, seeding, quick-decision buttons, the jobs/sources lists
   // themselves) -- one visible place instead of failing silently.
   const [pageError, setPageError] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   async function loadJobs(status: string, pageNum: number, includeNonMatches: boolean) {
     const params = new URLSearchParams({ page: String(pageNum) });
@@ -165,13 +180,16 @@ export default function DashboardPage() {
     try {
       const res = await fetch(`/api/jobs?${params.toString()}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Could not load jobs (HTTP ${res.status}).`);
+      if (!res.ok)
+        throw new Error(data.error ?? "Could not load jobs. Try again, or refresh the page.");
       setJobs(data.jobs);
       setMaxScore(data.maxScore ?? 0);
       setTotal(data.total ?? 0);
       setPageSize(data.pageSize ?? 50);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
+    } finally {
+      setInitialLoading(false);
     }
   }
 
@@ -179,7 +197,8 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/sources");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Could not load sources (HTTP ${res.status}).`);
+      if (!res.ok)
+        throw new Error(data.error ?? "Could not load sources. Try again, or refresh the page.");
       setSources(data.sources);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
@@ -209,6 +228,19 @@ export default function DashboardPage() {
     loadActions();
   }, [statusFilter, page, showAll]);
 
+  useEffect(() => {
+    // Lightweight background poll so a job newly parked as needs_code
+    // (e.g. an unattended queue-runner run hitting an emailed
+    // verification-code prompt while this dashboard tab just sits open)
+    // surfaces here without a manual "Refresh actions" click -- the
+    // closest a local, single-process, single-user app gets to a
+    // real-time push without adding a websocket/SSE layer for it.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") loadActions();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
   async function addSource(type: string, config: Record<string, unknown>) {
     try {
       const res = await fetch("/api/sources", {
@@ -218,7 +250,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not add that source (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not add that source. Try again.");
       }
       loadSources();
     } catch (err) {
@@ -235,7 +267,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not remove that source (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not remove that source. Try again.");
       }
       loadSources();
     } catch (err) {
@@ -248,7 +280,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/sources/seed", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Could not seed sources (HTTP ${res.status}).`);
+      if (!res.ok) throw new Error(data.error ?? "Could not seed sources. Try again.");
       setSyncMessage(
         `Added ${data.added} new companies (${data.totalAvailable} available in the seed list). Click "Sync jobs" to fetch their listings.`
       );
@@ -266,7 +298,7 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/jobs/sync", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Sync failed (HTTP ${res.status}).`);
+      if (!res.ok) throw new Error(data.error ?? "Sync failed. Try again in a moment.");
       if (data.sourcesConfigured === 0) {
         setSyncMessage(
           "No sources configured yet — add a Greenhouse/Lever slug or Adzuna search above, then sync."
@@ -296,6 +328,19 @@ export default function DashboardPage() {
       const data = await res.json();
       if (!res.ok) {
         setGmailSyncMessage(data.error ?? "Gmail sync failed");
+      } else if (data.imported === 0) {
+        setGmailSyncMessage(
+          data.threadsChecked === 0
+            ? "No unread alert emails found."
+            : `Checked ${data.threadsChecked} alert email(s), no new leads.`
+        );
+      } else if (data.rateLimited && data.threadsProcessed === 0) {
+        // Rate limit hit partway through the very first (still-unread)
+        // thread -- "0 alert emails" would otherwise read as "imported
+        // from nowhere" when leads clearly were imported.
+        setGmailSyncMessage(
+          `Imported ${data.imported} lead(s), rate limit reached partway through an alert email -- more next run.`
+        );
       } else {
         const cappedNote = data.rateLimited ? " (rate limit reached — more next run)" : "";
         setGmailSyncMessage(
@@ -313,6 +358,20 @@ export default function DashboardPage() {
 
   const [decidingJobId, setDecidingJobId] = useState<number | null>(null);
 
+  // Action cards default to a compact summary; only the tapped card reveals
+  // "why you're needed" and the continue action, keeping the list scannable
+  // one-handed on mobile.
+  const [expandedActions, setExpandedActions] = useState<Set<string>>(new Set());
+
+  function toggleAction(key: string) {
+    setExpandedActions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   async function decideAction(jobId: number, status: string) {
     setDecidingJobId(jobId);
     try {
@@ -323,7 +382,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(data.error ?? `Could not update this job (HTTP ${res.status}).`);
+        throw new Error(data.error ?? "Could not update this job. Try again.");
       }
     } catch (err) {
       setPageError(err instanceof Error ? err.message : friendlyNetworkError(err));
@@ -391,12 +450,12 @@ export default function DashboardPage() {
         </div>
       </div>
       {pageError && (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-status-critical/30 bg-status-critical/10 p-3 text-sm text-status-critical">
           <span>{pageError}</span>
           <button
             type="button"
             onClick={() => setPageError(null)}
-            className="shrink-0 font-medium text-red-700 hover:text-red-900"
+            className="shrink-0 font-medium text-status-critical hover:text-red-900"
           >
             Dismiss
           </button>
@@ -432,10 +491,15 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="Filter by what needs attention"
+        >
           {ACTION_STATUS_ORDER.map((status) => {
             const meta = ACTION_META[status];
             const count = actionCenter.counts[status] ?? 0;
+            const active = statusFilter === status;
             return (
               <button
                 key={status}
@@ -445,26 +509,27 @@ export default function DashboardPage() {
                   setPage(1);
                   document.getElementById("job-pipeline")?.scrollIntoView({ behavior: "smooth" });
                 }}
-                className="rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:border-gray-400 hover:shadow"
+                aria-pressed={active}
+                className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${meta.badge} ${
+                  active ? "ring-2 ring-gray-900 ring-offset-1" : ""
+                }`}
               >
-                <span className={`mb-3 block h-1.5 w-8 rounded-full ${meta.accent}`} />
-                <span className="block text-2xl font-semibold tabular-nums text-gray-950">
-                  {count}
-                </span>
-                <span className="text-xs font-medium text-gray-500">{meta.shortLabel}</span>
+                <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+                <span className="font-semibold tabular-nums">{count}</span>
+                <span>{meta.shortLabel}</span>
               </button>
             );
           })}
         </div>
 
         {actionsError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-xl border border-status-critical/30 bg-status-critical/10 p-4 text-sm text-status-critical">
             {actionsError}
           </div>
         )}
 
         {!actionsLoading && !actionsError && actionCenter.actions.length === 0 && (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
+          <div className="rounded-2xl border border-status-good/30 bg-status-good/10 p-5">
             <p className="font-medium text-emerald-900">You&apos;re caught up.</p>
             <p className="mt-1 text-sm text-emerald-700">
               No application currently needs a manual step or decision.
@@ -472,101 +537,132 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="space-y-2.5">
           {actionCenter.actions.map((action) => {
             const meta = ACTION_META[action.status] ?? ACTION_META.needs_review;
+            const key = `${action.jobId}-${action.id ?? action.status}`;
+            const expanded = expandedActions.has(key);
+            const panelId = `action-panel-${key}`;
             return (
               <article
-                key={`${action.jobId}-${action.id ?? action.status}`}
-                className={`rounded-2xl border p-5 ${meta.panel}`}
+                key={key}
+                className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                      {meta.eyebrow}
-                    </p>
-                    <h3 className="mt-1 truncate text-lg font-semibold text-gray-950">
-                      {action.title}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {action.company} · {action.location ?? "Location not listed"}
-                      {action.remote ? " · Remote" : ""}
-                    </p>
+                <button
+                  type="button"
+                  onClick={() => toggleAction(key)}
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  className="flex w-full items-center gap-3 p-4 text-left active:bg-gray-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-semibold text-gray-950">{action.title}</p>
+                    <p className="truncate text-sm text-gray-600">{action.company}</p>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs text-gray-500">{relativeTime(action.updatedAt)}</p>
-                    {action.matchScore != null && (
-                      <p className="mt-1 text-sm font-semibold text-gray-700">
-                        Match {Math.round(action.matchScore)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-white/80 bg-white/75 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Why you&apos;re needed
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-gray-800">{action.reasonText}</p>
-                  {action.details.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-sm text-gray-700">
-                      {action.details.slice(0, 3).map((detail) => (
-                        <li key={detail} className="flex gap-2">
-                          <span aria-hidden="true" className="text-gray-400">
-                            •
-                          </span>
-                          <span>{detail}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  {action.primaryHref.startsWith("http") ? (
-                    <a
-                      href={action.primaryHref}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
-                    >
-                      {action.primaryLabel}
-                    </a>
-                  ) : (
-                    <Link
-                      href={action.primaryHref}
-                      className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
-                    >
-                      {action.primaryLabel}
-                    </Link>
-                  )}
-                  <Link
-                    href={`/jobs/${action.jobId}`}
-                    className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.badge}`}
                   >
-                    Job details
-                  </Link>
-                  {action.status === "external_lead" && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => decideAction(action.jobId, "applied")}
-                        disabled={decidingJobId === action.jobId}
-                        className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                    {meta.shortLabel}
+                  </span>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className={`h-5 w-5 shrink-0 text-gray-400 transition-transform ${
+                      expanded ? "rotate-180" : ""
+                    }`}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+
+                {expanded && (
+                  <div id={panelId} className={`border-t p-4 ${meta.panel}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                      <span>
+                        {action.location ?? "Location not listed"}
+                        {action.remote ? " · Remote" : ""}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {action.matchScore != null && (
+                          <span className="font-semibold text-gray-700">
+                            Match {Math.round(action.matchScore)}
+                          </span>
+                        )}
+                        <span>{relativeTime(action.updatedAt)}</span>
+                      </span>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-white/80 bg-white/75 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Why you&apos;re needed
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-gray-800">{action.reasonText}</p>
+                      {action.details.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                          {action.details.slice(0, 3).map((detail) => (
+                            <li key={detail} className="flex gap-2">
+                              <span aria-hidden="true" className="text-gray-400">
+                                •
+                              </span>
+                              <span>{detail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {action.primaryHref.startsWith("http") ? (
+                        <a
+                          href={action.primaryHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                        >
+                          {action.primaryLabel}
+                        </a>
+                      ) : (
+                        <Link
+                          href={action.primaryHref}
+                          className="rounded-lg bg-gray-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                        >
+                          {action.primaryLabel}
+                        </Link>
+                      )}
+                      <Link
+                        href={`/jobs/${action.jobId}`}
+                        className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                       >
-                        I applied
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => decideAction(action.jobId, "rejected")}
-                        disabled={decidingJobId === action.jobId}
-                        className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        Not interested
-                      </button>
-                    </>
-                  )}
-                </div>
+                        Job details
+                      </Link>
+                      {action.status === "external_lead" && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => decideAction(action.jobId, "applied")}
+                            disabled={decidingJobId === action.jobId}
+                            className="rounded-lg border border-status-good/40 bg-status-good/10 px-3.5 py-2 text-sm font-medium text-emerald-800 hover:bg-status-good/20 disabled:opacity-50"
+                          >
+                            I applied
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => decideAction(action.jobId, "rejected")}
+                            disabled={decidingJobId === action.jobId}
+                            className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Not interested
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </article>
             );
           })}
@@ -716,7 +812,7 @@ export default function DashboardPage() {
             {importing ? "Importing…" : "Import"}
           </button>
         </div>
-        {importError && <p className="text-sm text-red-600">{importError}</p>}
+        {importError && <p className="text-sm text-status-critical">{importError}</p>}
       </section>
 
       <section id="job-pipeline" className="scroll-mt-6 space-y-3">
@@ -763,12 +859,19 @@ export default function DashboardPage() {
         </div>
 
         <div className="divide-y border rounded-lg">
-          {jobs.length === 0 && (
+          {initialLoading && (
+            <div className="space-y-3 p-4 animate-pulse">
+              <div className="h-4 w-2/3 bg-gray-200 rounded" />
+              <div className="h-4 w-1/2 bg-gray-200 rounded" />
+              <div className="h-4 w-3/5 bg-gray-200 rounded" />
+            </div>
+          )}
+          {!initialLoading && jobs.length === 0 && (
             <p className="p-6 text-sm text-gray-500">
               No jobs yet. Add a source and click &quot;Sync jobs&quot;, or import a LinkedIn URL.
             </p>
           )}
-          {jobs.map((job) => (
+          {!initialLoading && jobs.map((job) => (
             <div
               key={job.id}
               className="flex flex-col gap-3 p-4 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"

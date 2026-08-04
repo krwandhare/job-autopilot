@@ -73,13 +73,23 @@ export async function POST(
   }
 
   try {
-    const artifacts = await generateResumeArtifacts(db, variantId, {
+    const generated = await generateResumeArtifacts(db, variantId, {
       resumeText: resume.text,
       resumeFilename: resume.filename,
       company: job.company,
       jobTitle: job.title,
     });
-    const failed = artifacts.some((artifact) => artifact.validationStatus !== "passed");
+    const failed = generated.some((artifact) => artifact.validationStatus !== "passed");
+    // generateResumeArtifacts() returns only what it computed in-memory
+    // (format/filename/validationStatus/validation, no downloadUrl or
+    // createdAt) -- it persists to the DB but doesn't build the response
+    // shape the client needs. Re-read via the same summary builder the GET
+    // route uses so this response always carries a real downloadUrl,
+    // instead of the client silently receiving `downloadUrl: undefined`
+    // for every artifact on this direct-response path (previously masked
+    // only because loading a fresh page, or an unrelated tab-visibility
+    // refresh, would later reload the correctly-shaped GET data).
+    const artifacts = getResumeArtifactSummaries(db, variantId);
     return NextResponse.json(
       { artifacts },
       { status: failed ? 422 : 200 }

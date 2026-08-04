@@ -1,5 +1,1684 @@
 # Session Handoff
 
+## Route/database integration coverage for /api/filters and /api/jobs/[id]
+
+Requirement (from `TODO.md`, the natural next item after adding the
+`node --test` unit framework above): "Add route/database integration
+coverage using an isolated temporary SQLite database so tests never read
+or mutate `data/app.db`."
+
+- **Design choice, made deliberately rather than defaulting to the shiny
+  new tool**: considered importing `app/api/**/route.ts` handlers directly
+  into `node --test` files (faster than booting a real server), but every
+  route file imports via `@/*` path aliases (`tsconfig.json`'s
+  `moduleResolution: "bundler"` + `paths`), which Next.js's own bundler
+  resolves natively but Node's plain `--experimental-strip-types` ESM
+  loader has no built-in support for -- would need a custom
+  `module.register()` resolve hook to rewrite `@/` and fall back to
+  appending `.ts` for extensionless imports (a much larger dependency
+  graph than the five `lib/` modules the unit tests touch, since route
+  handlers pull in most of `lib/`). Weighed that against the existing,
+  already-proven bash+curl+`npm run start`+temp-`JOB_AUTOPILOT_DATA_DIR`
+  pattern used by every prior route E2E script in this repo (including
+  three added earlier this session) -- zero resolution risk, since it goes
+  through the real Next.js bundler exactly like production. Chose the
+  proven pattern over inventing new infrastructure for marginal speed gain.
+- Before picking routes, grepped every existing `scripts/test-*.sh`
+  script's actual `curl` targets (not assumed from memory) to find genuine
+  gaps -- of ~20 `app/api/**/route.ts` files, roughly a dozen had zero
+  route-level curl coverage. Of those, picked the two that are pure
+  DB-backed CRUD with no external-network or live-Playwright-session
+  dependency and meaningful internal logic worth testing:
+  - `scripts/test-filters-route.sh` (`npm run test:filters-route`):
+    confirms schema init already seeds a default `filters` row (GET is
+    never null on a fresh DB), that `PUT` upserts the single row rather
+    than inserting a new one on a second call (checked via a direct
+    `SELECT COUNT(*)`, not just the API response), that an empty-body PUT
+    resets fields to their defaults rather than merging with the prior
+    row (a real behavioral detail of the route's destructuring defaults,
+    not obvious from the API surface alone), and malformed-JSON handling.
+  - `scripts/test-job-detail-route.sh` (`npm run test:job-detail-route`):
+    404 for a nonexistent job; the full GET response shape; PATCH
+    rejecting an invalid status/malformed body/invalid action context/
+    invalid `applicationSource` (each confirmed to leave the DB row
+    untouched, not just return an error code); and the route's actual
+    side-effect logic -- PATCHing to `"applied"` creates a real
+    `applications` row via `createApplication()`, defaulting `source` to
+    `"external_lead"` when the job's prior status was `external_lead` and
+    `"manual"` otherwise (the route's own documented fallback rule);
+    re-PATCHing an already-`"applied"` job does not create a second
+    `applications` row; and PATCHing an actionable status with an
+    explicit `action` context persists the given reason in `job_actions`.
+    This route is exactly the kind of place a prior real bug in this repo
+    lived (`GET /api/jobs` applying a default filter even for an explicit
+    actionable-status request, documented earlier in this file) -- logic
+    that spans multiple DB tables inside one route handler, which neither
+    a pure-`lib/`-function unit test nor a plain field-persistence check
+    would catch.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed; both
+  new scripts verified passing live against a disposable database (not
+  the real `data/app.db`).
+- **Not yet done, deliberately scoped out**: roughly a dozen more routes
+  still have zero route-level integration coverage (`/api/applications`,
+  `/api/sources`, `/api/resume-variants/[id]`, etc. -- the DB-backed,
+  no-external-dependency ones; the autofill/sync/import-url routes need
+  either a live Playwright session or a mocked external fetch, which is a
+  larger, separate undertaking). Left as an explicit `TODO.md` item rather
+  than attempting to cover every route in one pass.
+
+## Automated test framework: node --test + deterministic unit fixtures
+
+Requirement (from `TODO.md`): add an automated test framework, an
+`npm test` script, and deterministic fixtures for matching, skill
+extraction, TXT resume parsing, draft generation, and source
+normalization. No framework existed before this -- only hand-rolled
+`scripts/test-*.mjs`/`.sh` scripts calling `node:assert` directly.
+
+- Chose Node's built-in test runner (`node --test`) over adding a
+  dependency (Jest/Vitest/etc.): zero new packages, and it reuses the
+  exact `--disable-warning=MODULE_TYPELESS_PACKAGE_JSON
+  --experimental-strip-types` invocation already proven throughout
+  `scripts/` for running `.ts` files directly without a build step.
+- New `tests/` directory, five files, 64 tests total:
+  - `tests/matching.test.ts` (21 tests): every hard-fail branch in
+    `scoreJob()` (title include/exclude, excluded company, remoteOnly,
+    location, min salary), skill-overlap scoring and the
+    `skillsInPostingNotInResume` reverse-direction gap calculation, score
+    clamping, and `maxPossibleScore()`'s ceiling math including the
+    documented remoteOnly/locations mutual exclusivity.
+  - `tests/skills.test.ts` (12 tests): word-boundary matching (confirms
+    "Java" does *not* false-positive-match inside "JavaScript" --
+    `skillAppearsInText`'s actual purpose), alias resolution (Postgres ->
+    PostgreSQL, K8s -> Kubernetes), dedup in `extractSkills()`, and a
+    sanity check that the `KNOWN_SKILLS` vocabulary itself has no
+    duplicate entries.
+  - `tests/resume.test.ts` (7 tests): `extractResumeText()`'s `.txt`
+    branch (UTF-8 passthrough including non-ASCII text, case-insensitive
+    extension), its unsupported-extension rejection, and `parseResume()`.
+  - `tests/draft.test.ts` (12 tests): every branch of `generateDraft()` --
+    company/title interpolation, the 6-skill cap, the generic fallback
+    phrasing when no skills matched, the 2-sentence resume highlight
+    (and its own fallback when the resume is empty), and a direct check
+    that no sponsorship/compensation/status claim ever appears in
+    generated text (this repo's own "never claim sponsorship/compensation
+    without evidence" rule, verified structurally rather than assumed).
+  - `tests/sources.test.ts` (12 tests): `fetchGreenhouseJobs()`/
+    `fetchLeverJobs()`/`fetchAdzunaJobs()` against mocked `global.fetch`
+    (Node's built-in `t.mock.method()`, no new dependency) with fixture
+    JSON responses -- these three functions combine the HTTP fetch and
+    `NormalizedJob` mapping in one exported function each, with no
+    separately-exported pure "normalize" step to call directly, so mocking
+    fetch was the only way to test the mapping deterministically without
+    a real network call. Covers remote-detection-from-title-or-location,
+    HTML-description stripping, Lever's salary-range string construction,
+    Adzuna's "unconfigured" early-throw (asserted via the fetch mock's
+    `callCount()` being 0 -- it never even attempts the request), and
+    Adzuna's `"?"` partial-salary/`"Unknown"`-company fallbacks.
+- **Two real, unplanned issues found and fixed while building this**,
+  not left as "known failures":
+  1. `lib/matching.ts` (`from "./skills"`) and
+     `lib/sources/greenhouse.ts`/`lever.ts` (`from "./html"`) had
+     extensionless relative imports. Next.js's bundler (`moduleResolution:
+     "bundler"`, `allowImportingTsExtensions: true` in `tsconfig.json`)
+     resolves these fine, but Node's native ESM loader under
+     `--experimental-strip-types` cannot -- confirmed the old
+     `--experimental-specifier-resolution=node` flag no longer helps
+     either (removed/no-op on this Node version). Fixed by adding the
+     explicit `.ts` extension, matching `lib/resume.ts`'s own existing
+     convention (`from "./skills.ts"`) -- not a new style, just extended
+     consistently to the two files that needed it for this to work.
+  2. Running the *full* suite (`node --test` with no path, which also
+     auto-discovers every `scripts/test-*.mjs`/`.sh` by Node's default
+     glob) surfaced a real regression from this session's earlier
+     `tailoring_mode` migration (see the tailoringMode entry below):
+     `scripts/test-resume-variants.mjs` builds its own hand-rolled
+     `resume_variants` schema rather than going through `lib/db.ts`'s
+     `init()`, and that hardcoded copy was missing the new column --
+     `createResumeVariant()`'s explicit-column `INSERT` failed outright
+     against it. Fixed by adding the column to that script's schema.
+     A sibling script, `scripts/test-resume-artifacts.mjs`, has the exact
+     same missing column but is *not* currently broken by it (its own
+     `INSERT` is positional/columnless, so the gap is silent, not active)
+     -- left alone rather than risked, since "fixing" it means also
+     renumbering an unrelated `VALUES (...)` list for no current bug;
+     noted in `TODO.md` as a known, harmless staleness instead.
+- `package.json`: `"test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON
+  --experimental-strip-types --test \"tests/*.test.ts\""` -- deliberately
+  scoped to the glob, not a bare `--test` or `--test tests/` (the latter
+  is actually interpreted as "require the module at path `tests`", not a
+  search root, and throws `MODULE_NOT_FOUND`; discovered by trial). A bare
+  `--test` with no path also works but sweeps in every existing
+  `scripts/test-*.mjs`/`.sh` script too (matching Node's default test-file
+  glob), which would make `npm test` slow, order-order-dependent on
+  installed browsers/servers, and redundant with those scripts' own
+  already-existing individual `npm run test:<name>` entries -- the glob
+  keeps `npm test` fast, side-effect-free, and precisely scoped to the
+  new deterministic units, which is what was actually asked for.
+  `npm run validate` now chains `lint && tsc --noEmit && test && build`.
+- Updated `AGENTS.md`'s "There is no automated test framework..." and
+  "There is currently no `npm test` script..." statements, which were no
+  longer accurate, plus its Validation Commands section, since AGENTS.md
+  is the shared Codex/Claude source of truth and per its own rule
+  ("update documentation when ... milestones change") a false claim there
+  would mislead every future session, not just this one.
+- `npm run lint`, `npx tsc --noEmit`, `npm test`, and `npm run build` all
+  verified passing individually. The chained `npm run validate` still
+  short-circuits at the pre-existing, unrelated Ruflo-scaffolding `lint`
+  errors already flagged in earlier entries this session (present in this
+  working directory before any of this session's own changes) -- stated
+  plainly rather than glossed over, not something this task caused or
+  fixed.
+- **Not yet done, deliberately out of scope for this task**: route/
+  database integration coverage (an isolated temp-SQLite-DB suite for API
+  routes) remains a separate, unaddressed `TODO.md` item -- `npm test`'s
+  new suite is pure deterministic units with zero I/O, not route/DB
+  coverage, by design.
+
+## Server-side upload limits and content/type validation
+
+Requirement (from `TODO.md`): add server-side upload limits and content/
+type validation for resume and autofill file uploads -- previously
+`POST /api/resume` had no size limit at all and only validated the
+extension deep inside `extractResumeText()`, after the entire file had
+already been buffered into memory; `POST /api/autofill/upload-file` had no
+validation whatsoever.
+
+- New `lib/uploadValidation.ts`: `validateResumeUpload()` (10MB cap, PDF/
+  DOCX/TXT extension allowlist, empty-file rejection) and
+  `validateAutofillUpload()` (25MB cap, executable/script extension
+  blocklist, empty-file rejection). Deliberately different strategies per
+  route: the resume route can use a strict allowlist since it only ever
+  needs to parse a resume; the autofill upload route legitimately attaches
+  whatever file type an employer's ATS field asks for (resume, cover
+  letter, portfolio, transcript, ...), so an allowlist there would break
+  real use cases -- a blocklist of executable/script extensions is the
+  right shape of guard for that route instead. Both check `file.size`
+  (already-parsed metadata, no buffering needed) before either route reads
+  `file.arrayBuffer()`, so an oversized file is rejected before spending
+  memory/CPU on buffering, parsing, or disk writes.
+- Wired into both routes with a plain 400 + user-facing message, matching
+  this codebase's existing `parseJsonBody()`-style error convention.
+- Extended `scripts/test-resume-upload.sh` (added this session, in an
+  earlier entry below) with three new assertions -- empty file, 11MB
+  oversized file (`truncate -s 11M`, no real disk write needed), and a
+  `.exe`-renamed valid file -- each asserting the exact 400 status and
+  error message, plus confirming none of the three rejected uploads left a
+  stray `resumes` row (still exactly 1, from the earlier valid-upload
+  assertion).
+- New `scripts/test-autofill-upload-validation.sh`
+  (`npm run test:autofill-upload-validation`): same three rejection cases
+  against `POST /api/autofill/upload-file` (empty, 26MB oversized, `.exe`
+  and `.sh` extensions), plus a fourth assertion in the other direction --
+  a plausible non-dangerous attachment (a small fake "portfolio.pdf") must
+  *not* be rejected by validation, confirming the blocklist isn't an
+  accidental resume-only allowlist in disguise. Only the validation step
+  itself is exercised (it runs and rejects before the route ever reaches
+  `fillFileField()`/needs an active Playwright session) -- a full live
+  attach-to-a-real-form path remains covered by this repo's existing
+  manual autofill verification, not by this script.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed;
+  confirmed the only lint findings anywhere in the tree are pre-existing,
+  in the untracked `.claude/helpers/*` Ruflo scaffolding, unrelated to this
+  change. Both new/extended test scripts verified passing live, not just
+  "should pass."
+- **Known limitation, stated plainly**: Next.js's `formData()` still fully
+  parses the incoming multipart body before any handler code (including
+  this new size check) runs, so this doesn't prevent the server from
+  receiving bytes over the wire for an oversized request -- it does
+  prevent the much more expensive downstream work (buffering into a
+  second copy, PDF/DOCX parsing, disk writes, DB inserts) from happening
+  for a file that will be rejected anyway. A true request-body-size cap
+  would need a custom server or middleware layer, which is a larger,
+  separate change not attempted here.
+
+## Extended the Applications-page color-token visual language app-wide
+
+Requirement (from `TODO.md`): extend the 2026-07-31 Applications-page UI
+overhaul's `--color-accent`/`--color-status-*` tokens (`app/globals.css`) to
+the rest of the app (dashboard, Auto-fill, job detail, Profile) for a
+consistent look -- explicitly scoped out of the original pass.
+
+Before starting, synced this branch with Codex's per AGENTS.md: fetched
+both, confirmed `origin/feature/codex-work` (tip `8343ed1`) was already a
+full ancestor of this branch (`git merge-base --is-ancestor`, both against
+local `HEAD` and `origin/feature/claude-autofill`) -- no merge was actually
+needed, Codex's work was already fully incorporated from an earlier session.
+
+Investigated before touching anything: grepped for actual `bg-accent`/
+`bg-status-*`/`text-accent`/etc. usage (Tailwind v4's `@theme` block turns
+`--color-accent` into real utility classes) and found only
+`app/applications/page.tsx` used them (19 occurrences); the other four pages
+used zero, each with their own ad-hoc raw Tailwind colors (`bg-green-*`,
+`bg-amber-*`, `bg-red-*`, `bg-blue-*`) for equivalent semantic meaning.
+
+**Scoping decisions, made deliberately rather than doing a blind find/replace**:
+- Only migrated genuine *outcome-severity* colors (blocking/error=critical,
+  attention-needed=warning, positive/success=good, in-progress/neutral/
+  link=accent). Left *categorical* (non-outcome) colors alone -- the
+  dashboard's `external_lead` (violet) and `watchlist` (slate) Action Center
+  categories, and the job detail page's "AI-tailored" pill (violet, added
+  in the tailoringMode session entry above) -- since collapsing distinct
+  categories onto a 4-color outcome palette not designed to represent them
+  would reduce, not improve, visual distinguishability.
+- Computed actual WCAG contrast ratios rather than guessing (formula:
+  relative luminance -> contrast ratio): `--color-status-critical` (#d03b3b)
+  passes AA-normal-text at ~5.22:1 and is used directly as text color;
+  `--color-accent` (#2a78d6) passes marginally at ~4.41:1 and is used for
+  links/toggles, matching the Applications page's own existing precedent;
+  `--color-status-good` (#0ca30c) at ~3.35:1 and especially
+  `--color-status-warning` (#fab219) at ~1.84:1 both fail outright as text
+  color on white, so every good/warning swap tokenizes only the
+  background tint/border/dot and keeps the existing dark Tailwind text
+  shade (green-700/800, amber-800/900) -- documented inline with a code
+  comment at each tone-map definition, not just in this log.
+- Never swapped a *solid, white-text* button's background to a status/
+  accent token unless the specific token passed white-text contrast at that
+  weight (verified `status-critical` does, ~5.22:1, e.g. Auto-fill's
+  "Auto-submit" button and the job-detail "Retry" button; `status-good`/
+  `status-warning`/`accent` at typical shades used for solid CTAs do not,
+  so "Approve this variant", "Generate files", the amber "Enter code &
+  continue", and the blue "Download" buttons all deliberately kept their
+  existing darker raw Tailwind shades -- swapping them would have been a
+  real accessibility regression, not a cosmetic improvement).
+- For the Profile page's evidence status "selected chip" style (the 3-way
+  status picker in the evidence edit sheet), followed the Applications
+  page's own already-established convention exactly (full-opacity token
+  border + light tint background + neutral `text-gray-900`, not colored
+  text) rather than inventing a new pattern.
+
+Touched files, one commit each, live-verified before moving to the next:
+`app/page.tsx` (Action Center `ACTION_META.needs_code/needs_review/drafted`,
+error/caught-up banners, "I applied" button), `app/autofill/page.tsx`
+(`STATUS_PILL_TONE`, the verification-code and field-validation-error
+panels' borders/icons/dividers, error text, links, the Auto-submit button),
+`app/jobs/[id]/page.tsx` (`COVERAGE_STYLES`/`COVERAGE_DOTS`, requirement
+stat cards, error/notice banners, the artifact validation pill, the source/
+tailored toggle), `app/profile/page.tsx` (`EVIDENCE_STATUS_META`, error
+banners, the detected-skills pill, the "Verify all resume content" notice).
+
+`npm run lint`, `npx tsc --noEmit`, and `npm run build` passed after every
+page. Verified live in headless Chromium against a disposable database for
+each page, seeding data that actually exercises every tone (all five Action
+Center statuses plus the empty "caught up" state; a job with a missing
+resume and one with skill gaps for Auto-fill's three pill tones; a job with
+both supported and not-evidenced requirements plus a created draft for job
+detail; evidence in all three verification states for Profile) --
+screenshots inspected directly each time, zero console/page errors, temp
+servers/data dirs removed afterward.
+
+**Not addressed, deliberately out of scope for this pass**: plain
+informational text with no accompanying background/border (e.g. "Filled
+everything it could", skill-gap counts, matched-term notes) was left on its
+existing dark Tailwind shade rather than tokenized -- there was no
+bg/border element to make consistent and no accessibility gap to close, so
+touching it would have been a cosmetic-only change with no clear benefit.
+The root layout's nav wrapping issue at 390px (a separate, pre-existing
+TODO item) was not touched.
+
+## Surfaced tailoringMode + "Regenerate with AI" in the resume-variant UI
+
+Requirement (from `TODO.md`): "surface `tailoringMode` (llm vs deterministic)
+per variant, and add a 'regenerate with AI' control -- the API already
+returns the field, nothing renders it yet."
+
+- Found the field wasn't actually durable: `POST /api/jobs/[id]/resume-variant`
+  computed `tailoringMode` and returned it in that one response, but never
+  persisted it, so `GET`/page-reload had no way to know which mode produced
+  the variant sitting in the database. Added a real `tailoring_mode` column
+  to `resume_variants` (`lib/db.ts`, `CHECK (tailoring_mode IN
+  ('deterministic', 'llm'))`, default `'deterministic'`) with the same
+  idempotent `PRAGMA table_info` + `ALTER TABLE ADD COLUMN` pattern already
+  used for `resumes.file_path`/`resume_variants.preferred_format` -- verified
+  live against a simulated pre-existing database (a hand-built old-shape
+  `resume_variants` table with a real inserted row, then started the app
+  against it): the column was added and the existing row correctly defaulted
+  to `'deterministic'`, not left null or erroring.
+- `createResumeVariant()`/`serializeResumeVariant()` in `lib/resumeVariants.ts`
+  now thread `tailoringMode` through and include it in every serialized
+  variant (not just the creation response), and the route passes its
+  already-computed `tailoringMode` into `createResumeVariant()` instead of
+  only returning it standalone.
+- `app/jobs/[id]/page.tsx`: a small dot+text pill next to the variant's
+  status ("AI-tailored" violet / "Deterministic" gray, never color alone)
+  reads the persisted field, so it survives a reload. New "Regenerate with
+  AI" button next to "Create new draft" (visible once a variant exists)
+  calls the same route with an explicit `{mode: "llm"}` body -- distinct
+  from the existing default button, which uses `"auto"` and silently falls
+  back to deterministic on a transient LLM failure. That silent-fallback
+  case is no longer actually silent: a new `tailoringNotice` (blue,
+  distinct from the amber `variantError`, since the draft did succeed) now
+  surfaces the route's `tailoringError` field when `auto` mode had to fall
+  back.
+- **Fixed a real latent bug found while wiring the new button**: the
+  existing primary button was `onClick={generateResumeVariant}` -- passing
+  the function directly hands React's `MouseEvent` as the first argument.
+  Harmless before (the function ignored its arguments), but adding an
+  optional `mode` parameter to support the new button would have made every
+  *existing* click silently pass a `MouseEvent` as `mode`, which the route
+  would then reject as invalid. Changed both call sites to
+  `onClick={() => generateResumeVariant()}` /
+  `onClick={() => generateResumeVariant("llm")}`.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live end-to-end against a disposable database (no
+  `ANTHROPIC_API_KEY` configured in this environment, so only the
+  already-existing deterministic/fallback paths could be exercised for
+  real, not an actual LLM call): seeded a job with a description and one
+  verified experience-evidence row, called the route directly to confirm
+  `tailoringMode: "deterministic"` on the default path and a real `409`
+  (`"AI tailoring requires ANTHROPIC_API_KEY..."`) when forcing
+  `mode: "llm"`, then drove the real page in headless Chromium -- confirmed
+  the "Deterministic" pill renders, the "Regenerate with AI" button is
+  present once a variant exists, and clicking it surfaces the exact 409
+  message in the UI (screenshot inspected directly). Zero unexpected
+  console/page errors (the one logged entry was the browser's own routine
+  "409 Conflict" network log for the intentionally-rejected request, not a
+  JS/React error). Temporary server, disposable data directory, and
+  verification scripts were all removed afterward.
+- **Not yet done**: no live verification with a real `ANTHROPIC_API_KEY`
+  configured -- the `mode: "llm"` success path (an actual tailored
+  response, `tailoringMode: "llm"` persisting and rendering as the violet
+  "AI-tailored" pill) remains unverified against a real Claude API call,
+  same pre-existing gap `TODO.md` already tracked before this change.
+
+## Test coverage for explorer-agent's manual-review queue (continuation of prior session)
+
+Requirement, continued from a prior conversation (recovered via `SESSION.md`/
+`TODO.md` since the original session's transcript wasn't accessible here):
+generate real test coverage for the items explorer-agent's classifier flagged
+as "manual review required" in `docs/explorer-agent/e2e-test-plan.md`, without
+weakening what the classifier means or auto-triggering real external side
+effects. The prior conversation had already rejected relabeling everything
+"safe" and rejected wiring `Fill`/`Auto-submit` into any automated test (both
+can submit a real job application for real, exactly what AGENTS.md forbids
+outside the two explicit human-driven modes), and settled on a narrower,
+user-approved split by actual risk:
+
+- **`Fill` / `Auto-submit`**: left as documented manual-verification steps
+  only, unchanged -- not touched by this session, consistent with the prior
+  refusal.
+- **`Sync Gmail leads` (`POST /api/jobs/sync-gmail`) / `Import` (`POST
+  /api/jobs/import-url`, LinkedIn URL import)**: real external side effects
+  (a real Gmail inbox read, a real LinkedIn page fetch) but read-oriented, no
+  application submission. Asked the user directly whether these should be
+  repeatable/re-runnable or occasional-manual-only, since re-running either
+  against real accounts on every test run risks duplicate imports/quota
+  burn; user chose **occasional, manual-only**. Built
+  `scripts/live-check-gmail-sync.mjs` and
+  `scripts/live-check-linkedin-import.mjs` -- plain Node scripts, deliberately
+  **not** wired to any `npm run test:*` alias or repeatable suite. Both
+  refuse to do anything without an explicit `--confirm` flag (verified live:
+  both print a clear warning and exit 1 without it), print only the
+  privacy-bounded summary fields the routes already return (title/company/
+  url/counts, never raw email bodies or full page content), and the LinkedIn
+  script requires an explicit `--url` for a real posting the user actually
+  wants imported -- it never guesses or defaults a target URL.
+- **`Generate draft` (`POST /api/draft/[id]`)**: purely local/deterministic
+  (`lib/draft.ts`), no external call, no real submission -- given real
+  automated, repeatable route-E2E coverage. New
+  `scripts/test-draft-generation.sh` (`npm run test:draft-generation`,
+  following the existing `test-jobs-status-filter-routes.sh` disposable-
+  server pattern: `npm run start` against a temp `JOB_AUTOPILOT_DATA_DIR`,
+  seeded via a direct `better-sqlite3` insert, exercised via `curl`) covers a
+  404 for a nonexistent job, a successful generation asserting the job
+  title/company and matched skills actually appear in the returned cover
+  letter, that the drafts row is actually persisted (not just returned), and
+  that generating twice for the same job succeeds rather than erroring.
+- **Resume upload (`POST /api/resume`)**: the file input itself handles real
+  personal data, but the route can be safely covered by automating the
+  upload of a *synthetic* fixture file instead of a real resume -- the exact
+  distinction `TODO.md` already calls out from a real prior incident where
+  test automation overwrote the live resume's `file_path`. New
+  `scripts/test-resume-upload.sh` (`npm run test:resume-upload`) uploads the
+  existing synthetic `fixtures/resume-tailoring/sample-resume.txt` fixture
+  (already `Jordan Example`/`@example.test` placeholder data, not new) against
+  a disposable `JOB_AUTOPILOT_DATA_DIR`, and asserts the response filename,
+  detected skills, the persisted `resumes` row, and that the file actually
+  landed under the *disposable* `resumes/` directory, not the real one.
+- Two real bugs found and fixed while getting these green, not left as
+  "known failures": (1) `curl -f` on the two intentional-non-200 status
+  checks (`/api/draft/999` expecting 404) made curl itself fail before the
+  assertion ever ran, aborting the whole script under `set -euo pipefail`
+  every time -- removed `-f` from status-code-only checks, kept it on calls
+  that should always succeed. (2) The resume-upload script's disposable-
+  directory assertion never matched: macOS's `$TMPDIR` already ends in `/`,
+  so `mktemp -d "$TMPDIR/..."` produces a double slash that Node's
+  `path.join()` silently normalizes away when writing `file_path`, so a
+  literal-slash-count glob comparison against the raw `mktemp` output never
+  matched a real (correct) upload. Fixed by canonicalizing `TEST_DATA` via
+  `cd "$TEST_DATA" && pwd` immediately after creation.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed --
+  confirmed the only lint findings anywhere in the tree are pre-existing,
+  in the untracked `.claude/helpers/*` Ruflo scaffolding, unrelated to this
+  change. `npm run test:draft-generation` and `npm run test:resume-upload`
+  both pass live, not just "should pass."
+- **Not yet done, deliberately left for the user**: neither
+  `live-check-gmail-sync.mjs` nor `live-check-linkedin-import.mjs` has
+  actually been run with `--confirm` -- that performs a real Gmail sync /
+  real LinkedIn fetch against real accounts and was correctly left for the
+  user to trigger deliberately, not something to run unilaterally while
+  building the harness. Only the refusal-without-`--confirm` path was
+  verified live.
+
+## Explorer-agent: read-only route/DOM crawler + generated E2E test plan (ship-feature run)
+
+Requirement: a recursive Playwright crawler that maps all reachable routes on
+localhost:3000, extracts actionable DOM elements (buttons/inputs/forms) per
+route and categorizes their input requirements, and outputs a JSON
+state-machine map flagging sensitive-input/complex-state-transition steps for
+manual review before generating a final E2E test plan.
+
+Built as a strictly **read-only** reconnaissance tool, not a test executor --
+several controls in this app (Start/"Fill" auto-fill, Auto-fill & submit,
+Sync, Delete, Save, Generate draft) are real state-mutating actions that
+AGENTS.md reserves for explicit user-authorized use, so the crawler only ever
+`page.goto`s and reads the DOM; it never clicks, types, or submits anything.
+
+- `lib/explorer/routes.ts`: pure `buildRouteTemplates`/`matchRoutePattern` --
+  normalizes concrete crawled paths (`/jobs/17`) to this app's actual
+  dynamic-route pattern (`/jobs/[id]`), discovered from the real
+  `app/**/page.tsx` and `app/api/**/route.ts` folder structure rather than
+  hardcoded, with an explicit `unmatched:<path>` fallback instead of a silent
+  wrong match.
+- `lib/explorer/classify.ts`: pure `classifyElement()` -- assigns a
+  requirement kind (text-input/file-upload/selection/boolean-input/
+  action-button/form-submit), a `sensitive` flag (password/file inputs,
+  SSN/passport/DOB-style label patterns), and a `flagForReview` + reason
+  using a recall-oriented verb heuristic (delete, submit, sync, import,
+  upload, save, generate, auto-fill/auto-submit, ...) -- the same
+  label/attribute-based classification style already used by
+  `lib/autofill/fieldMatcher.ts` for third-party ATS forms, with the same
+  fundamental limitation (can't see what an `onClick` handler does, only its
+  visible label).
+- `scripts/explorer-agent.mjs`: the Playwright BFS crawler. Preflights that
+  `--base-url` is reachable (never starts a server itself), discovers this
+  app's real route templates from the filesystem, crawls same-origin links
+  breadth-first capped at `--max-pages` *distinct route patterns* (not raw
+  pages -- every job row collapses to one `/jobs/[id]` visit), and writes
+  `docs/explorer-agent/site-map.json` (the state-machine: nodes, edges,
+  `unreachedRoutes` coverage-gap list, flat `manualReviewQueue`) plus a
+  generated `docs/explorer-agent/e2e-test-plan.md`.
+- **Privacy-safe extraction by construction, not by discipline**: the DOM
+  extraction inside `page.evaluate` never reads `<a>` link text, input
+  `value`s, or `<select>`/`<option>` contents -- all of which carry real
+  job/resume data in this app (job title as link text, skill chips, source
+  lists). It only records element type/attributes and `<button>`/form-field
+  label text, which in this codebase is static JSX copy, never a per-record
+  database value. Verified live (see below): the generated output contains
+  zero occurrences of the seeded fixture's job title, company, or URL.
+
+Verified live end to end, twice (once before and once after two
+classification fixes found by the first real run -- see below), against a
+disposable `git worktree` + isolated `JOB_AUTOPILOT_DATA_DIR` + a distinct
+port (3099), mirroring the pattern already established in this file's
+submission-guard/verification-code entries. `npm install` was required in
+the worktree (a symlinked `node_modules` breaks Turbopack's path checks --
+"Symlink [project]/node_modules is invalid, it points out of the filesystem
+root"). Seeded one clearly-synthetic job row ("Synthetic Fixture Role" /
+"Fixture Co" / `https://example.invalid/job/1`) directly via `better-sqlite3`
+so `/jobs/[id]` had something real to crawl. The crawl reached all 5 known
+page routes (`/`, `/profile`, `/autofill`, `/applications`, `/jobs/[id]`)
+with an empty `unreachedRoutes` list, and `grep` for the fixture's title/
+company/URL across both output files returned zero matches, confirming the
+privacy design holds against a real run, not just in theory.
+
+The first real run caught two genuine classification gaps that the unit
+tests, being hand-written, couldn't have exposed on their own -- both fixed
+and now covered by regression tests in
+`scripts/test-explorer-classify.mjs`:
+- `/autofill`'s "Fill" button -- the single most important control to flag,
+  since it opens a real Playwright session against an external employer ATS
+  -- wasn't matched by any verb pattern on its short visible text. Its
+  `title` attribute (`"Auto-fill (review before submit)"`) does say enough,
+  so `ExtractedElement` gained a `title` field folded into classification
+  (not just visible `label`), fixing this and one other button
+  ("Auto-submit") the same way.
+- `/jobs/[id]`'s "Generate draft" button (writes a new `drafts` row) wasn't
+  flagged -- the pattern list only matched "regenerate", not the plain
+  "generate" shown before a draft exists. Broadened to `/generate|reprocess/i`.
+
+Disposable worktree, isolated data dir, and background dev server were all
+torn down cleanly afterward (`git worktree remove --force`, `rm -rf` the temp
+data dir, killed the background process); `git worktree list` in this
+checkout shows only the real Codex and Claude worktrees. `npm run lint`,
+`npx tsc --noEmit`, and `npm run build` all pass on the final state.
+
+**Not yet done**: no attempt was made to crawl with `--headed` for a visual
+sanity check (headless-only so far); the `manualReviewQueue`/per-route plan
+in the committed `docs/explorer-agent/` output reflects the disposable
+fixture run above, not the user's real app state -- rerun
+`npm run explorer-agent` against a real (or another disposable) instance any
+time the UI changes meaningfully, since nothing regenerates it automatically.
+
+## Submission-guard: generic post-submit field-validation audit (ship-feature run)
+
+Requirement: implement a "submission-guard" that runs a field audit before/
+around submitting -- verify required inputs including consent checkboxes are
+valid, and if any field is empty or triggers a validation error, interrupt
+the flow, capture the specific field's error message, and surface it for
+manual intervention.
+
+Built on the same session as the prior consent-checkbox-phrase detection
+(`isConsentRequired` in `lib/autofill/captcha.ts`, previous entry below) but
+generalizes past hardcoded page-text phrases:
+
+- Added `lib/autofill/fieldValidation.ts`'s `findFieldValidationError()`: a
+  read-only DOM audit that finds the first visible required input the
+  browser has marked invalid, checking native HTML5 constraint validation
+  (`:validity`/`.validationMessage` -- this alone covers a plain
+  `<input required>` consent checkbox with no extra logic) and the ARIA
+  `aria-invalid="true"` + `aria-describedby` pattern some ATSes use instead.
+  Never focuses, checks, or corrects anything.
+- Wired into `lib/autofill/filler.ts`'s `attemptSubmitClick()` as a new
+  fallback tier, after the existing `detectCaptcha()` verification-code/
+  consent-phrase check and before the fully generic "couldn't confirm"
+  message -- so a specific field/error pair is reported whenever one is
+  available. `SubmitResult`'s `unconfirmed` variant gained
+  `fieldValidationError?: { label, message }`.
+  `handleUnconfirmedSubmit()` parks the job into the existing `needs_review`
+  human-in-the-loop queue (actionType `validation`, reasonCode
+  `field_validation_error`) rather than adding a new status -- unlike the
+  verification-code case, fixing an invalid field/checkbox is a one-click fix
+  in the still-open browser window, not something worth a dedicated queue.
+- `app/autofill/page.tsx` gained a `needs_field_fix` phase and a red
+  validation-error banner (mirroring the existing amber verification-code
+  banner) showing the exact captured label/message with "Fixed it in the
+  browser -- continue" and "Skip this job" actions. Wired into both
+  `maybeAutoSubmit()` and `submitVerificationCodeAndResume()`, since either
+  path can hit a newly-revealed invalid field.
+- Deliberately did not implement this in `lib/autofill/session.ts` (pure
+  browser/lock state, no page-interaction logic) or introduce a new
+  `needs_consent`-style status/JSON action schema as an early draft of the
+  requirement suggested -- kept the detection and DOM-interaction logic in
+  the modules that already own that concern, and reused the existing
+  `needs_review` queue for a fix that doesn't need its own lane.
+
+Verified live in a disposable `git worktree` + temporary SQLite DB (this
+checkout's own dev server was already running against live production data
+on port 3003, so testing happened in isolation, mirroring the prior
+verification-code exercise): a self-authored local HTML fixture inserts a
+required, unchecked consent checkbox into the DOM only inside the submit
+button's click handler (so the initial field scan sees zero manual fields
+and submit-mode proceeds to actually click). The full path was confirmed
+end to end -- `start` (submit mode) reported zero manual fields, `submit`
+returned `fieldValidationError: {label: "I agree to the Terms and
+Conditions", message: "Please check this box if you want to proceed."}`,
+and the job landed in SQLite as `status = 'needs_review'` with an
+unresolved `validation`/`field_validation_error` job_actions row containing
+the exact captured text. Lint, strict TypeScript, and the disposable
+worktree/DB/dev-server were all torn down cleanly afterward; `git status` in
+this checkout is unaffected except for the intended source changes.
+
+**Not yet done**: no automated regression test exists for this path (no test
+framework in the repo -- see TODO "Add an automated test framework"); only
+manually verified against a synthetic fixture, not a real ATS. The ARIA
+`aria-invalid`/`aria-describedby` branch is implemented but has not been
+exercised against a real posting that uses that pattern instead of native
+HTML5 validation.
+
+## Post-submit consent-checkbox-required detection (ship-feature run)
+
+Requirement: detect a post-submit "please accept the terms to proceed"
+style error banner, following the same pattern as the existing
+verification-code detection, and surface it for manual handling rather than
+a generic unconfirmed-submit failure.
+
+- `lib/autofill/captcha.ts`: added a dedicated `consentRequiredPhrases`
+  pattern list (distinct from the generic bot-detection phrases and the
+  verification-code phrases) and `isConsentRequired` on `CaptchaCheck`.
+- `lib/autofill/filler.ts`: `SubmitResult`'s `unconfirmed` variant gained
+  `needsConsent`, propagated from both the pre-click and post-click
+  `detectCaptcha()` calls. `handleUnconfirmedSubmit()` parks the job into
+  the existing `needs_review` queue (actionType `consent`, reasonCode
+  `consent_checkbox_required`) -- no new status/dashboard entry, since (like
+  the field-validation-error case documented above) the fix is a one-click
+  action in the already-open browser window, not something worth a
+  dedicated queue the way `needs_code` is for verification codes.
+- Verified with `npx tsc --noEmit` and `npm run lint` only at the time; the
+  broader submission-guard work above later exercised the same
+  `handleUnconfirmedSubmit()`/`needs_review` path live in a browser and
+  confirmed it parks correctly.
+- Never auto-checks the box -- detection and reporting only, consistent with
+  AGENTS.md's rule that consent/grouped-checkbox fields stay manual.
+
+## Investigated "silent submission instead of visible browser" report (ship-feature run)
+
+Requirement: "act as a senior automation engineer... investigate why the
+auto-fill task is triggering a silent submission instead of opening the
+visible browser window for manual review" -- check for a headless
+default, add an explicit visibility check before submitting, and add a
+fallback that opens a new window if the session fails to render.
+
+- **Investigated before assuming the premise was correct.** Checked both
+  `chromium.launch()` calls in this codebase: `lib/autofill/session.ts`
+  (the one actually used for job-application autofill/submission) is
+  already `headless: false` -- there is no code path where autofill runs
+  headless. The other call (`lib/resumeArtifacts.ts`, `headless: true`) is
+  unrelated: it only renders a static tailored-resume PDF and never
+  touches a job application. So the literal "headless mode" premise
+  doesn't hold; nothing needed forcing.
+- **More likely real explanation, stated as an assessment, not proven
+  fact**: this session's own earlier redesign compressed "Auto-fill
+  (review)" and "Auto-fill & submit" into a dense 4-icon row with short
+  labels ("Fill" / "Submit") sitting close together, mobile-first. "Auto-
+  fill & submit" genuinely does auto-click the real submit control by
+  design (the documented opt-in escape hatch) -- if a job's fields are
+  already fully answered, the whole open→fill→submit→confirm→close cycle
+  can finish in a couple of seconds, closing the visible window again
+  almost immediately. That's real headed automation, just easy to miss
+  or misclick into on a small screen, which plausibly reads as "silent
+  submission."
+- Implemented the genuinely valuable version of what was asked, mapped
+  onto this app's real architecture rather than a false premise:
+  - New `pageIsVisibleForSubmit()` in `lib/autofill/filler.ts`: checks
+    `document.visibilityState === "visible"` immediately before the real
+    submit click in `attemptSubmitClick()`. If not visible, calls
+    `page.bringToFront()` (restores the existing filled-in session rather
+    than discarding it and forcing a full refill, which a naive
+    "relaunch a new window" fallback would do) and re-checks; if still
+    not visible, refuses to click and returns `unconfirmed` with a clear
+    reason, exactly matching this file's existing "never guess, fall back
+    to manual" pattern everywhere else.
+  - The existing session-recovery fallback (`getOrCreateSession()` in
+    `session.ts`, already discards a disconnected/closed session and
+    opens a fresh headed window) already covers requirement 3's literal
+    "open a new window if the session fails to render" for the
+    genuinely-dead-session case; not duplicated.
+  - Relabeled the auto-submit button from "Submit" to two-line
+    "Auto-submit" in `app/autofill/page.tsx` for extra clarity against
+    "Fill" at a glance, addressing the misclick-risk assessment above.
+- **Verification honesty note, not glossed over**: attempted to empirically
+  prove the visibility check catches a real "window not visible" case via
+  two automated methods -- CDP `Browser.setWindowBounds({windowState:
+  "minimized"})` and cross-window occlusion via a second page's
+  `bringToFront()`. Neither produced a `"hidden"` `document.visibilityState`
+  in this sandboxed macOS environment (confirmed via `Browser.getWindowBounds`
+  that the CDP minimize call had literally no effect -- `windowState`
+  stayed `"normal"` before and after, a known limitation of CDP window-state
+  control on macOS, not evidence against the underlying mechanism, which is
+  a standard, long-established web platform API used broadly for exactly
+  this purpose). What *was* verified: the check does not produce false
+  positives -- confirmed `visibilityState` correctly reports `visible` in
+  the normal case, and a full live regression run through the real submit
+  flow (synthetic form, real non-headless browser, same technique as the
+  prior verification-code session) completed normally with the new check
+  in place, cross-checked at the database level (`jobs.status = 'applied'`,
+  a real `applications` row). Recommended next step: manually minimize the
+  real autofill browser window during a live auto-submit run to confirm
+  the refusal/`bringToFront()` behavior in practice, since it could not be
+  proven by automation here.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+
+## Human-in-the-loop verification-code entry (ship-feature run)
+
+Requirement: "act as a senior automation engineer... integrate a
+human-in-the-loop verification step" -- detect an emailed verification
+code prompt, pause automation immediately, push a real-time alert with an
+input box, and once entered inject it into the form and resume the
+submission loop.
+
+Started by investigating what already existed rather than assuming a
+blank slate, since this repo already has extensive verification-code
+infrastructure (`lib/autofill/captcha.ts`'s live-verified page-text
+detection for Twilio/Affirm/MongoDB, a `needs_code` job status, Action
+Center surfacing, a background success watcher). Found the actual gaps
+were narrower and more specific than "build this from scratch":
+
+- **Detection (req 1) already existed**: `detectCaptcha()`'s
+  `isVerificationCode` flag, live-verified against real postings.
+- **Pause (req 2) already existed**: `submitApplication()` already
+  returns `unconfirmed` and parks the job as `needs_code` without ever
+  clicking anything further.
+- **Alert + input box (req 3) and inject + resume (req 4) did not
+  exist end to end.** The only path back to a parked `needs_code` job was
+  the dashboard's "Resume" link, which just re-ran the full fill pipeline
+  -- and its leading `detectCaptcha()` check (page-*text*-based) would
+  immediately re-report the same block without exposing
+  `needsVerificationCode` in that response shape at all, a dead end with
+  no way forward except alt-tabbing into the real, separate, non-headless
+  Playwright browser window and typing the code there by hand.
+- New `lib/autofill/verificationCode.ts`: `findVerificationCodeField()`
+  locates the single visible text-like input for the code (label/aria/
+  placeholder/attribute heuristics, explicit false-positive exclusions for
+  zip/postal/country/promo/coupon/referral/discount "code" fields),
+  tagging it with the same `data-autofill-id` attribute `scanFields()`
+  uses so the existing, already-proven fill pipeline
+  (`fillAnsweredField`/`fillMatched`/`locatorFor`) fills it with zero new
+  fill mechanics -- only a new way to find the field. Deliberately
+  conservative: returns null (never guesses) unless exactly one candidate
+  exists, matching this app's fallback-to-manual default everywhere else.
+- **Found and fixed a real architectural bug while wiring the resume
+  step**: naively resuming via the full `runStart()`/`submitApplication()`
+  pipeline after filling the code would hit the *same* leading
+  `detectCaptcha()` text check again -- the "a verification code was sent
+  to..." instructional text plausibly stays in the DOM even after the
+  field is filled, so it would immediately re-block instead of ever
+  clicking submit again, bouncing right back into the code-entry phase.
+  Fixed by extracting the click-and-confirm portion of
+  `submitApplicationUnsafe()` into a shared `attemptSubmitClick()`, and
+  having the new `submitVerificationCode()` call it *directly* -- skipping
+  the redundant leading check it just handled by filling the code --
+  immediately after a successful fill, so "inject the code" and "resume
+  the loop" are one atomic backend action instead of two round trips that
+  could re-trigger the same block. Also factored the
+  park-as-`needs_code`-on-unconfirmed logic (previously only in
+  `submitApplication()`) into a shared `handleUnconfirmedSubmit()` so both
+  the original submit path and this new resume path park correctly (e.g.
+  if the code was wrong or a second verification step appears).
+- `lib/autofill/filler.ts`'s `RunFillerResult`'s `"blocked"` variant
+  gained an optional `needsVerificationCode` field, and the early
+  `detectCaptcha()` check in `runFillerUnsafe()` now sets it -- fixing the
+  dashboard-"Resume"-link dead end above; a subsequent session resuming an
+  already-parked job now also reaches the new alert UI instead of a
+  generic unrecoverable "blocked" banner.
+- New `POST /api/autofill/verification-code` route and
+  `submitVerificationCode(jobId, code)`: fills the code and immediately
+  re-attempts the submit click, returning `{status: "filled", submit:
+  SubmitResult}` (or `field_not_found`/`error`). Deliberately never
+  persists the code to `profile_answers` (unlike ordinary answered
+  fields, which are remembered for reuse across jobs) -- a one-time code
+  has no reuse value and a stale one has no business being offered as a
+  remembered answer on a future job's unrelated field.
+- `app/autofill/page.tsx`: new `"needs_verification_code"` phase, a
+  dedicated amber alert box (code input + "Enter code & continue", a
+  "I entered it directly in the browser -- continue" fallback for when
+  the field can't be located automatically, and Skip), reached from two
+  places -- `runStart()`'s blocked-with-code branch (the resume-from-
+  dashboard path) and `maybeAutoSubmit()`'s needsVerificationCode branch
+  (the live in-session path, the one this request's "real-time" framing
+  mainly describes: the user is already watching this exact page when
+  their own submit-mode attempt hits the code prompt, so transitioning
+  phase in place *is* the real-time alert, no polling needed for that
+  case). `startFilling()` was split into a thin confirm-dialog wrapper
+  and a reusable `runStart()` core so resuming after code entry doesn't
+  re-show the "this will auto-submit" confirm dialog the user already
+  answered once for this job.
+- `app/page.tsx`: added a 20-second background poll of `/api/actions`
+  (only while the tab is visible) so a job parked as `needs_code` by an
+  unattended process while the user is just looking at the dashboard --
+  not watching `/autofill` live -- also surfaces without a manual
+  "Refresh actions" click. The closest a local, single-process,
+  single-user app gets to a real push without adding a websocket/SSE
+  layer for it.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- **Verified live, end to end, through the real app (not mocked), with a
+  real non-headless browser window** (confirmed launchable in this
+  environment first): built a synthetic local HTTP-served application-form
+  page modeled on `captcha.ts`'s live-verified real page text ("a
+  verification code was sent to..."), seeded a job pointing at it, and
+  drove the actual webapp UI (a separate headless Playwright browser
+  driving the Next.js frontend, which itself drives the app's own
+  non-headless Playwright session server-side -- the same architecture a
+  real user's browser + this app's real backend would have) through: click
+  Submit → confirm dialog → the new "Verification code needed" alert
+  appeared with the exact live-verified detection reason text → typed a
+  code → "Enter code & continue" → resumed, clicked the real synthetic
+  submit control again, detected the "Thank you for applying" confirmation
+  → marked Applied → loaded the next job → correctly reported the queue
+  empty (single-job queue). Cross-checked directly against the database
+  afterward, not just the UI: `jobs.status = 'applied'` and a real
+  `applications` row (`source: autofill_submit`) existed. Zero console/page
+  errors throughout. Temporary servers (app + synthetic form) and all
+  scripts were removed afterward; the app's own browser session had
+  already closed itself cleanly through the normal finish flow before
+  cleanup ran.
+- **Known limitation, stated plainly rather than glossed over**: the new
+  `findVerificationCodeField()` locator strategies are verified against a
+  synthetic reconstruction of the real, live-verified page text, not
+  against an actual live employer verification screen (none was available
+  to test against this session) -- a live retest against a real Greenhouse/
+  Twilio/Affirm/MongoDB verification prompt remains the recommended next
+  step before fully trusting the auto-locate path in production, consistent
+  with how every other not-yet-live-verified autofill heuristic in this
+  codebase is flagged. The manual "I entered it directly in the browser"
+  fallback exists specifically so this doesn't become a dead end if the
+  heuristic misses on a real form.
+
+## Tailored resume draft: download state-management fix + UI overhaul (ship-feature run)
+
+Requirement (dual persona): as a senior backend engineer, debug the
+download button's state management -- ensure regenerate-files triggers a
+clean UI reset, only re-enable the button once parsing completes, and add
+a log-check to trace stale/null download URLs post-regeneration. As a
+senior UI engineer, overhaul the "Tailored resume draft" section: merge
+the verified-source/tailored-version cards into one block with a
+top-level toggle, turn "Parsing passed" into a small green pill next to
+the filename, and keep the layout tight so the download button stays
+visible.
+
+- **Found a real, pre-existing backend bug via the requested log-check,
+  not a hypothetical one.** `generateResumeArtifacts()`
+  (`lib/resumeArtifacts.ts`) returns
+  `{format, filename, validationStatus, validation}` -- it never included
+  `downloadUrl` or `createdAt`. The POST
+  `/api/resume-variants/[id]/artifacts` route returned that raw shape
+  directly as the response body. The frontend's `ResumeArtifact` type
+  claims both fields are always present (TypeScript couldn't catch this --
+  `res.json()` is untyped, so the mismatch was invisible at compile time),
+  so on the *original* success path (all formats pass first try),
+  `setResumeArtifacts(data.artifacts)` populated state with
+  `downloadUrl: undefined` for every artifact -- no working download link
+  right after a successful "Generate files" click, until something
+  unrelated (a tab-visibility refresh, navigating away and back) happened
+  to trigger `loadArtifacts()`, which *does* build the correct shape via
+  `getResumeArtifactSummaries()`. That incidental self-healing masked the
+  bug in normal use. Fixed at the source: the POST route now re-reads via
+  `getResumeArtifactSummaries(db, variantId)` after generation, for both
+  the 200 (all passed) and 422 (partial failure) responses, so the
+  response is always correctly shaped -- confirmed by first reproducing
+  the bug live via the new log-check (a `console.warn` fired for both
+  formats: "reports passed but downloadUrl is null"), then confirming
+  after the fix that the exact same warning no longer fires, only the
+  informational before/after trace line.
+- `generateArtifacts()` in `app/jobs/[id]/page.tsx`: `setResumeArtifacts([])`
+  now runs immediately when regeneration starts, before the fetch -- the
+  previous code left the *old* artifacts (including their downloadUrls)
+  visible and clickable for the entire in-flight window, which matters
+  because regeneration overwrites the same deterministic on-disk file path
+  each time (not timestamped), so a stale link during that window could
+  point at a file mid-rewrite. The trigger button itself was already only
+  re-enabled in `finally` (after parsing/validation genuinely completes,
+  success or failure) -- that part wasn't broken, just left as-is and
+  reconfirmed live. Also stopped discarding the POST response's
+  `data.artifacts` on the partial-failure (422) path and re-fetching via a
+  separate GET -- the route already persists and returns the fresh state
+  before responding, so applying `data.artifacts` directly (now correctly
+  shaped per the backend fix) removes an unnecessary round trip; the GET
+  fallback (`loadArtifacts()`) is kept only for the genuine
+  no-attempt-made case (variant not approved, no included evidence, bad
+  header -- nothing on disk changed, so restore rather than assume empty).
+  Added `console.info`/`console.warn` tracing of each format's
+  before/after `downloadUrl` and an explicit warning when a "passed"
+  artifact has a null URL -- the literal "log-check" asked for, which is
+  what surfaced the real bug above.
+- UI: the four-line `grid-cols-2` "Verified source"/"Tailored version"
+  cards per item became one block, with a single top-level `role="switch"`
+  toggle (reusing the exact toggle sizing already established on the
+  Profile page's "Remote only" control) above the whole items list --
+  toggling flips every item's displayed text between source and tailored
+  simultaneously, not per item. "Parsing passed"/"Validation failed" moved
+  from a top-row label next to the format name to a small
+  dot+text rounded-full pill directly beside the filename (green for
+  passed, red for failed -- the request only specified green for the
+  passed case, red for failed is a direct, low-risk extension of the same
+  pill treatment, not a new color choice). Artifact cards tightened
+  (`p-3`→`p-2.5`, fewer intermediate margins) and the download link
+  restyled from a plain underlined text link into a small solid button, so
+  it reads as a clear, always-visible primary action rather than something
+  that could be scrolled past.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium against a disposable database driven
+  through the *real* end-to-end flow via actual UI clicks (not mocked):
+  extracted and bulk-verified evidence through the real API, clicked
+  "Create tailored draft", toggled source/tailored on an item with a
+  genuine difference ("...Present." vs "...Present", confirming the
+  toggle truly swaps content, not coincidentally-identical text from an
+  earlier check), approved the variant, generated files, then clicked
+  "Regenerate files" and captured state 50ms after the click: confirmed
+  zero download links present and the button showing "Generating…" during
+  the in-flight window (the state-reset fix), and after completion
+  confirmed both download links returned with real, non-null URLs and the
+  button re-enabled -- with the diagnostic trace showing no "passed but
+  null" warning, unlike the first (pre-fix) run against the same data,
+  which did fire it for both formats. Screenshots at 390px and 1280px
+  confirmed the merged single-column toggle view, the green "Passed" pills
+  beside each filename, and tight, always-visible download buttons. Zero
+  console/page errors throughout. The temporary server, disposable data
+  directory, and verification scripts were all removed afterward; no live
+  personal data was read or changed.
+
+## Job detail "Resume requirement coverage" mobile overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... optimize the resume
+requirement coverage section for mobile" -- collapse the long
+qualification list into a scrollable summary widget with an "expand all"
+drawer, consolidate the "why this score" keyword list into a compact
+2-column grid, and keep the "Refresh analysis" button visible at the top
+without scrolling.
+
+- Scoped to `app/jobs/[id]/page.tsx`'s "Why this score" panel and "Resume
+  requirement coverage" section; the tailored-resume-draft section and
+  description below were left untouched.
+- Requirement list: replaced the always-expanded `space-y-3` stack of full
+  `<article>` cards (priority/kind/status tags, full text, matched/missing
+  terms, related evidence -- easily 6-10+ lines each) with a
+  `max-h-72 overflow-y-auto` bounded widget of one-line rows (a tiny
+  priority badge R/P/C, truncated requirement text, and a compact
+  dot+label status pill). A count label ("N requirements") and an
+  "Expand all" button sit above it. "Expand all" opens a bottom-sheet
+  drawer (same slide-up/Escape-to-close/body-scroll-lock pattern already
+  used for the Profile page's evidence editor, reused verbatim here for
+  consistency) containing the original full-detail cards unchanged --
+  nothing about the data or full-detail view was removed, it only moved
+  behind the drawer so the section's default height stays small regardless
+  of how many requirements a posting has.
+- Because the requirement list no longer inline-expands the section's
+  height, the "Refresh analysis"/"Analyze requirements" button (already
+  structurally first in the section, before any list content) now stays
+  near the top of the page in practice too -- verified live rather than
+  assumed: screenshotted after a real analysis with 13 requirements at
+  both 390px and 1280px and confirmed the button sits directly above a
+  short, bounded widget with no long list pushing it out of initial view.
+- "Why this score": the two keyword lists (skills mentioned/not mentioned
+  in the posting, previously comma-joined prose paragraphs) became a
+  `grid-cols-2` layout of wrapped pill chips, one column each, under the
+  existing prose `reasons` bullet list (left untouched -- it's sentences,
+  not a keyword list).
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database: seeded a real resume (the repo's sample-resume.txt
+  fixture) and a job with a 7-line qualifications + 5-line responsibilities
+  description plus crafted match-reasons data; extracted and bulk-verified
+  evidence through the real `/api/resume/evidence` endpoints (analysis
+  requires verified evidence, matching this repo's existing design) so the
+  live "Analyze requirements" flow produced real data, not a mock. Confirmed
+  the "why this score" grid renders both columns, confirmed a real
+  `Analyze requirements` click produced 13 requirements with the widget's
+  `scrollHeight` (480) exceeding its `clientHeight` (286) -- proving actual
+  bounded internal scroll, not just a tall box -- and confirmed the "Expand
+  all" drawer shows the exact same 13 items in full detail (counts
+  cross-checked, not assumed equal). Zero console/page errors at both
+  widths. Screenshots inspected directly. The temporary server, disposable
+  data directory, and verification script were all removed afterward; no
+  live personal data was read or changed.
+
+## Cross-branch investigation: 11 orphaned live applications (ship-feature run)
+
+Requirement: "the submitted applications list is empty despite the
+dashboard being live" -- investigate the data-ingestion flow and identify
+the root cause.
+
+- Live-inspected (read-only, then with explicit approval, read/write) the
+  actual database backing the running dashboard rather than assuming the
+  bug from the 2026-07-31 SESSION.md entry was already fully resolved.
+  Traced the running `next dev` process on port 3003 to its actual cwd
+  (`job-autopilot-claude`, this worktree, `feature/claude-autofill`) and
+  its actual data directory (resolved via `npm run dev:shared`'s dynamic
+  `git rev-parse --path-format=absolute --git-common-dir` lookup to the
+  *primary* worktree's `data/`, `/Users/kamleshwandhare/projects/
+  job-autopilot/data`) -- confirming the live dashboard's real data lives
+  outside this worktree's own local `data/`, which is a separate,
+  long-stale 163KB file this worktree only ever touches via a plain
+  `npm run dev` (no `dev:shared`).
+- Root cause, confirmed with certainty: the shared live database had 11
+  jobs at `status = 'applied'` (Airbnb, Gusto, Twilio x2, Affirm x2,
+  MongoDB, Reddit, Scale AI, Fivetran, SuprAIJobs) with zero matching
+  `applications` rows. `lib/autofill/filler.ts`'s `startSubmissionWatcher()`
+  is the only "mark applied" path that writes `jobs.status` directly via
+  raw SQL instead of going through `createApplication()` -- exactly the bug
+  already found and fixed on this branch (`feature/claude-autofill`) on
+  2026-07-31 for one earlier job (23). This worktree's own `filler.ts`
+  already has that fix (confirmed by reading it, not assumed); the
+  *primary* worktree -- checked out on **Codex's `feature/codex-work`**,
+  the branch that actually creates commits there -- did not. No Codex dev
+  server was found currently running (`pgrep`/`lsof` for port 3002 came up
+  empty), so these 11 are historical: almost certainly created by an
+  earlier Codex session against the shared database before this branch's
+  July 31 fix landed, then never discovered/backfilled the way job 23 was
+  that day.
+- User-directed resolution (asked via three clarifying rounds before
+  touching anything, since this crosses into another agent's branch and
+  real personal application data):
+  1. **Code fix ported to the primary worktree**, `/Users/kamleshwandhare/
+     projects/job-autopilot/lib/autofill/filler.ts` -- the identical,
+     already-proven fix (read job's prior status/company inside the same
+     transaction, call `createApplication()` with `source:
+     "autofill_submit"` on a real `new -> applied` transition), plus the
+     matching `createApplication` import. Lint, strict TypeScript, and
+     `npm run build` all passed there. **Left uncommitted** in that
+     worktree at the user's explicit direction -- `feature/codex-work` is
+     Codex's branch, not mine to commit to; `git status` there shows only
+     this one modified file plus the gitignored backup/`test-results/`
+     noise.
+  2. **Backfilled the 11 orphaned applications** in the shared live
+     database, after backing it up first
+     (`data/app.db.bak.20260801083502` in the primary worktree). Used
+     `createApplication()` itself (not a raw INSERT) so company
+     lookup/creation and the idempotent-per-job guarantee matched the real
+     code path exactly, `source: "autofill_submit"`, then corrected
+     `applied_at` (which `createApplication()` always defaults to "now")
+     to `2026-07-31 00:19:00` -- confirmed via an older pre-repair backup
+     snapshot that all 11 were already `applied` by that point, and no
+     more precise per-job timestamp exists anywhere in the schema (no
+     applied-at column on `jobs`, no matching `job_actions`/
+     `queue-runner.log` entries for 10 of the 11). Documented as an
+     explicit approximation in each row's `notes` field rather than
+     silently backdating without a record. Backdating to "now" instead
+     would have been worse: it would have misattributed all 11 to today in
+     this session's own new weekly funnel/trend metrics. Verified
+     afterward with a fresh read-only pass: every previously-orphaned
+     `applied` job now has exactly one matching `applications` row, and no
+     `applications` row references a nonexistent job (both directions of
+     the join checked empty).
+  3. **This worktree's `.env.local`** now sets `JOB_AUTOPILOT_DATA_DIR` to
+     the primary worktree's `data/` explicitly, so a plain `npm run dev`
+     here (without `dev:shared`) can no longer silently diverge onto its
+     own separate local database the way it evidently already had.
+     Verified the resolution logic directly (`resolveDataDir()`'s exact
+     env-var-read behavior) rather than fighting Next.js's expected
+     single-dev-server-per-directory lock, which correctly refused a
+     second `next dev` in this same directory while port 3003's instance
+     was already running. Not added to `.env.local.example` -- the
+     absolute path is specific to this machine's worktree layout, not a
+     portable template default.
+- This worktree's own `filler.ts` needed no change (already fixed); the
+  only file this produced here is the gitignored `.env.local` edit, so
+  there is nothing new to commit on `feature/claude-autofill` for the code
+  itself -- only this documentation update.
+- Not yet done, deliberately left for the user/a Codex session: reviewing
+  and committing the `filler.ts` fix on `feature/codex-work` in the
+  primary worktree. The live dashboard (port 3003, this worktree's already
+  -fixed code) is unaffected either way and does not need a restart.
+- No live secrets were printed, copied, or committed while inspecting
+  `.env.local` for this change.
+
+## Applications page hydration-mismatch fix (ship-feature run)
+
+Requirement: fix a reported hydration console error on `/applications` --
+`select` (the new "Sort by" control) had a server/client attribute
+mismatch (`__gcruniqueid`), matching the exact "browser extension messes
+with the HTML before React loads" case named in React's own hydration
+error message.
+
+- This is a known, already-solved class of issue in this exact repo:
+  `AGENTS.md`/prior sessions established `suppressHydrationWarning` as the
+  fix for form controls a browser extension (password manager, form-fill
+  tool, etc.) tags with its own attribute before hydration, and it's
+  already applied to essentially every `<input>`/`<select>` on every other
+  page (`app/page.tsx`, `app/profile/page.tsx`, `app/autofill/page.tsx`,
+  `app/jobs/[id]/page.tsx`). `app/applications/page.tsx` -- rewritten this
+  session as part of the analytical-hub overhaul -- was the one page that
+  had never gotten it, because its form controls (the follow-up date
+  input, and the new Sort-by select and no-response checkbox) are all new
+  or newly relocated this session.
+- Added `suppressHydrationWarning` to all three: the per-application
+  follow-up `<input type="date">`, the new Sort-by `<select>` (the one in
+  the reported error), and the no-response-in-14+-days `<input
+  type="checkbox">`. No behavior change -- this prop only tells React to
+  skip warning about a text/attribute mismatch on that one element during
+  hydration, it doesn't change what renders or how the controls behave.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- The actual root cause (a real browser extension injecting an attribute)
+  can't be reproduced in headless Chromium, which has no extensions
+  installed -- so this couldn't be verified by reproducing the original
+  error. Instead verified live against a disposable database that the page
+  still renders correctly and both the Sort-by select and the no-response
+  checkbox still function normally (selecting "Status", checking the
+  filter, reading back the resulting values) with zero console errors,
+  confirming the fix didn't regress functionality. Temporary server and
+  disposable data directory removed afterward.
+- Changed file: `app/applications/page.tsx` only.
+
+## Applications view overhaul into an analytical hub (ship-feature run)
+
+Requirement: "act as a senior product designer... overhaul the applications
+view to be a high-performance analytical hub" -- a compact horizontal
+metric bar with +/- trend indicators, a company/domain/title grouping
+control, a visual funnel chart (applied/interview/offer/rejected % with
+trend lines), a sort-by dropdown (date/status), dense and mobile-optimized.
+
+This was the largest of this session's `/applications`-and-friends passes
+because, unlike the earlier ones, it needed new backend aggregation, not
+just layout: trend indicators and funnel sparklines need week-over-week
+history that didn't exist in the API response before this change.
+
+- `lib/applications.ts`: `getApplicationStats()` extended (superseding the
+  old `perWeek` field) to also return all-time `interview`/`offer`/
+  `rejected` counts and `funnelWeekly: FunnelWeek[]` (last 12 Sunday-start
+  calendar weeks, most recent first, each with total/withResponse/
+  interview/offer/rejected raw counts). Kept as raw counts, not
+  pre-computed percentages or deltas -- that derivation is presentational
+  and now lives entirely in the frontend, not the backend, so the API
+  stays a plain data provider. Single combined SQL query per shape (one for
+  all-time totals, one grouped-by-week), reusing the exact week-bucketing
+  expression the old `perWeek` query already used, so trend math and the
+  funnel sparklines share one consistent notion of "week."
+  - Known, documented modeling limit carried over unchanged from the
+    existing schema: `applications.response_type` is one current value per
+    row (set via toggle), not a log of every stage an application passed
+    through. An application now marked "offer" after an earlier interview
+    no longer counts toward "interview" anywhere in these stats. The
+    funnel is therefore an accurate snapshot of current outcome
+    distribution, not a true "reached this stage at some point" pipeline --
+    called out both in a code comment and in the UI's own caption text, not
+    silently glossed over.
+  - Extended `scripts/test-applications.mjs` with assertions for the new
+    `interview`/`offer`/`rejected` all-time counts and the `funnelWeekly`
+    shape; `npm run test:applications` passes.
+- `app/applications/page.tsx` (full rewrite of the page body, same file):
+  - **Metric bar** (req 1): the old 3-tile grid became one
+    `grid-cols-3 divide-x` bar. Each cell's trend arrow/delta is derived
+    from `funnelWeekly[0]` (this week) vs `funnelWeekly[1]` (last week):
+    Applications shows raw weekly growth (always "+N", cumulative
+    counters don't have a meaningful negative direction), Response rate
+    shows a percentage-point delta colored by outcome semantics (up=good,
+    down=critical -- the only cell where direction implies "good/bad"),
+    This week shows the plain week-over-week count delta in neutral
+    accent/gray (more or fewer applications isn't inherently good or bad).
+    Renders "No trend yet" instead of a fabricated delta when fewer than
+    two weekly buckets exist.
+  - **Funnel chart** (req 3): `FunnelChart` renders Applied/Interview/
+    Offer/Rejected as dense bar+sparkline+%+delta rows. Applied is always
+    100% by definition, so its sparkline/delta show weekly *volume*
+    instead of a flat, uninformative percentage line; the other three show
+    % of that week's cohort and a percentage-point delta vs the prior
+    week. `Sparkline` is a small inline `<svg><polyline>` (no charting
+    dependency), always paired with the numeric %/delta text next to it,
+    not the only signal.
+  - **Grouping control** (req 2): a 3-way segmented control (Company /
+    Domain / Title, default Company) groups the already-fetched
+    `applications` array client-side -- no new endpoint. "Domain" parses
+    `new URL(app.jobUrl).hostname` (stripping a leading `www.`), falling
+    back to "Unknown" for an unparseable/empty URL. Groups are ordered by
+    size (largest first), then alphabetically.
+  - **Sort by** (req 4): a native `<select>` (Application date / Status).
+    "Status" sorts by response-funnel stage (interview → offer → rejected
+    → ghosted), with awaiting-response applications sorted first as an
+    intentional, documented low-risk choice (most actionable state) rather
+    than last; both modes secondarily sort by most-recently-applied.
+  - Extracted the existing per-application card markup into an
+    `ApplicationCard` component (needed once the list renders inside
+    repeated group sections instead of one flat map) -- its behavior
+    (response toggle buttons, follow-up date save) is unchanged.
+  - Removed `StatTile` and `WeeklyTrendChart` (superseded by `MetricBar`
+    and `FunnelChart`, which are strictly richer) and the `formatWeekLabel`
+    helper that only they used -- an intentional simplification for
+    density (req 5), not an accidental drop; nothing else in the repo
+    referenced any of the three (checked before removing).
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database seeded with 11 synthetic applications spanning four
+  calendar weeks across 7 companies/domains with a deliberate response-type
+  mix, specifically so the trend math would be exercised, not just the
+  empty/flat-line path: confirmed metric-bar values and every trend arrow
+  by hand-computing the expected delta from the seeded data (e.g. response
+  rate 73% overall, -50pt this-week-vs-last, funnel Interview +17pt,
+  Offer/Rejected -33pt -- all matched), confirmed Company/Domain grouping
+  actually re-buckets the list (domains like `boards.greenhouse.io` and
+  `jobs.lever.co` render correctly), confirmed Status sort puts
+  awaiting-response first, confirmed the pre-existing "no response in 14+
+  days" filter still works combined with the new controls, and confirmed
+  zero console/page errors at either width throughout. Screenshots
+  inspected directly. The temporary server, disposable data directory, and
+  verification script were all removed afterward; no live personal data
+  was read or changed.
+
+## Auto-fill job card mobile-scanning overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... overhaul the auto-fill job
+card for mobile-first scanning" -- condense employer/title into a clean
+header and hide the job detail body by default, collapse the missing-
+resume/skill-gap warnings into one subtle status pill at the card base,
+turn the action buttons into a dense icon row, and keep "view job details"
+as a plain text link below the pill.
+
+- Scoped to `app/autofill/page.tsx`'s job queue card (the `{job && (...)}`
+  block); the rest of the fill flow (missing-field prompts,
+  ready-for-review panel, blocked/error panels) was left behavior-identical,
+  only reflowed to sit below the new header/action-row structure.
+- Header: title/company/location/source/score condensed to two lines (was
+  already close, just tightened weight/size); the previously always-visible
+  detail paragraph block (salary, resume attachment, matched skills, skill
+  gaps, responsibilities, qualifications) now renders only behind a
+  `detailsOpen` disclosure toggle ("Show details"/"Hide details" with a
+  rotating chevron), collapsed by default and reset on every job change.
+  Chose a same-card expand over removing the content outright, since it's
+  data already fetched for this job (no extra request) and "hide ... by
+  default" implies a way to reveal it, not permanent removal -- the
+  existing "View job details" link (req 4) still covers navigating to the
+  full canonical job page.
+- Status pill: `getStatusPill()` collapses the two previously separate,
+  always-visible warning lines (missing resume file, skill-gap list) into
+  one pill with three tones -- critical ("No resume attached") when
+  `resumeAttachment` is null, warning ("N skill gaps vs. this posting")
+  when `skillsInPostingNotInResume` is non-empty, else a good/green
+  "Resume attached, no skill gaps" -- so exactly one pill always renders at
+  the card base, dot + text per the never-color-alone convention already
+  used elsewhere in this app. The tailored-vs-master-resume distinction
+  moved into the collapsible detail body rather than the pill, since it
+  isn't a warning.
+- Actions: the four idle-phase buttons (Auto-fill review, Auto-fill &
+  submit, Save for later, Skip -- all four kept; the requirement named
+  three, but Save for later is a real, intentionally-distinct existing
+  workflow state per its own code comment, not something to silently drop)
+  became a `grid-cols-4` row of icon-over-label buttons (custom inline SVG,
+  no new icon dependency), keeping their original color semantics (solid
+  dark = primary review path, solid red = higher-risk auto-submit,
+  outlined = secondary) and the existing submit-mode confirm dialog and
+  hover tooltips unchanged.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database (a copied fixture resume + one synthetic job with a
+  crafted `match_reasons_json` and a description containing real
+  Responsibilities/Qualifications sections, so `extractJobSections` had
+  real content to parse): confirmed the detail body is absent from the DOM
+  by default, "Show details" reveals it with the exact salary/resume/
+  skills/responsibilities/qualifications content, the icon action row
+  renders all four actions, and the pill correctly read "3 skill gaps vs.
+  this posting". Separately re-verified live (same running server, resume
+  file removed from the disposable data dir) that the pill switches to
+  "No resume attached" when `resumeAttachment` is null. Zero console/page
+  errors at either width in both passes. Screenshots inspected directly;
+  the temporary server, disposable data directory, and verification
+  scripts were all removed afterward. No live personal data was read or
+  changed.
+
+## Profile page "Verified career evidence" + job filters mobile-density overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... overhaul the verified career
+evidence section for mobile-first density" -- replace the nested
+card-per-item list with a dense table-like list (category and content
+snippet side by side), open a bottom-sheet modal on tap for verification,
+group the job-filter text inputs into a 2x2 grid to cut vertical length in
+half, and convert the "remote only" checkbox into a compact toggle switch.
+
+- Scoped to `app/profile/page.tsx` (the only page with a "Verified career
+  evidence" section and a job-filters form).
+- Evidence list: each `article`-per-item card (status `<select>` + always-
+  visible `<textarea>` + inline save button, ~6-8 lines tall each) became one
+  `divide-y` row per item: a fixed-width capitalized `kind` label, a
+  `min-w-0 flex-1 truncate` content snippet, and a compact status indicator
+  (colored dot + short text label -- "Verified"/"Review"/"Rejected" --
+  never color alone, matching the convention from the dashboard Action
+  Center overhaul). Rejected items render the snippet muted+struck-through
+  as an extra non-color signal.
+- Tapping a row opens a bottom sheet (`editingEvidenceId` state, `fixed`
+  overlay + `translate-y-full -> translate-y-0` panel animated a tick after
+  mount via `requestAnimationFrame` so the closed state paints first) with
+  the item's kind/section/source-line, a 3-way status choice
+  (Review/Verified/Rejected as pressed toggle buttons), the editable
+  textarea, the extracted-source diff note, Cancel, and Save. Escape closes
+  it and body scroll is locked while open; no new dependency was needed
+  (no dialog/sheet library existed or was added). `saveEvidence()` now
+  returns a boolean so the sheet only auto-closes on a real save success,
+  staying open with the error visible if the PATCH fails.
+- Job filters: the previous grid already paired the first four text inputs
+  2x2, but `excludedCompanies` forced a `col-span-2` full-width row and the
+  checkbox sat alone below it (4 visual rows total for 5 text inputs + 1
+  checkbox). Removed the span so `excludedCompanies` shares a row with the
+  new control, and replaced the native checkbox with a `role="switch"`
+  `aria-checked` toggle (no new dependency), giving a consistent 3-row,
+  fully-paired 2-column grid with a visible "On"/"Off" text label next to
+  the switch (not color-only).
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium at 390px and 1280px against a
+  disposable database seeded from the repo's own
+  `fixtures/resume-tailoring/sample-resume.txt` (9 real extracted evidence
+  rows) and a populated filters row: confirmed the dense list renders all
+  9 rows, tapping a row opens the sheet, changing status to Verified and
+  saving persists (row's status label updated to "Verified" after the
+  sheet closed, confirmed via a fresh read of the row, not an assumed
+  state), Escape closes a second sheet, the filters grid renders as a
+  tight 2-column/3-row layout with the toggle in its "On" state, and there
+  were zero console/page errors at either width. Screenshots inspected
+  directly. The temporary server, disposable data directory, and
+  verification script were all removed afterward; no live personal data
+  was read or changed.
+- Not addressed (unrelated, pre-existing, out of scope for this pass): the
+  Resume-upload/skills card above this section and the rest of the app
+  were left untouched.
+
+## Dashboard "Needs your attention" mobile-first overhaul (ship-feature run)
+
+Requirement: "act as a senior UI engineer... overhaul my job application
+dashboard for mobile-first productivity" -- compress header metrics into a
+horizontal scrollable pill row, turn the application list into a compact
+list (employer, role, small action badge), add per-card accordion expansion
+(collapsed by default, tap reveals "why you're needed" + continue), clean
+high-contrast one-handed mobile layout.
+
+- Scoped to `app/page.tsx`'s "Needs your attention" Action Center section
+  (header metric tiles + action cards), not the whole page. That section is
+  the only place with the literal "Why you're needed" copy, the primary
+  action button, and employer/role data the requirement describes; the
+  separate paginated "Job pipeline" list below serves a different purpose
+  (browsing all jobs) and was left untouched, matching how the prior
+  Applications-page overhaul stayed scoped to one section rather than a
+  page-wide rewrite.
+- `ACTION_META`'s single `accent` field (previously only used as a
+  decorative underline bar) split into `dot` (solid indicator) and `badge`
+  (tinted bg-*-50/text-*-700ish pill). Solid `bg-amber-500` with white text
+  fails WCAG contrast; the tinted-background-plus-dark-text pattern already
+  established on the Applications page redesign was reused instead, still
+  always paired with a text label per that page's never-color-alone rule.
+- Header metric tiles (was a `grid-cols-2 sm:grid-cols-5` block of larger
+  cards) are now a horizontal `overflow-x-auto` row of small pills on
+  mobile, `sm:flex-wrap` on wider viewports; each pill keeps its original
+  click-to-filter-and-scroll-to-pipeline behavior and an `aria-pressed`
+  active state.
+- Each action card is now collapsed by default to title/company/status
+  badge/chevron behind one `aria-expanded`/`aria-controls` toggle button per
+  card (`expandedActions` state, a `Set<string>` keyed the same way the
+  cards already were). Tapping expands to reveal location/match/time,
+  "Why you're needed" reasoning and details, the primary continue button
+  (`action.primaryLabel`/`primaryHref`, unchanged logic), "Job details",
+  and (for external leads) the "I applied"/"Not interested" buttons -- all
+  previously always-visible, now behind the tap.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+- Verified live in headless Chromium against a disposable SQLite database
+  (5 synthetic jobs, one per Action Center status) at both 390px and
+  1280px: pill row's `scrollWidth` (656) exceeds `clientWidth` (390) on
+  mobile confirming real horizontal scroll, while desktop shows equal
+  widths confirming the wrap fallback; a card's `aria-expanded` toggles
+  and "Why you're needed" becomes visible on tap at both widths; zero
+  console/page errors. Screenshots inspected directly. The temporary
+  server (port 3911), disposable data directory, and verification script
+  were all removed afterward; no live personal data was read or changed.
+- Not addressed (out of scope for this pass, matching the existing TODO
+  note to extend the Applications-page visual language app-wide): the
+  "Job pipeline" list, Sources/LinkedIn-import sections, and the rest of
+  the app (Auto-fill, job detail, Profile) were not restyled.
+
+## LLM-assisted resume tailoring wired into the existing pipeline (ship-feature run)
+
+Requirement: extend the existing deterministic resume-tailoring pipeline
+with a real Claude API call as the "smart generation engine" for wording,
+while keeping the deterministic DOCX/PDF renderer and its round-trip
+validation exactly as they were.
+
+- Used the `claude-api` skill rather than guessing SDK usage or model
+  behavior; two points it corrected from the initial plan, confirmed
+  against live docs rather than assumed:
+  - `temperature` (the user asked for "temperature 0" for reliability)
+    does not exist on Claude Opus 5 -- non-default sampling params return
+    400 on every request. Determinism instead comes from the forced
+    `tool_choice` + `strict: true` schema (guarantees the JSON shape) and
+    a fixed `effort: "high"`, not from a sampling parameter.
+  - Confirmed via a live WebFetch of the thinking docs (not assumed) that
+    forced `tool_choice: {type: "tool", ...}` **is** compatible with
+    adaptive thinking on Opus 5 specifically ("Adaptive thinking,
+    including on models where thinking is on by default, supports forced
+    tool use") -- it's only manual/legacy extended thinking that forbids
+    forced tool choice. Opus 5 has thinking on by default and disabling it
+    has a documented failure mode (tool calls can leak into plain text
+    instead of a real tool_use block) that would have broken this exact
+    forced-single-tool-call design, so thinking was deliberately left on.
+- New `lib/llmTailoring.ts`: `tailorEvidenceText()` sends only the
+  free-text/narrative evidence kinds (summary, experience, project,
+  publication) to `claude-opus-5` -- single-token kinds (skill, education,
+  certification, other) never leave the deterministic path, since there's
+  nothing useful for a rewrite to do to "Kubernetes". One forced tool call
+  (`submit_tailored_resume_items`, `strict: true`, `tool_choice` forced to
+  that tool) returns tailored text keyed by the original evidence id;
+  dates, employer names, titles, and section/ordering logic never pass
+  through the model at all. Validates the returned id set matches the
+  requested set exactly, plus a coarse grounding check (word-overlap +
+  length-ratio heuristic) per item, and throws a typed
+  `LLMTailoringError` on any failure -- never returns a partial or guessed
+  result.
+- `lib/resumeVariants.ts`: `composeVariantItems()` and
+  `createResumeVariant()` now accept an optional
+  `tailoredOverrides: Map<evidenceId, text>`. When present, it substitutes
+  for the deterministic `formatEvidenceText()` output per item; everything
+  else (verified-evidence filtering, requirement-coverage rationale,
+  section ordering, relevance sort) is completely untouched.
+- `app/api/jobs/[id]/resume-variant` (`POST`) gained an optional
+  `{"mode": "auto" | "llm" | "deterministic"}` body (still tolerates the
+  existing no-body call from `app/jobs/[id]/page.tsx` unchanged -- body
+  parsing distinguishes "empty body" from "malformed JSON"). `"auto"`
+  (default) tries the LLM when `ANTHROPIC_API_KEY` is configured and
+  falls back to the original deterministic path on *any* failure
+  (missing key, refusal, truncation, network) rather than blocking variant
+  creation -- but always reports which path actually ran via a new
+  `tailoringMode` response field (plus `tailoringError` when it fell back
+  from a real failure, not just a missing key), so nothing is silently
+  mislabeled. `"llm"` requires success and returns 502 with the reason
+  otherwise; `"deterministic"` skips the LLM entirely.
+- Added `ANTHROPIC_API_KEY=` (empty) to `.env.local` and documented it in
+  `.env.local.example` -- **the user still needs to fill in their own key
+  before LLM tailoring activates**; until then every call transparently
+  falls back to the pre-existing deterministic behavior, verified live.
+- Installed `@anthropic-ai/sdk` (`^0.115.0`), the one new dependency this
+  required, authorized by this session's explicit request.
+- Added `scripts/test-llm-tailoring.mjs` (`npm run test:llm-tailoring`):
+  kind classification, config detection, and confirms
+  `tailorEvidenceText()` throws `LLMTailoringError{code:"not_configured"}`
+  synchronously (no network call) when unconfigured, rather than hanging
+  or silently succeeding.
+- Extended the existing `scripts/test-resume-analysis-routes.sh` E2E
+  (disposable server + database, no live Anthropic calls): confirmed
+  `mode: "llm"` returns 409 with no `ANTHROPIC_API_KEY` configured, and
+  that the default no-body call still returns `tailoringMode:
+  "deterministic"` with no spurious `tailoringError`, alongside the
+  pre-existing draft/patch/approve/DOCX/PDF-artifact assertions, all of
+  which still pass unmodified.
+- **Not verified: an actual live Claude API call.** No Anthropic API key
+  is available in this environment/session, so the real `mode: "llm"`
+  tailoring path (network request, response parsing, grounding check
+  against real model output) has only been verified by code review, type
+  checking, and the unconfigured-key failure path -- not by an actual
+  request to the API. This is the single most important next step before
+  relying on this feature: once the user adds their key to `.env.local`,
+  create a variant for a real job with `mode: "llm"` (or default `"auto"`)
+  and confirm the tailored wording, `tailoringMode: "llm"` in the
+  response, and a normal DOCX/PDF generation afterward.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`,
+  `test:resume-variants`, `test:resume-analysis-routes`,
+  `test:resume-artifacts`, and the new `test:llm-tailoring` all passed.
+- Scope: only `POST /api/jobs/[id]/resume-variant` gained AI tailoring;
+  no UI changes were made (`app/jobs/[id]/page.tsx`'s existing
+  no-body call works unchanged and already gets AI tailoring for free
+  once a key is configured, defaulting to "auto"). No UI surfaces which
+  mode ran per creation -- `tailoringMode` is in the API response but
+  not yet rendered anywhere. That, plus a "regenerate with AI" control
+  and per-item AI/deterministic labeling in the variant review UI, are
+  natural follow-ups, logged in `TODO.md`.
+
+## Applications page UI overhaul (senior UI/UX design pass, ship-feature run)
+
+Requirement: "act as a senior UI/UX designer... comprehensive UI overhaul"
+for the Applications page (`/applications`) -- better data visualization,
+whitespace/hierarchy, a more intuitive status-card layout, backed by
+specific Tailwind patterns, professional enough for managing a large
+volume of applications.
+
+- Used the `dataviz` skill (`references/choosing-a-form.md`,
+  `color-formula.md`, `marks-and-anatomy.md`, `palette.md`) rather than
+  eyeballing colors. Ran `validate_palette.js` against the chosen
+  accent/status hex set; the only FAIL/WARN it reported (amber `#fab219`
+  sub-3:1 on white) is the palette's own documented, accepted tradeoff for
+  the "warning" role, mitigated the way the doc prescribes: an icon/dot
+  plus a mandatory text label, never color alone.
+- Added six CSS custom-property tokens to `app/globals.css`'s `@theme`
+  block (`--color-accent`, `--color-accent-muted`, `--color-status-good
+  /-warning/-serious/-critical`), which Tailwind v4 turns into real
+  utilities (`bg-status-good`, `text-accent`, etc.) -- additive only,
+  nothing existing changed, so every other page is unaffected.
+- Rewrote `app/applications/page.tsx`:
+  - Three KPI stat tiles (total / response rate / this week) with small
+    inline SVG icons (no new icon dependency) replace the old bare 3-up
+    number grid.
+  - New "Applications per week" chart: the already-fetched but previously
+    unused `stats.perWeek` (up to 12 weeks) now renders as a real thin-column
+    bar chart (accent hue for the current week, a lighter step of the same
+    ramp for prior weeks, per the stat-tile "trend" spec), each bar a
+    focusable/aria-labeled `<button>` with a hover + keyboard-focus
+    tooltip -- not just a decorative sparkline.
+  - Response-type buttons (Interview/Offer/Rejected/Ghosted) now carry
+    status color (a dot + tinted selected background), chosen by outcome
+    semantics: Offer/Rejected map to the reserved good/critical status
+    colors (terminal outcomes), Ghosted maps to warning (an ambiguous
+    non-response that wants follow-up), and Interview gets the brand accent
+    (active-but-not-final progress) rather than borrowing a status color.
+    Text label is always present alongside the color, per the skill's
+    never-color-alone rule.
+  - Application cards gained a neutral initials avatar, clearer
+    title/company/source/match hierarchy, a relative "Applied N days ago"
+    with the exact date on hover/title, and `aria-pressed` +
+    `focus-visible` rings on every interactive control.
+  - Loading skeletons now cover the KPI/chart region too, not just the list.
+  - Section headers standardized to a small uppercase tracking-wide label
+    pattern; cards moved from tight `p-3`/`rounded-lg` boxes to
+    `rounded-xl`/`shadow-sm`/`p-5` with explicit `border-gray-200` (Tailwind
+    v4 changed the unqualified `border` utility's color default to
+    `currentColor`, so borders are now colored explicitly everywhere they're
+    used on this page).
+- This request specifically targeted `app/applications/page.tsx`, which
+  already had unrelated in-progress staged edits (better error-message
+  text, a loading skeleton) from an earlier session. Read the current
+  staged content first and preserved both changes' substance inside the
+  rewrite rather than discarding them -- nothing from that earlier pass was
+  lost. The other four still-staged, unrelated page files
+  (`app/autofill/page.tsx`, `app/jobs/[id]/page.tsx`, `app/page.tsx`,
+  `app/profile/page.tsx`) were left completely untouched.
+- Verified with synthetic data only: seeded a disposable SQLite database
+  (`JOB_AUTOPILOT_DATA_DIR` pointed at a temp dir, deleted afterward) with
+  7 varied applications across multiple weeks/response types/sources plus
+  2 unapplied high-match jobs, since the real database only has 1 row and
+  couldn't exercise the redesign. A real headless-browser pass covered
+  desktop (1280px) and mobile (390px) layouts, the chart's hover tooltip,
+  a component's keyboard-focus ring, and the "No response in 14+ days"
+  filter -- zero console errors in every state. Screenshots inspected
+  directly; temporary server, seed/verification scripts, and the disposable
+  data directory were all removed afterward. No live personal data was
+  read or changed for this piece of work.
+- `npm run lint`, `npx tsc --noEmit`, and `npm run build` passed.
+- Scope decision (not asked back, low-risk/reversible/UI-only): kept the
+  overhaul to the Applications page itself, not the whole app (dashboard,
+  autofill, profile) -- that's available as a follow-up if wanted, noted in
+  `TODO.md`.
+- Known limitation not addressed here: the root layout's nav
+  (`app/layout.tsx`) wraps awkwardly at 390px (pre-existing, outside this
+  page's scope).
+
+## LinkedIn digest title/company HTML-entity decoding fix
+
+Follow-up to the 0-applications fix below: the user asked to also fix the
+literal `&amp;` spotted in job 23's title on the Applications page.
+
+- Root cause: LinkedIn's job-alert email's `text/plain` MIME part is
+  generated from its HTML alternative without decoding entities, so a
+  title/company containing e.g. `&` arrives in the digest body literally
+  as `&amp;`. `lib/sources/gmailLeads.ts`'s `extractLeadsFromDigest()`
+  used the raw lines as-is with no decoding step.
+- Fixed by exporting the existing `decodeEntities()` helper from
+  `lib/sources/html.ts` (previously only used internally by `stripHtml()`
+  for Greenhouse's entity-encoded HTML descriptions) and applying it to
+  the parsed `title`/`company` in `gmailLeads.ts`.
+- A live scan of `data/app.db` (`title`/`company` LIKE '%&%;%') confirmed
+  job 23 was the only affected row (its `company` field happened not to
+  contain the entity, only `title` did). Backed up `data/app.db` again,
+  then corrected job 23's stored title in place with a targeted SQL
+  `replace()`.
+- Added a regression case to `scripts/test-gmail-leads.mjs` covering a
+  digest block with `&amp;` in both title and company lines, asserting
+  the decoded `&` in the returned lead.
+- `npm run test:gmail-leads`, `test:action-center`, `test:applications`,
+  `npm run lint`, `npx tsc --noEmit`, and `npm run build` all passed.
+  Live-verified via a real headless-browser screenshot of `/applications`
+  showing "Jack & Jill hiring ..." instead of the literal entity, and via
+  a direct `GET /api/applications` check. Temporary server and script
+  removed afterward.
+- Changed files: `lib/sources/html.ts` (exported `decodeEntities`),
+  `lib/sources/gmailLeads.ts` (applies it), `scripts/test-gmail-leads.mjs`
+  (regression case). The already-staged, unrelated page changes in this
+  worktree were left untouched.
+
+## Applications page showing 0 applications (ship-feature run)
+
+Requirement: the user reported the `/applications` page showing 0
+applications; troubleshoot and fix.
+
+- Live database inspection (`data/app.db`, read-only counts) showed `jobs`
+  had one `status = 'applied'` row (id 23) while the `applications` table
+  had zero rows -- consistent with the page's real empty state, not a
+  rendering bug.
+- Root cause: `startSubmissionWatcher()` in `lib/autofill/filler.ts` (the
+  background safety net that confirms an Auto-fill & submit attempt
+  succeeded after a manual-completion recovery, e.g. a verification code)
+  marks the job `applied` with a direct
+  `UPDATE jobs SET status = 'applied'`, bypassing the only place that had
+  previously been wired to call `createApplication()`
+  (`PATCH /api/jobs/[id]`, per the 2026-07-31 application-tracking work).
+  Every other "mark applied" path (autofill's own explicit confirmation,
+  the job-detail dropdown, the Action Center quick-action, and
+  `scripts/queue-runner.sh`'s `mark_status`, which calls the same PATCH
+  route over HTTP) already went through that hook correctly -- this
+  background watcher was the one path that wrote status directly.
+- Fixed in `lib/autofill/filler.ts`: the watcher's transaction now reads
+  the job's prior status/company, and on a real `new -> applied`
+  transition calls `createApplication()` the same way the PATCH route
+  does (latest resume filename, `source: "autofill_submit"` since this
+  watcher only runs for the opt-in submit-mode confirmation flow).
+- Backfilled the one already-affected live row: backed up `data/app.db`
+  first, then inserted the missing `applications` row for job 23 (source
+  `autofill_submit`) using the same `createApplication()` function via a
+  disposable one-off script, deleted after use. User explicitly approved
+  the live-data backfill before it ran.
+- Verified live: after `npm run build` and `npm run start` on a separate
+  port, `GET /api/applications` and `GET /api/applications?stats=1`
+  returned the backfilled row and `total: 1`; a real headless Chromium
+  pass against `/applications` confirmed the empty state no longer shows,
+  the stats strip reads "1" total, and there were zero console errors.
+  Screenshot inspected directly. Temporary server, script, and screenshot
+  were all removed afterward.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `git diff
+  --check` all passed. No other file changed for this fix.
+- Noted but out of scope for this fix: the LinkedIn-imported title for job
+  23 renders a literal `&amp;` instead of a decoded `&` on the
+  Applications page (pre-existing LinkedIn import/display issue, unrelated
+  to the 0-applications bug). Left for a future task; recorded in
+  `TODO.md`.
+- Changed files: `lib/autofill/filler.ts` (fix) plus the pre-existing
+  uncommitted page changes already in this worktree, which were left
+  untouched as user-owned work.
+
+## Dashboard "Verification" tab E2E fix (ship-feature run)
+
+Requirement: run the dashboard's Action Center "Verification" tab through a
+real E2E and fix any errors, ensuring error handling is properly implemented;
+noted only 1 job/test previously exercised that path.
+
+- Traced the flow: dashboard `app/page.tsx`'s Action Center tile for
+  `needs_code` sets `statusFilter` and scrolls to `#job-pipeline`, which
+  refetches `GET /api/jobs?status=needs_code`. The existing coverage
+  (`scripts/test-action-center.mjs`) only exercised `lib/actions.ts`'s
+  `getDashboardActions()` data model with one `needs_code` job at
+  `match_score = 90` -- never the actual `/api/jobs` route a real click
+  reaches, and never a job with `match_score = 0` (reachable in practice:
+  `GET /api/autofill/next?jobId=` resumes any job by ID regardless of
+  score, per its own comment).
+- Reproduced live: started the dev/prod server against a disposable
+  `JOB_AUTOPILOT_DATA_DIR`, seeded a `needs_code` job at `match_score = 0`,
+  drove a real headless Chromium session (Playwright, explicit
+  `executablePath` since only the plain `chromium` build is installed in
+  this sandbox, not `chrome-headless-shell`) through the dashboard, and
+  clicked the Verification tile. Confirmed the bug: Action Center correctly
+  showed the job needing verification, but the Job pipeline list right
+  below it said "Job pipeline (0)" / "No jobs yet" -- `GET /api/jobs`
+  applied its default `match_score > 0` exclusion even though a specific
+  actionable status was explicitly requested.
+- Fixed in `app/api/jobs/route.ts`: skip the default score-0 exclusion
+  whenever the status filter is one of `ACTIONABLE_STATUSES`
+  (`lib/actions.ts`) -- matching `getDashboardActions()`, which never
+  hides these by score. Verified the deeper "Resume verification" flow
+  itself (`/autofill?jobId=`) already worked correctly with no console or
+  API errors; the defect was isolated to the pipeline-list route.
+- Added a permanent regression test, `scripts/test-jobs-status-filter-routes.sh`
+  (wired as `npm run test:jobs-status-filter-routes`), covering: the fixed
+  case (score-0 job now appears under its actionable status), no regression
+  to default "new" browsing (score-0 still hidden there), and `showAll=1`
+  (unaffected). Along the way, hardened its cleanup to `fuser -k "$PORT/tcp"`
+  after discovering `npm run start`'s `$!` is only the npm wrapper -- it
+  doesn't forward signals to the real `next-server` grandchild, which
+  otherwise leaks as an orphan still bound to the port and serving out of
+  an already-deleted disposable data directory (confirmed live via
+  `/proc/net/tcp` + `/proc/*/fd` inode lookup, since `lsof -i` did not
+  reliably show these sandboxed listeners while `fuser` did). Killed all
+  orphaned `next-server`/`next dev` processes left over from this session's
+  manual testing before finishing.
+- Validation: `npm run lint`, `npx tsc --noEmit`, `npm run build`, and the
+  full existing `test:*` suite all passed, except `test:resume-artifacts`,
+  which fails in this sandbox for an unrelated, pre-existing reason
+  (`chrome-headless-shell` binary not installed here) -- confirmed via
+  `git stash` reasoning and direct inspection that this is untouched by
+  this change; documented in TODO.md rather than silently ignored.
+- Changed files: `app/api/jobs/route.ts`, `package.json` (new test script
+  entry), `scripts/test-jobs-status-filter-routes.sh` (new).
+- No product decision was ambiguous enough to need user input; this was a
+  single-agent, single-branch fix on the standing `feature/claude-autofill`
+  branch, so no guarded multi-agent integration was needed for this change
+  itself.
+
 ## Ship-feature shared integration and Claude availability
 
 On 2026-07-31, the cross-agent `ship-feature` workflow was isolated onto
@@ -337,6 +2016,21 @@ added:
   shared files (`lib/db.ts`, both `app/api/jobs/**` routes).
 - `feature/claude-autofill` was pushed to `origin` at the user's request
   (new remote branch, upstream tracking set); no PR opened.
+- Added two skills for future sessions: `.claude/skills/run-job-autopilot/`
+  (build/launch/drive instructions plus a minimal Playwright REPL driver,
+  since `chromium-cli` isn't installed here) and `.claude/skills/verify/`
+  (operational notes from this session's verification pass). Every command
+  in both was actually run; a literal re-verification pass of the first one
+  caught a real gap (single-instance-per-directory lock, documented with
+  the exact error text) (`e029e06`).
+- Started `scripts/gmail-sync-runner.sh` (30 min interval) against the live
+  instance -- both on-demand and scheduled Gmail sync now actually run, not
+  just built. Found the script had been committed non-executable
+  (`100644`), which the other direct-invocation shell scripts weren't;
+  fixed (`16e607b`). First scheduled tick fired immediately and imported 5
+  more real leads.
+- Clarified the Gmail-sync summary message for the rate-limited-mid-thread
+  case (`b82c514`), live-verified via the dashboard button.
 
 No automated application unit, route-integration, or browser end-to-end tests
 exist. Live source synchronization, resume parsing across all supported
@@ -370,20 +2064,14 @@ the open items below, per user direction.
 Several independent threads are open, not yet prioritized by the user as of
 this handoff:
 
-1. `scripts/gmail-sync-runner.sh` (scheduled Gmail sync) was built but never
-   started -- only the on-demand button has actually run. The user asked
-   for both.
-2. The error-handling audit covered the four client pages only; API route
+1. The error-handling audit covered the four client pages only; API route
    handlers and `lib/autofill/filler.ts`'s Playwright internals are
    unaudited.
-3. A cosmetic wording issue in the Gmail-sync summary message ("Imported 5
-   lead(s) from 0 alert email(s)" when a digest email exceeds the rate limit
-   mid-thread) was flagged but never fixed or explicitly deferred.
-4. An untracked scratch file, `data/watch-and-integrate.sh` (an abandoned
+2. An untracked scratch file, `data/watch-and-integrate.sh` (an abandoned
    background-merge-watcher from earlier in the session, never used since
    `git merge` got blocked by the auto-mode classifier), is still sitting in
    the worktree -- harmless, but the user hasn't said whether to delete it.
-5. Fit-scoring formula tuning was explicitly deferred pending the user's
+3. Fit-scoring formula tuning was explicitly deferred pending the user's
    judgment on what should weigh more (skills vs. salary vs. location, etc).
 
 On 2026-07-30, the first truthful resume-tailoring checkpoint was completed on

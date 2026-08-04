@@ -3,6 +3,7 @@ import { getDb, type JobRow, type ResumeRow, type DraftRow, type ProfileAnswerRo
 import { generateDraft } from "@/lib/draft";
 import type { MatchResult } from "@/lib/matching";
 import { parkJobWithAction, resolveJobActions } from "@/lib/actions";
+import { createApplication } from "@/lib/applications";
 import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
 import {
   getOrCreateSession,
@@ -13,6 +14,8 @@ import {
   type AutofillSession,
 } from "./session";
 import { detectCaptcha } from "./captcha";
+import { findVerificationCodeField } from "./verificationCode";
+import { findFieldValidationError, type FieldValidationError } from "./fieldValidation";
 import {
   scanFields,
   locatorFor,
@@ -36,7 +39,7 @@ export type MissingField = {
 };
 
 export type RunFillerResult =
-  | { status: "blocked"; reason: string }
+  | { status: "blocked"; reason: string; needsVerificationCode?: boolean }
   | { status: "error"; reason: string }
   | { status: "needs_input" | "ready_for_review"; missingFields: MissingField[]; manualFields: MissingField[] };
 
@@ -424,6 +427,7 @@ async function runFillerUnsafe(
     return {
       status: "blocked",
       reason: `${captcha.reason} — please finish this one manually in the browser window that's now open.`,
+      needsVerificationCode: captcha.isVerificationCode,
     };
   }
 
@@ -550,14 +554,16 @@ export async function fillFileField(
   jobId: number,
   field: MissingField,
   filePath: string
-): Promise<void> {
-  await withJobLock(jobId, async () => {
+): Promise<boolean> {
+  return withJobLock(jobId, async () => {
     try {
       const session = await getOrCreateSession(jobId);
       const target = await resolveFillTarget(session);
       await locatorFor(target, field.autofillId).setInputFiles(filePath);
+      return true;
     } catch {
       await closeSession(jobId);
+      return false;
     }
   });
 }
@@ -717,7 +723,13 @@ export async function inspectField(
 
 export type SubmitResult =
   | { status: "submitted" }
-  | { status: "unconfirmed"; reason: string; needsVerificationCode?: boolean }
+  | {
+      status: "unconfirmed";
+      reason: string;
+      needsVerificationCode?: boolean;
+      needsConsent?: boolean;
+      fieldValidationError?: FieldValidationError;
+    }
   | { status: "error"; reason: string };
 
 // Opt-in escape hatch from the no-auto-submit boundary described in
@@ -756,43 +768,139 @@ async function pageShowsSuccessConfirmation(target: FillTarget): Promise<boolean
   return SUBMIT_CONFIRMATION_PATTERN.test(text);
 }
 
+export type VerificationCodeResult =
+  | { status: "filled"; submit: SubmitResult }
+  | { status: "field_not_found" }
+  | { status: "error"; reason: string };
+
+// Fills a human-supplied emailed verification code into the live page and
+// immediately resumes the submission loop by re-attempting the submit
+// click -- one atomic human-in-the-loop step, not two round trips. The
+// code's *value* still comes entirely from the user (read from their own
+// inbox, typed into the dashboard); this only saves them from having to
+// alt-tab into the separate visible browser window to enter it. Never
+// persisted anywhere (unlike ordinary answered fields, which are
+// remembered in profile_answers for reuse across jobs) -- a one-time code
+// has no reuse value and shouldn't be kept.
+//
+// Deliberately calls attemptSubmitClick() directly rather than going
+// through submitApplication()'s normal detectCaptcha() gate: that gate
+// looks at page *text*, and the "a verification code was sent to..."
+// prompt stays in the DOM even after the code field is filled, so running
+// it again here would immediately re-report the same block instead of
+// ever attempting the click. If the click still doesn't confirm (wrong
+// code, a second verification step, etc.), the result is handled exactly
+// like any other unconfirmed submit attempt, including re-parking as
+// needs_code if it's another verification-code prompt.
+export async function submitVerificationCode(
+  jobId: number,
+  code: string
+): Promise<VerificationCodeResult> {
+  return withJobLock(jobId, async () => {
+    const session = getSession(jobId);
+    if (!session || !session.browser.isConnected() || session.page.isClosed()) {
+      return {
+        status: "error",
+        reason: 'No open browser session for this job -- click "Start filling" again first.',
+      };
+    }
+    try {
+      const target = await resolveFillTarget(session);
+      const field = await findVerificationCodeField(target);
+      if (!field) return { status: "field_not_found" };
+
+      const filled = await fillMatched(
+        target,
+        { autofillId: field.autofillId, key: "verification_code", label: "Verification code", kind: "text" },
+        code
+      );
+      if (!filled) return { status: "field_not_found" };
+
+      const submit = await attemptSubmitClick(session);
+      handleUnconfirmedSubmit(jobId, submit);
+      return { status: "filled", submit };
+    } catch (err) {
+      await closeSession(jobId);
+      return { status: "error", reason: friendlyErrorMessage(err) };
+    }
+  });
+}
+
+// Shared by every path that can end a submit attempt "unconfirmed": leaves
+// the browser open for the user to finish by hand, flags the session so
+// the background success watcher starts polling it, and -- specifically
+// for a verification-code blocker, which means "otherwise ready, just
+// needs a human at the actual keyboard to type a code" -- moves the job
+// out of the active queue into its own status so it stops interrupting
+// the "keep going through new jobs" flow. Never downgrades a job that's
+// already further along (e.g. don't touch anything already applied).
+function handleUnconfirmedSubmit(jobId: number, result: SubmitResult): void {
+  if (result.status !== "unconfirmed") return;
+  const session = getSession(jobId);
+  if (session) session.awaitingManualCompletion = true;
+  if (result.needsVerificationCode) {
+    const db = getDb();
+    parkJobWithAction(
+      db,
+      jobId,
+      "needs_code",
+      {
+        actionType: "verification",
+        reasonCode: "verification_code_required",
+        reasonText: "The employer requires a verification code that must be entered manually.",
+        details: [result.reason],
+        source: "autofill",
+      },
+      ["new", "needs_review", "needs_code"]
+    );
+  } else if (result.needsConsent) {
+    // No dedicated queue (unlike needs_code): the fix is checking a box in
+    // the still-open browser window and resubmitting there, not typing
+    // anything the API needs to relay, so this just surfaces through the
+    // existing needs_review human-in-the-loop queue instead of adding a new
+    // status/dashboard entry for a one-click fix.
+    const db = getDb();
+    parkJobWithAction(
+      db,
+      jobId,
+      "needs_review",
+      {
+        actionType: "consent",
+        reasonCode: "consent_checkbox_required",
+        reasonText:
+          "The employer requires accepting a consent/terms checkbox that must be checked manually before resubmitting.",
+        details: [result.reason],
+        source: "autofill",
+      },
+      ["new", "needs_review"]
+    );
+  } else if (result.fieldValidationError) {
+    // Same reasoning as the consent branch above -- fixing an invalid field
+    // is a direct fix in the still-open browser window, not something with
+    // reusable value, so this surfaces through the existing needs_review
+    // queue rather than adding a new status for it.
+    const db = getDb();
+    parkJobWithAction(
+      db,
+      jobId,
+      "needs_review",
+      {
+        actionType: "validation",
+        reasonCode: "field_validation_error",
+        reasonText: `The employer's form rejected "${result.fieldValidationError.label}": ${result.fieldValidationError.message}`,
+        details: [result.reason],
+        source: "autofill",
+      },
+      ["new", "needs_review"]
+    );
+  }
+}
+
 export async function submitApplication(jobId: number): Promise<SubmitResult> {
   return withJobLock(jobId, async () => {
     try {
       const result = await submitApplicationUnsafe(jobId);
-      if (result.status === "unconfirmed") {
-        // Leaves the browser open for the user to finish by hand -- flag it
-        // so the background watcher starts polling this session for a later
-        // success signal instead of requiring the user to report back.
-        const session = getSession(jobId);
-        if (session) session.awaitingManualCompletion = true;
-
-        // A verification-code blocker specifically means "otherwise ready,
-        // just needs a human at the actual keyboard to type a code" -- move
-        // it out of the active queue and into its own status so it stops
-        // interrupting the "keep going through new jobs" flow, and the user
-        // can batch through everything waiting on a code later, in one
-        // sitting at their Mac, instead of hitting each one interleaved
-        // with unrelated jobs. Never downgrades a job that's already
-        // further along (e.g. don't touch anything already applied).
-        if (result.needsVerificationCode) {
-          const db = getDb();
-          parkJobWithAction(
-            db,
-            jobId,
-            "needs_code",
-            {
-              actionType: "verification",
-              reasonCode: "verification_code_required",
-              reasonText:
-                "The employer requires a verification code that must be entered manually.",
-              details: [result.reason],
-              source: "autofill",
-            },
-            ["new", "needs_review", "needs_code"]
-          );
-        }
-      }
+      handleUnconfirmedSubmit(jobId, result);
       return result;
     } catch (err) {
       await closeSession(jobId);
@@ -809,15 +917,65 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
       reason: 'No open browser session for this job -- click "Start filling" again first.',
     };
   }
-  const { page } = session;
 
-  const captcha = await detectCaptcha(page);
+  const captcha = await detectCaptcha(session.page);
   if (captcha.blocked) {
     return {
       status: "unconfirmed",
       reason: `${captcha.reason} -- finish this one manually in the browser window that's open.`,
       needsVerificationCode: captcha.isVerificationCode,
+      needsConsent: captcha.isConsentRequired,
     };
+  }
+
+  return attemptSubmitClick(session);
+}
+
+// The browser is always launched non-headless (see getOrCreateSession in
+// session.ts) -- that alone doesn't guarantee a human can actually see it
+// at the moment of an automated submit click. The OS can still minimize
+// the window, move it off-screen, or leave another window covering it,
+// none of which Playwright's own connected/closed checks catch.
+// document.visibilityState reflects real OS-level foreground state
+// (Chromium updates it correctly for minimize/occlusion/tab-switch), so
+// it's the closest real signal available for "is this actually visible
+// right now." Never guesses: any failure to confirm is treated as
+// "can't confirm visible," not "assume it's fine."
+async function pageIsVisibleForSubmit(page: Page): Promise<boolean> {
+  if (page.isClosed()) return false;
+  try {
+    return (await page.evaluate(() => document.visibilityState)) === "visible";
+  } catch {
+    return false;
+  }
+}
+
+// The actual click-and-confirm attempt, split out from
+// submitApplicationUnsafe() so resumeSubmitAfterVerificationCode() below
+// can reuse it directly without repeating its own leading detectCaptcha()
+// check -- that check looks at page *text*, which the "a verification
+// code was sent to..." prompt leaves in place even after the code field is
+// filled, so re-running it right after filling the code would immediately
+// re-report the same block instead of ever attempting the click.
+async function attemptSubmitClick(session: AutofillSession): Promise<SubmitResult> {
+  const { page } = session;
+
+  if (!(await pageIsVisibleForSubmit(page))) {
+    // Bring the existing window forward rather than discarding it and
+    // opening a fresh one -- the page (and everything already filled in
+    // it) is still alive, just not currently on screen; relaunching would
+    // throw away all of that and force a full refill. Only if bringing it
+    // forward still doesn't produce a visible page does this refuse to
+    // click, exactly like every other "can't confirm, don't guess"
+    // fallback in this file.
+    await page.bringToFront().catch(() => {});
+    if (!(await pageIsVisibleForSubmit(page))) {
+      return {
+        status: "unconfirmed",
+        reason:
+          "Could not confirm the browser window is visible on screen -- refusing to click Submit automatically. Bring the window to the foreground yourself, review it, and submit there, or try again once it's visible.",
+      };
+    }
   }
 
   const target = await resolveFillTarget(session);
@@ -872,8 +1030,25 @@ async function submitApplicationUnsafe(jobId: number): Promise<SubmitResult> {
         status: "unconfirmed",
         reason: `${postClickCheck.reason} -- this step can't be automated, finish it manually in the open browser window.`,
         needsVerificationCode: postClickCheck.isVerificationCode,
+        needsConsent: postClickCheck.isConsentRequired,
       };
     }
+
+    // Neither known bot-check pattern matched -- before falling back to the
+    // fully generic message below, audit the live DOM for a specific
+    // invalid-field signal (native HTML5 constraint validation or the ARIA
+    // aria-invalid/aria-describedby pattern) so the human gets the exact
+    // field and error text instead of just "couldn't confirm." Still never
+    // corrects anything itself.
+    const fieldError = await findFieldValidationError(page);
+    if (fieldError) {
+      return {
+        status: "unconfirmed",
+        reason: `"${fieldError.label}" -- ${fieldError.message} -- fix this in the open browser window, then continue.`,
+        fieldValidationError: fieldError,
+      };
+    }
+
     return {
       status: "unconfirmed",
       reason:
@@ -941,8 +1116,24 @@ function startSubmissionWatcher(): void {
         if (confirmed) {
           const db = getDb();
           const complete = db.transaction(() => {
+            const job = db
+              .prepare("SELECT status, company FROM jobs WHERE id = ?")
+              .get(jobId) as { status: string; company: string } | undefined;
             db.prepare("UPDATE jobs SET status = 'applied' WHERE id = ?").run(jobId);
             resolveJobActions(db, jobId);
+            // Mirrors PATCH /api/jobs/[id]'s applied-transition hook, which
+            // this background path bypasses since it writes status directly.
+            if (job && job.status !== "applied") {
+              const latestResume = db
+                .prepare("SELECT filename FROM resumes ORDER BY uploaded_at DESC LIMIT 1")
+                .get() as { filename: string } | undefined;
+              createApplication(db, {
+                jobId,
+                companyName: job.company,
+                resumeVersion: latestResume?.filename ?? null,
+                source: "autofill_submit",
+              });
+            }
           });
           complete();
           await closeSession(jobId);

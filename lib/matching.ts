@@ -1,5 +1,5 @@
 import type { NormalizedJob } from "./sources/types";
-import { skillAppearsInText, extractSkills } from "./skills";
+import { skillAppearsInText, extractSkills } from "./skills.ts";
 
 export type FilterRules = {
   titleInclude: string;

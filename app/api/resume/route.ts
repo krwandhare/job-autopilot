@@ -4,6 +4,8 @@ import fs from "node:fs";
 import { getDb } from "@/lib/db";
 import { extractResumeText, parseResume } from "@/lib/resume";
 import { getResumesDir } from "@/lib/runtimePaths";
+import { parseJsonBody } from "@/lib/apiUtils";
+import { validateResumeUpload } from "@/lib/uploadValidation";
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[/\\]/g, "_").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -23,6 +25,11 @@ export async function POST(req: NextRequest) {
 
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+  }
+
+  const uploadError = validateResumeUpload(file);
+  if (uploadError) {
+    return NextResponse.json({ error: uploadError }, { status: 400 });
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -67,8 +74,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const body = await req.json();
-  const { id, skills } = body as { id: number; skills: string[] };
+  const parsed = await parseJsonBody(req);
+  if (!parsed.ok) return parsed.response;
+  const { id, skills } = parsed.body as { id?: unknown; skills?: unknown };
 
   if (!id || !Array.isArray(skills)) {
     return NextResponse.json({ error: "id and skills[] are required" }, { status: 400 });

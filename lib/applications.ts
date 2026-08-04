@@ -177,40 +177,98 @@ export function listApplications(
   return rows.map(toApplicationWithJob);
 }
 
+// One calendar-week bucket (Sunday-start, matching the SQL below) of raw
+// counts. Kept as unprocessed counts, not pre-computed percentages/deltas --
+// that derivation is presentational and belongs in the UI layer, not here.
+export type FunnelWeek = {
+  weekStart: string;
+  total: number;
+  withResponse: number;
+  interview: number;
+  offer: number;
+  rejected: number;
+};
+
 export type ApplicationStats = {
   total: number;
   withResponse: number;
   responseRate: number;
-  perWeek: { weekStart: string; count: number }[];
+  // All-time counts by current response_type, for the primary funnel bars.
+  // `response_type` is a single current value per application (set/cleared
+  // via toggle), not a historical log of every stage reached -- so an
+  // application now marked "offer" after an earlier interview no longer
+  // counts toward "interview" here. This is a snapshot of current outcome
+  // distribution, not a true multi-stage historical pipeline; accurate
+  // given the schema, not a bug.
+  interview: number;
+  offer: number;
+  rejected: number;
+  // Last 12 calendar weeks, most recent first -- same bucketing as the
+  // previous `perWeek` field it replaces (superset: also carries the
+  // response/funnel breakdown needed for trend indicators and sparklines).
+  funnelWeekly: FunnelWeek[];
 };
 
 export function getApplicationStats(db: Database.Database): ApplicationStats {
-  const total = (
-    db.prepare("SELECT COUNT(*) AS c FROM applications").get() as { c: number }
-  ).c;
-  const withResponse = (
-    db
-      .prepare("SELECT COUNT(*) AS c FROM applications WHERE response_received_at IS NOT NULL")
-      .get() as { c: number }
-  ).c;
+  const totals = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN response_received_at IS NOT NULL THEN 1 ELSE 0 END) AS with_response,
+         SUM(CASE WHEN response_type = 'interview' THEN 1 ELSE 0 END) AS interview,
+         SUM(CASE WHEN response_type = 'offer' THEN 1 ELSE 0 END) AS offer,
+         SUM(CASE WHEN response_type = 'rejected' THEN 1 ELSE 0 END) AS rejected
+       FROM applications`
+    )
+    .get() as {
+    total: number;
+    with_response: number | null;
+    interview: number | null;
+    offer: number | null;
+    rejected: number | null;
+  };
 
-  const perWeek = db
+  const funnelWeeklyRows = db
     .prepare(
       `SELECT
          date(applied_at, 'weekday 0', '-6 days') AS week_start,
-         COUNT(*) AS count
+         COUNT(*) AS total,
+         SUM(CASE WHEN response_received_at IS NOT NULL THEN 1 ELSE 0 END) AS with_response,
+         SUM(CASE WHEN response_type = 'interview' THEN 1 ELSE 0 END) AS interview,
+         SUM(CASE WHEN response_type = 'offer' THEN 1 ELSE 0 END) AS offer,
+         SUM(CASE WHEN response_type = 'rejected' THEN 1 ELSE 0 END) AS rejected
        FROM applications
        GROUP BY week_start
        ORDER BY week_start DESC
        LIMIT 12`
     )
-    .all() as { week_start: string; count: number }[];
+    .all() as Array<{
+    week_start: string;
+    total: number;
+    with_response: number | null;
+    interview: number | null;
+    offer: number | null;
+    rejected: number | null;
+  }>;
+
+  const total = totals.total;
+  const withResponse = totals.with_response ?? 0;
 
   return {
     total,
     withResponse,
     responseRate: total > 0 ? withResponse / total : 0,
-    perWeek: perWeek.map((r) => ({ weekStart: r.week_start, count: r.count })),
+    interview: totals.interview ?? 0,
+    offer: totals.offer ?? 0,
+    rejected: totals.rejected ?? 0,
+    funnelWeekly: funnelWeeklyRows.map((r) => ({
+      weekStart: r.week_start,
+      total: r.total,
+      withResponse: r.with_response ?? 0,
+      interview: r.interview ?? 0,
+      offer: r.offer ?? 0,
+      rejected: r.rejected ?? 0,
+    })),
   };
 }
 
