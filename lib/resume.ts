@@ -345,6 +345,78 @@ export async function extractResumeText(buffer: Buffer, filename: string): Promi
   throw new Error(`Unsupported resume file type: .${ext}. Use PDF, DOCX, or TXT.`);
 }
 
+export const MAX_RESUME_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+export type ResumeUploadFormat = "pdf" | "docx" | "txt";
+
+const RESUME_MIME_TYPES: Record<ResumeUploadFormat, ReadonlySet<string>> = {
+  pdf: new Set(["", "application/octet-stream", "application/pdf"]),
+  docx: new Set([
+    "",
+    "application/octet-stream",
+    "application/zip",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ]),
+  txt: new Set(["", "application/octet-stream", "text/plain"]),
+};
+
+export function validateResumeUploadMetadata(file: {
+  name: string;
+  size: number;
+  type: string;
+}): ResumeUploadFormat {
+  const extension = file.name.toLowerCase().split(".").pop();
+  if (extension !== "pdf" && extension !== "docx" && extension !== "txt") {
+    throw new Error("Unsupported resume file type. Use PDF, DOCX, or TXT.");
+  }
+  if (file.size === 0) {
+    throw new Error("The uploaded file is empty.");
+  }
+  if (file.size > MAX_RESUME_UPLOAD_BYTES) {
+    throw new Error("Resume files must be 10MB or smaller.");
+  }
+  const mimeType = file.type.toLowerCase().split(";")[0].trim();
+  if (!RESUME_MIME_TYPES[extension].has(mimeType)) {
+    throw new Error(`The file content type does not match a .${extension} resume.`);
+  }
+  return extension;
+}
+
+export async function validateResumeUploadContent(
+  buffer: Buffer,
+  format: ResumeUploadFormat
+): Promise<void> {
+  if (format === "pdf") {
+    if (!buffer.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
+      throw new Error("The selected file is not a valid PDF document.");
+    }
+    return;
+  }
+
+  if (format === "docx") {
+    if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+      throw new Error("The selected file is not a valid DOCX document.");
+    }
+    const archiveIndex = buffer.toString("latin1");
+    if (
+      !archiveIndex.includes("[Content_Types].xml") ||
+      !archiveIndex.includes("word/document.xml")
+    ) {
+      throw new Error("The selected file is not a valid DOCX document.");
+    }
+    return;
+  }
+
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    if (!text.trim() || text.includes("\0")) {
+      throw new Error("invalid text content");
+    }
+  } catch {
+    throw new Error("The selected file is not a valid UTF-8 text document.");
+  }
+}
+
 export function parseResume(text: string) {
   const skills = extractSkills(text);
   return { text, skills };

@@ -5,6 +5,8 @@ import { fetchLeverJobs } from "@/lib/sources/lever";
 import { fetchAdzunaJobs } from "@/lib/sources/adzuna";
 import { scoreJob, type FilterRules } from "@/lib/matching";
 import type { NormalizedJob } from "@/lib/sources/types";
+import { sourceSyncFailure } from "@/lib/sourceSync";
+import { validateSourceConfig } from "@/lib/apiValidation";
 
 export async function POST() {
   const db = getDb();
@@ -43,17 +45,21 @@ export async function POST() {
   const errors: string[] = [];
 
   for (const src of sourceRows) {
-    const config = JSON.parse(src.config_json);
     try {
-      if (src.type === "greenhouse") {
-        allJobs.push(...(await fetchGreenhouseJobs(config.companySlug)));
-      } else if (src.type === "lever") {
-        allJobs.push(...(await fetchLeverJobs(config.companySlug)));
-      } else if (src.type === "adzuna") {
-        allJobs.push(...(await fetchAdzunaJobs(config)));
+      const storedConfig: unknown = JSON.parse(src.config_json);
+      const validated = validateSourceConfig(src.type, storedConfig);
+      if (!validated) {
+        throw new Error("Invalid stored source configuration");
       }
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : `Failed to sync ${src.type}`);
+      if (validated.type === "greenhouse") {
+        allJobs.push(...(await fetchGreenhouseJobs(validated.config.companySlug)));
+      } else if (validated.type === "lever") {
+        allJobs.push(...(await fetchLeverJobs(validated.config.companySlug)));
+      } else if (validated.type === "adzuna") {
+        allJobs.push(...(await fetchAdzunaJobs(validated.config)));
+      }
+    } catch {
+      errors.push(sourceSyncFailure(src.type));
     }
   }
 

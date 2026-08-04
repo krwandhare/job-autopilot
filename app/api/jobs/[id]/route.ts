@@ -8,7 +8,7 @@ import {
   type JobActionInput,
 } from "@/lib/actions";
 import { createApplication, type ApplicationSource } from "@/lib/applications";
-import { parseJsonBody } from "@/lib/apiUtils";
+import { positiveInteger, readJsonObject } from "@/lib/autofill/http";
 
 const APPLICATION_SOURCES: ApplicationSource[] = [
   "manual",
@@ -22,8 +22,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const jobId = positiveInteger(id);
+  if (!jobId) {
+    return NextResponse.json({ error: "id must be a positive integer" }, { status: 400 });
+  }
   const db = getDb();
-  const row = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as JobRow | undefined;
+  const row = db.prepare("SELECT * FROM jobs WHERE id = ?").get(jobId) as JobRow | undefined;
 
   if (!row) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
@@ -31,7 +35,7 @@ export async function GET(
 
   const draft = db
     .prepare("SELECT * FROM drafts WHERE job_id = ? ORDER BY generated_at DESC LIMIT 1")
-    .get(id) as DraftRow | undefined;
+    .get(jobId) as DraftRow | undefined;
 
   const filterRow = db.prepare("SELECT * FROM filters ORDER BY id DESC LIMIT 1").get() as
     | FilterRow
@@ -94,10 +98,15 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const parsed = await parseJsonBody(req);
-  if (!parsed.ok) return parsed.response;
-  const body = parsed.body;
-  if (!body || typeof body !== "object") {
+  const jobId = positiveInteger(id);
+  if (!jobId) {
+    return NextResponse.json({ error: "id must be a positive integer" }, { status: 400 });
+  }
+  const body = await readJsonObject(req);
+  if (!body) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  if (Object.keys(body).some((key) => !["status", "action", "applicationSource"].includes(key))) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
   const { status, action, applicationSource } = body as {
@@ -129,7 +138,6 @@ export async function PATCH(
   }
 
   const db = getDb();
-  const jobId = Number(id);
   const job = db
     .prepare("SELECT id, status, company FROM jobs WHERE id = ?")
     .get(jobId) as { id: number; status: string; company: string } | undefined;
@@ -144,6 +152,9 @@ export async function PATCH(
     }
     const candidate = action as Record<string, unknown>;
     if (
+      Object.keys(candidate).some(
+        (key) => !["actionType", "reasonCode", "reasonText", "details", "source"].includes(key)
+      ) ||
       typeof candidate.actionType !== "string" ||
       typeof candidate.reasonCode !== "string" ||
       typeof candidate.reasonText !== "string" ||

@@ -3,18 +3,12 @@ import { closeSession } from "@/lib/autofill/session";
 import { getDb } from "@/lib/db";
 import { releaseJobClaimByOwner } from "@/lib/jobClaims";
 import { getRuntimeInstanceId } from "@/lib/runtimePaths";
-import { parseJsonBody } from "@/lib/apiUtils";
+import { positiveInteger, readJsonObject } from "@/lib/autofill/http";
 
 export async function POST(req: NextRequest) {
-  const parsed = await parseJsonBody(req);
-  if (!parsed.ok) return parsed.response;
-  const { jobId } = parsed.body as { jobId?: unknown };
-  if (!jobId) {
-    return NextResponse.json({ error: "jobId is required" }, { status: 400 });
-  }
-
-  const normalizedJobId = Number(jobId);
-  if (!Number.isSafeInteger(normalizedJobId) || normalizedJobId <= 0) {
+  const body = await readJsonObject(req);
+  const normalizedJobId = positiveInteger(body?.jobId);
+  if (!normalizedJobId) {
     return NextResponse.json({ error: "jobId must be a positive integer" }, { status: 400 });
   }
 

@@ -457,7 +457,11 @@ export default function ProfilePage() {
           suppressHydrationWarning
         />
         {uploading && <p className="text-sm text-gray-500">Parsing resume…</p>}
-        {uploadError && <p className="text-sm text-status-critical">{uploadError}</p>}
+        {uploadError && (
+          <p role="alert" className="text-sm text-status-critical">
+            {uploadError}
+          </p>
+        )}
 
         {resume && (
           <div className="border rounded-lg p-4 space-y-3">
@@ -532,7 +536,11 @@ export default function ProfilePage() {
               <p className="text-sm text-gray-500">Building evidence profile…</p>
             )}
             {evidenceError && <p className="text-sm text-status-critical">{evidenceError}</p>}
-            {evidenceMessage && <p className="text-sm text-green-700">{evidenceMessage}</p>}
+            {evidenceMessage && (
+              <p role="status" className="text-sm text-green-700">
+                {evidenceMessage}
+              </p>
+            )}
             {!evidenceLoading && evidence.length === 0 && !evidenceError && (
               <p className="text-sm text-gray-500">
                 No evidence was extracted. The master resume remains available.

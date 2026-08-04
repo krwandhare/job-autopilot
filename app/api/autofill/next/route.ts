@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, type JobRow, type ResumeRow } from "@/lib/db";
 import type { MatchResult } from "@/lib/matching";
 import { extractJobSections } from "@/lib/jobSections";
-import { claimJob, claimNextJob, QUEUE_RESERVATION_LEASE_MS } from "@/lib/jobClaims";
+import {
+  claimJob,
+  claimNextJob,
+  QUEUE_RESERVATION_LEASE_MS,
+  releaseJobClaimByOwner,
+} from "@/lib/jobClaims";
 import { getRuntimeInstanceId } from "@/lib/runtimePaths";
 import { selectResumeAttachmentForJob } from "@/lib/resumeArtifacts";
 
@@ -42,6 +47,7 @@ export async function GET(req: NextRequest) {
     : (db.prepare("SELECT * FROM jobs WHERE id = ?").get(claim.jobId) as JobRow | undefined);
 
   if (!job) {
+    releaseJobClaimByOwner(db, claim.jobId, ownerId);
     return NextResponse.json({ job: null });
   }
 
@@ -54,11 +60,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const sections = extractJobSections(job.description);
-  const resume = db
-    .prepare("SELECT * FROM resumes ORDER BY uploaded_at DESC, id DESC LIMIT 1")
-    .get() as ResumeRow | undefined;
-  const resumeAttachment = selectResumeAttachmentForJob(db, job, resume);
+  let sections;
+  let resumeAttachment;
+  try {
+    sections = extractJobSections(job.description);
+    const resume = db
+      .prepare("SELECT * FROM resumes ORDER BY uploaded_at DESC, id DESC LIMIT 1")
+      .get() as ResumeRow | undefined;
+    resumeAttachment = selectResumeAttachmentForJob(db, job, resume);
+  } catch {
+    releaseJobClaimByOwner(db, claim.jobId, ownerId);
+    return NextResponse.json(
+      { error: "Could not prepare the next application. Please try again." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({
     job: {

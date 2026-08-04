@@ -1,0 +1,27 @@
+# SYSTEM ENVIRONMENT & CONSTRAINTS FOR JOB-AUTOPILOT
+
+1. WORKSPACE BOUNDARIES & CONTEXT FILTERING
+- Completely ignore '.next/', 'node_modules/', and 'data/' folders. Do not attempt to index, search, or read files inside these heavy build directories.
+- Completely ignore Playwright execution artifacts: 'test-results/', 'playwright-report/', '.playwright/', and 'blob-report/'.
+
+2. VIBE CODING & COST CONTROL (CRITICAL)
+- Target and restrict your scope exclusively to UI files inside the 'app/' directory. Do not touch backend configuration code unless explicitly directed.
+- Return code only. Do not provide conversational fluff, explanations, or repeat lines of code that have not changed. Use concise markdown code blocks.
+- Stop after your first file edit or fix attempt. Never enter an autonomous test-and-fix or rewrite loop. If a layout or component fails, pause and ask for my direction.
+
+3. ARCHITECTURE & CODING STANDARDS
+- WAL Mode: Ensure 'better-sqlite3' is always initialized with Write-Ahead Logging (`db.pragma('journal_mode = WAL')`) to prevent UI freezes.
+- Connection Caching: Cache the database connection globally to stop multiple file handles from opening during local development reloads.
+- Server Components: Fetch SQLite data directly inside Next.js Server Components or Server Actions; avoid building custom internal REST API routes.
+
+4. EXPERT UI ERROR HANDLING & UX STANDARDS
+For every page view or form you touch, implement this strict 3-part error structure:
+- Human-Readable Context: Explain what failed in plain language (no raw codes like 'ERR_CONN_REFUSED').
+- Direct Action Items: Tell the user exactly what to do to recover (e.g., "Please fill out this required field").
+- Smart Fallbacks: Provide inline alert callouts, toast notifications, clear loading states, and recovery triggers (e.g., a "Retry" button).
+
+5. AUTOMATED GIT & BRANCH STRATEGY
+- Always check the current active Git branch before modifying files to ensure you are on the dedicated Codex feature branch.
+- Never touch or look at files belonging to the parallel Claude Code branch.
+- Automatically stage and commit your changes (`git commit -m "feat(ui): add expert error handling to [filename]"`) the exact millisecond each file rewrite is completed and verified.
+- Do not push to remote; keep all automated commits local for my final review.

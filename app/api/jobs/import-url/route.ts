@@ -1,22 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertLinkedInJob } from "@/lib/jobs/importLead";
-import { parseJsonBody } from "@/lib/apiUtils";
+import { readJsonObject } from "@/lib/autofill/http";
+import { validateLinkedInJobUrl } from "@/lib/apiValidation";
 
 export async function POST(req: NextRequest) {
-  const parsed = await parseJsonBody(req);
-  if (!parsed.ok) return parsed.response;
-  const { url } = parsed.body as { url?: unknown };
-  if (!url || typeof url !== "string") {
-    return NextResponse.json({ error: "url is required" }, { status: 400 });
+  const body = await readJsonObject(req);
+  const url = validateLinkedInJobUrl(body?.url);
+  if (!url) {
+    return NextResponse.json({ error: "A valid LinkedIn job URL is required" }, { status: 400 });
   }
 
   try {
     const { job, match, id, status } = await upsertLinkedInJob(url);
     return NextResponse.json({ job, match, id, status });
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to import job" },
-      { status: 400 }
+      { error: "Could not import that public LinkedIn job page. Confirm the posting is available and try again." },
+      { status: 502 }
     );
   }
 }
