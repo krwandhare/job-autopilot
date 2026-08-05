@@ -346,6 +346,12 @@ highest-ranked local `new` job + latest resume/draft + profile answers
   -> human-controlled submit, outside verified app state
 ```
 
+`npm run test:core-routes` starts one production server against a temporary
+SQLite directory. It exercises filter/source persistence, job list pagination
+and visibility, draft persistence, status/application coupling, response
+tracking, and invalid-request non-mutation through real HTTP route handlers.
+It seeds only synthetic records and never opens `data/app.db`.
+
 ## Security boundaries
 
 - The intended trust boundary is one local user. API routes have no authentication, CSRF protection, rate limiting, or multi-user isolation.
@@ -354,7 +360,8 @@ highest-ranked local `new` job + latest resume/draft + profile answers
 - Resume contents and remembered answers are highly sensitive. Current storage is unencrypted local disk.
 - External APIs, LinkedIn HTML, job descriptions, and ATS pages are untrusted inputs.
 - The LinkedIn importer requires an exact `linkedin.com` host (or subdomain) and a `/jobs/` path, strips URL credentials and fragments, and returns bounded upstream errors. It still has no response-size or fetch-time limit in application code.
-- Uploads sanitize basenames but currently lack explicit size/MIME/content validation and cleanup.
+- Uploads sanitize basenames and enforce the documented size, MIME, and content
+  checks. Retention and user-directed cleanup remain unimplemented.
 - CAPTCHA and detected bot-block pages stop automated filling. The system must not bypass them.
 - Sensitive identifiers/password-like fields, acknowledgements, certifications, and ambiguous choices are manual-only. Ordinary option groups are answerable but are never guessed.
 - Local status values, salary strings, sponsorship answers, and “ready for review” are not evidence of employer facts or successful submission.

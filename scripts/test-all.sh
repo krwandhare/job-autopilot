@@ -36,6 +36,7 @@ test_commands=(
   test:autofill-errors
   test:api-validation
   test:core-fixtures
+  test:core-routes
   test:queue-runner
   test:shared-runtime
   test:shared-runtime-routes

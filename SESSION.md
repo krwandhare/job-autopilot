@@ -1,5 +1,31 @@
 # Session Handoff
 
+## Core route/database integration coverage
+
+On 2026-08-04, `test:core-routes` added production-handler integration coverage
+using one local Next.js server and a fresh temporary runtime directory. It
+persists and reads filters and source configurations; verifies job ranking,
+pagination, status filtering, and explicit score-zero visibility; creates and
+reads a deterministic draft; exercises drafted and applied transitions; and
+verifies first-applied application creation, resume/source metadata,
+idempotency, response updates, statistics, and top-fit selection.
+
+Invalid filter, source, job-status, application, and pagination requests are
+checked both by HTTP status and by direct reads of the disposable SQLite
+database to prove they did not change stored state. The suite seeds only
+synthetic records, is part of the aggregate `npm test` command, and removes its
+runtime on exit.
+
+The focused route suite, strict TypeScript, the network-enabled production
+build, and the full disposable suite pass. The sandboxed build reproduced the
+known Google Fonts fetch failure; the approved network-enabled rerun passed
+with the existing non-fatal Turbopack NFT trace warning for the resume route.
+No live database, personal resume, mailbox, external posting, employer form,
+or application submission was used.
+
+The exact next recommended task is to make production builds reproducible
+without a live Google Fonts request, then rerun the complete validation suite.
+
 ## Core deterministic fixture coverage
 
 On 2026-08-04, `test:core-fixtures` added fixture-driven regression coverage

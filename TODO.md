@@ -17,7 +17,6 @@
 
 ## Next
 
-- Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
 
 ## Later
@@ -31,6 +30,15 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Added `test:core-routes`, a production-server integration suite backed by a
+  temporary runtime and SQLite database. It covers filter and source
+  persistence, job pagination/status/score-zero visibility, deterministic
+  draft persistence, job status transitions, first-applied application
+  creation, application-source idempotency, response tracking, statistics,
+  top-fit results, and invalid-request non-mutation guarantees. The command is
+  included in the full disposable `npm test` suite and never reads or changes
+  `data/app.db`.
 
 - Added synthetic deterministic fixtures for matching and hard-fail scoring,
   skill aliases and token boundaries, exact UTF-8 TXT resume parsing,
