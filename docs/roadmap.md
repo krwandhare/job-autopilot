@@ -59,7 +59,6 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
   and submission-guard fixtures to field matching, native selects,
   React-style comboboxes, embedded forms, browser closure, CAPTCHA boundaries,
   and end-to-end confirmation that invalid forms never activate submit controls.
-- Remove the production build's dependency on fetching Google Fonts at build time or otherwise provide a reproducible network-enabled build path.
 - Add remote-fetch timeouts and response-size bounds, especially for the user-supplied LinkedIn page.
 - Add retention/deletion behavior for old resumes, upload directories, drafts, and profile answers.
 - Add source-configuration validation and deduplication.
@@ -90,5 +89,4 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 - Current compatibility with any particular ATS posting is uncertain because external markup and anti-bot behavior can change independently.
 - LinkedIn public-page parsing may fail when markup, access policy, or blocking behavior changes.
 - The accuracy of salary, location, remote, company, sponsorship, and job-status data is not independently verified.
-- A network-restricted `npm run build` currently fails while fetching Google-hosted Geist fonts; a complete production build remains unverified in this environment.
 - No timeline, deployment target, multi-user requirement, or external submission integration is specified in the repository.

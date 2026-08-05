@@ -38,6 +38,7 @@
   "dependencies": {
     "better-sqlite3": "^13.0.1",
     "cheerio": "^1.2.0",
+    "geist": "^1.7.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.0",
     "next": "16.2.12",

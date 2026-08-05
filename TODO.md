@@ -17,7 +17,9 @@
 
 ## Next
 
-- Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
+- Expand controlled Playwright coverage for field classification, native
+  selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, browser
+  closure, and submit-button non-activation guarantees.
 
 ## Later
 
@@ -30,6 +32,12 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Replaced `next/font/google` with the locked `geist` package's vendored Sans
+  and Mono exports while preserving the existing CSS variables and root
+  typography classes. The server-configuration regression rejects Google font
+  imports and requires the production dependency. A network-restricted
+  `npm run build` now passes; the full disposable suite also passes.
 
 - Added `test:core-routes`, a production-server integration suite backed by a
   temporary runtime and SQLite database. It covers filter and source

@@ -1,5 +1,25 @@
 # Session Handoff
 
+## Reproducible local Geist fonts
+
+On 2026-08-04, the root layout stopped importing `next/font/google` and now
+uses Geist Sans and Mono from the locked `geist` 1.7.2 package. Its vendored
+font files retain the existing CSS variables and root typography classes, so
+runtime presentation and Tailwind font tokens are unchanged while builds no
+longer contact Google.
+
+`test:resume-server-config` now rejects a Google font import, requires both
+local Geist exports, and verifies the production dependency. Focused config
+checks, scoped lint, strict TypeScript, a network-restricted production build,
+and the full disposable `npm test` suite pass. The build retains only the known
+non-fatal Turbopack NFT trace warning for the resume route. No live database,
+personal resume, mailbox, external posting, employer form, or application
+submission was used.
+
+The exact next recommended task is controlled Playwright coverage for field
+classification, native selects, React comboboxes, embedded forms, CAPTCHA
+boundaries, browser closure, and submit-button non-activation guarantees.
+
 ## Core route/database integration coverage
 
 On 2026-08-04, `test:core-routes` added production-handler integration coverage
@@ -784,11 +804,10 @@ the open items below, per user direction.
 
 ## Blockers
 
-- There is no unified `npm test` command, although focused standalone suites
-  now cover application tracking, Gmail parsing, resume tailoring, shared
-  runtime behavior, queue outcomes, and integration automation.
-- A production build can fail in a network-restricted environment because
-  `next/font` fetches Google-hosted Geist assets.
+- `npm test` provides unified disposable model, route, integration, and
+  controlled browser coverage without touching the live database.
+- The production build uses vendored Geist files and passes without network
+  access.
 - Real ATS forms and external source responses are unstable third-party
   dependencies; current compatibility is limited to the live and synthetic
   evidence recorded below.
@@ -799,10 +818,9 @@ the open items below, per user direction.
 
 ## Exact next recommended task
 
-Prioritize one of the remaining independent items: start the scheduled Gmail
-runner, extend error handling into API/Playwright internals, clarify the
-rate-limited Gmail summary wording, decide the retained watcher file, or tune
-the fit-scoring formula.
+Expand controlled Playwright coverage for field classification, native
+selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, browser
+closure, and submit-button non-activation guarantees.
 
 ## 2026-07-30 bulk skill verification checkpoint
 

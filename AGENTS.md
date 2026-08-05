@@ -260,9 +260,13 @@ npm run lint
 npm run build
 ```
 
-There is currently no `npm test` script. If a test suite is added, document and run its command.
+`npm test` runs the deterministic model, route, integration, and controlled
+Playwright suites against disposable runtime directories. It must never read
+or mutate the user's live `data/app.db`.
 
-`next build` fetches the configured Geist fonts from Google Fonts. A network-restricted environment can therefore fail the build even when compilation is otherwise healthy; report that exact limitation and rerun where network access is available rather than claiming success.
+Geist Sans and Mono are loaded from the locked `geist` package. Production
+builds must remain independent of a Google Fonts request; the server
+configuration regression rejects a return to `next/font/google`.
 
 For autofill changes, static checks are not enough. Manually verify in a visible browser against user-authorized, non-destructive test forms. In review mode, confirm no submit control is activated; in submit mode, confirm it only activates once manualFields is empty and correctly falls back to review when it can't confidently find/confirm the submit action. Confirm sensitive/manual fields remain manual and the browser session closes cleanly.
 

@@ -22,7 +22,10 @@ Browser UI
 | `/autofill` | `app/autofill/page.tsx` | Work through the highest-ranked `new` job, launch filling, collect missing answers/files, show manual fields, and close/skip sessions. |
 | `/applications` | `app/applications/page.tsx` | Review locally recorded submissions, response status, follow-up dates, summary statistics, and top unsubmitted jobs by stored match score. |
 
-`app/layout.tsx` provides metadata, Google-hosted Geist fonts through `next/font`, and navigation. All five pages are client components except the root layout.
+`app/layout.tsx` provides metadata, locally packaged Geist Sans/Mono fonts, and
+navigation. The locked `geist` dependency supplies vendored font files and the
+same `--font-geist-sans` / `--font-geist-mono` variables without a build-time
+Google request. All five pages are client components except the root layout.
 
 ## API routes
 
