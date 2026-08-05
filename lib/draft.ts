@@ -1,4 +1,4 @@
-import type { MatchResult } from "./matching";
+import type { MatchResult } from "./matching.ts";
 
 export type JobInfo = {
   title: string;

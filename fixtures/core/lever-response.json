@@ -1,0 +1,11 @@
+[
+  {
+    "id": 202,
+    "text": "Backend Engineer",
+    "categories": { "location": "Remote - US" },
+    "salaryRange": { "min": 150000, "max": 180000, "currency": "USD" },
+    "description": "<p>Build <strong>reliable</strong> APIs.</p>",
+    "hostedUrl": "https://jobs.lever.co/example/202",
+    "createdAt": 1785585600000
+  }
+]

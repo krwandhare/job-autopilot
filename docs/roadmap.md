@@ -55,8 +55,6 @@ The roadmap is constrained to capabilities and gaps visible in the repository. P
 
 ## Stabilization work
 
-- Expand the standard `npm test` suite with focused fixtures for matching,
-  skill extraction, TXT parsing, drafts, HTML cleanup, and source normalization.
 - Add isolated SQLite/route integration tests that never touch the user's `data/app.db`.
 - Expand controlled Playwright coverage beyond the tailored-resume generator
   and submission-guard fixtures to field matching, native selects,

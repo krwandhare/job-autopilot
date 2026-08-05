@@ -26,6 +26,13 @@ function decodeEntities(text: string): string {
 // tag-stripping regex actually has real tags to strip.
 export function stripHtml(raw: string): string {
   const decodedOnce = decodeEntities(raw);
-  const withoutTags = decodedOnce.replace(/<[^>]*>/g, " ");
-  return decodeEntities(withoutTags).replace(/\s+/g, " ").trim();
+  const withoutExecutableBlocks = decodedOnce.replace(
+    /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    " "
+  );
+  const withoutTags = withoutExecutableBlocks.replace(/<[^>]*>/g, " ");
+  return decodeEntities(withoutTags)
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
 }

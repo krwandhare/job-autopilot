@@ -1,5 +1,31 @@
 # Session Handoff
 
+## Core deterministic fixture coverage
+
+On 2026-08-04, `test:core-fixtures` added fixture-driven regression coverage
+for matching and score hard-fails, conservative skill aliases and word
+boundaries, exact UTF-8 TXT extraction, deterministic draft content, HTML and
+entity cleanup, and normalized Greenhouse, Lever, and LinkedIn records. Source
+adapter responses are local fixtures installed through a mocked `fetch`; the
+test makes no network request. It reuses the synthetic resume fixture and runs
+inside the standard disposable `npm test` suite.
+
+The first focused run exposed two integration details. Node's built-in
+TypeScript stripping requires explicit relative `.ts` imports in the directly
+tested core modules; Next.js production compilation accepts those imports. A
+LinkedIn description with a closing tag immediately before punctuation also
+normalized to `SQL .`; `stripHtml()` now removes whitespace before common
+punctuation and excludes script/style block content, and the source fixtures
+cover the corrected output.
+
+Focused fixtures, scoped lint, strict TypeScript, the production build, and the
+full disposable suite pass. The build retains the known non-fatal Turbopack NFT
+trace warning for the resume route. No live database, personal resume, mailbox,
+external posting, employer form, or application submission was used.
+
+The exact next recommended task is broader isolated route/database integration
+coverage that never reads or mutates `data/app.db`.
+
 ## Remaining API error-boundary audit complete
 
 On 2026-08-04, the final miscellaneous API tranche hardened Action Center

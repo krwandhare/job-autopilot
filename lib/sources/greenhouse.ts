@@ -1,5 +1,5 @@
-import type { NormalizedJob } from "./types";
-import { stripHtml } from "./html";
+import type { NormalizedJob } from "./types.ts";
+import { stripHtml } from "./html.ts";
 
 const REMOTE_PATTERN = /remote/i;
 

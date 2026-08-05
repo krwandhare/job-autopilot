@@ -35,6 +35,7 @@ test_commands=(
   test:autofill-upload
   test:autofill-errors
   test:api-validation
+  test:core-fixtures
   test:queue-runner
   test:shared-runtime
   test:shared-runtime-routes

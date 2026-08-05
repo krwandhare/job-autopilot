@@ -1,0 +1,31 @@
+{
+  "job": {
+    "source": "fixture",
+    "sourceJobId": "platform-1",
+    "title": "Senior Platform Engineer",
+    "company": "Example Systems",
+    "location": "Remote - United States",
+    "remote": true,
+    "salaryText": "$150,000-$180,000",
+    "description": "Build NodeJS services on K8s using RESTful APIs and Python.",
+    "url": "https://example.invalid/jobs/platform-1",
+    "postedAt": "2026-08-01"
+  },
+  "filters": {
+    "titleInclude": "platform engineer",
+    "titleExclude": "intern",
+    "locations": ["United States"],
+    "remoteOnly": true,
+    "minSalary": 140000,
+    "requiredSkills": ["Node.js", "Kubernetes", "REST", "Terraform"],
+    "excludedCompanies": []
+  },
+  "resumeSkills": ["Node.js", "Kubernetes", "REST", "TypeScript"],
+  "expected": {
+    "score": 76,
+    "maxPossibleScore": 85,
+    "matchedSkills": ["Node.js", "Kubernetes", "REST"],
+    "missingSkills": ["Terraform"],
+    "postingSkillsAbsentFromResume": ["Python"]
+  }
+}

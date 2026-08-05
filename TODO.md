@@ -17,9 +17,6 @@
 
 ## Next
 
-- Add deterministic fixtures for matching, skill extraction, TXT resume
-  parsing, draft generation, HTML cleanup, and source normalization to the
-  standard `npm test` suite.
 - Add route/database integration coverage using an isolated temporary SQLite database so tests never read or mutate `data/app.db`.
 - Make production builds reproducible without requiring a live Google Fonts fetch, then rerun `npm run build`.
 
@@ -34,6 +31,15 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Added synthetic deterministic fixtures for matching and hard-fail scoring,
+  skill aliases and token boundaries, exact UTF-8 TXT resume parsing,
+  deterministic drafts, HTML/entity cleanup, and Greenhouse/Lever/LinkedIn
+  normalization with mocked responses. The new `test:core-fixtures` command is
+  part of the disposable aggregate suite. The fixtures exposed and fixed
+  whitespace before punctuation after HTML tag removal and exclude script/style
+  block content. Node-testable core modules now use explicit relative `.ts`
+  imports, which also pass the Next.js production build.
 
 - Completed the API error-boundary audit across Action Center reads, resume
   skill mutations, evidence extraction and verification, PDF reprocessing,
