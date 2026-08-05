@@ -103,7 +103,7 @@ invalid_filter_code="$(
     -H 'Content-Type: application/json' -d '{"locations":[{"unexpected":true}]}'
 )"
 [ "$invalid_filter_code" = "400" ]
-[ "$(sqlite3 "$TEST_DATA/app.db" 'SELECT COUNT(*) FROM filters;')" = "0" ]
+[ "$(sqlite3 "$TEST_DATA/app.db" 'SELECT COUNT(*) FROM filters;')" = "1" ]
 
 invalid_linkedin_code="$(
   curl_test -sS -o "$TEST_DATA/invalid-linkedin.json" -w '%{http_code}' \

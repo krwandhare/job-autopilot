@@ -8,18 +8,14 @@ import {
   serializeResumeEvidence,
   type ResumeEvidenceRow,
 } from "@/lib/resumeEvidence";
+import { validateResumeIdBody } from "@/lib/apiValidation";
 
-function parseId(value: unknown): number | null {
-  const id = typeof value === "number" ? value : Number(value);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
-}
-
-export async function POST(req: NextRequest) {
+async function reprocessResume(req: NextRequest) {
   const body: unknown = await req.json().catch(() => null);
-  if (!body || typeof body !== "object") {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  const resumeId = parseId((body as Record<string, unknown>).resumeId);
+  const resumeId = validateResumeIdBody(body as Record<string, unknown>);
   if (resumeId === null) {
     return NextResponse.json({ error: "Valid resumeId is required" }, { status: 400 });
   }
@@ -73,40 +69,50 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = db
-    .prepare(
-      `INSERT INTO resumes (filename, text, skills_json, file_path)
-       VALUES (?, ?, ?, ?)`
-    )
-    .run(
-      latest.filename,
-      reconstructedText,
-      latest.skills_json,
-      latest.file_path
-    );
-  const newResumeId = Number(result.lastInsertRowid);
-  const newResume = db
-    .prepare("SELECT * FROM resumes WHERE id = ?")
-    .get(newResumeId) as ResumeRow;
-  let evidence = ensureResumeEvidence(db, newResume);
-  if (carryVerification) {
-    db.prepare(
-      `UPDATE resume_evidence
-       SET verification_status = 'verified', updated_at = datetime('now')
-       WHERE resume_id = ? AND verification_status = 'extracted'`
-    ).run(newResumeId);
-    evidence = db
+  const createRevision = db.transaction(() => {
+    const result = db
       .prepare(
-        `SELECT * FROM resume_evidence
-         WHERE resume_id = ?
-         ORDER BY source_start_line IS NULL, source_start_line, id`
+        `INSERT INTO resumes (filename, text, skills_json, file_path)
+         VALUES (?, ?, ?, ?)`
       )
-      .all(newResumeId) as ResumeEvidenceRow[];
-  }
+      .run(latest.filename, reconstructedText, latest.skills_json, latest.file_path);
+    const newResumeId = Number(result.lastInsertRowid);
+    const newResume = db
+      .prepare("SELECT * FROM resumes WHERE id = ?")
+      .get(newResumeId) as ResumeRow;
+    let evidence = ensureResumeEvidence(db, newResume);
+    if (carryVerification) {
+      db.prepare(
+        `UPDATE resume_evidence
+         SET verification_status = 'verified', updated_at = datetime('now')
+         WHERE resume_id = ? AND verification_status = 'extracted'`
+      ).run(newResumeId);
+      evidence = db
+        .prepare(
+          `SELECT * FROM resume_evidence
+           WHERE resume_id = ?
+           ORDER BY source_start_line IS NULL, source_start_line, id`
+        )
+        .all(newResumeId) as ResumeEvidenceRow[];
+    }
+    return { newResume, evidence };
+  });
+  const { newResume, evidence } = createRevision();
 
   return NextResponse.json({
     resume: newResume,
     evidence: evidence.map(serializeResumeEvidence),
     verificationCarriedForward: carryVerification,
   });
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return await reprocessResume(req);
+  } catch {
+    return NextResponse.json(
+      { error: "Could not reprocess the resume; no new revision was saved" },
+      { status: 500 }
+    );
+  }
 }

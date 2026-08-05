@@ -69,7 +69,7 @@ Browser UI
 | `POST /api/autofill/submit` | Audit visible required/invalid controls, return exact bounded field errors without clicking when validation fails, then conservatively locate/click submit and require confirmation. |
 | `GET /api/autofill/inspect` | Return bounded field diagnostics with state-bearing values and URL/form-action attributes removed. |
 | `GET /api/autofill/snapshot` | Return an explicitly local diagnostic screenshot and bounded text with credentials/query/fragment removed from URLs. |
-| `GET /api/actions` | Return prioritized unresolved manual actions and per-status counts for the dashboard Action Center, with safe status-derived fallback reasons. |
+| `GET /api/actions` | Return prioritized unresolved manual actions and per-status counts for the dashboard Action Center, with safe status-derived fallback reasons and a bounded JSON failure response. |
 
 ## SQLite persistence
 
@@ -149,7 +149,15 @@ simultaneous server; otherwise a hostname/process-ID fallback is used.
 - `mammoth.extractRawText` for DOCX,
 - UTF-8 decoding for TXT.
 
-`lib/skills.ts` performs case-insensitive boundary matching against a curated vocabulary and a conservative canonical alias map (for example, NodeJS → Node.js, K8s → Kubernetes, and continuous integration → CI/CD). Users can edit the detected list in `/profile`. Extracted text and skills are stored in SQLite; original bytes are written to `data/resumes/<resume-id>/<sanitized-original-name>`. The route does not currently enforce file-size, MIME, retention, or cleanup limits.
+`lib/skills.ts` performs case-insensitive boundary matching against a curated vocabulary and a conservative canonical alias map (for example, NodeJS → Node.js, K8s → Kubernetes, and continuous integration → CI/CD). Users can edit the detected list in `/profile`. Extracted text and skills are stored in SQLite; original bytes are written to `data/resumes/<resume-id>/<sanitized-original-name>`. Uploads are limited to 10 MiB and validated by extension, MIME type, and PDF/DOCX/TXT content before persistence. Retention and user-directed cleanup are not implemented.
+
+Resume skill updates accept only a positive resume ID and at most 100 bounded,
+non-empty skill strings. Evidence extraction, bulk verification, individual
+evidence edits, and PDF reprocessing use exact request shapes and bounded
+identifiers/text. Reprocessing inserts the reconstructed resume and its
+evidence in one SQLite transaction. These routes convert unexpected local
+database, filesystem, parsing, and extraction failures into bounded JSON that
+does not include resume content, storage paths, SQL details, or stack traces.
 
 `lib/resumeEvidence.ts` deterministically converts known resume sections,
 lines, bullets, and detected skills into evidence records. Contact-like lines

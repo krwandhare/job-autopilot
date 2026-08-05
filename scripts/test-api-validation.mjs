@@ -6,8 +6,11 @@ import path from "node:path";
 import {
   boundedPositiveInteger,
   validateApplicationPatch,
+  validateEvidencePatch,
   validateFilterConfig,
   validateLinkedInJobUrl,
+  validateResumeIdBody,
+  validateResumeSkillsPatch,
   validateSourceConfig,
   validateVariantPatch,
 } from "../lib/apiValidation.ts";
@@ -53,6 +56,35 @@ assert.equal(boundedPositiveInteger("50", 20, 200), 50);
 assert.equal(boundedPositiveInteger("0", 20, 200), null);
 assert.equal(boundedPositiveInteger("2.5", 20, 200), null);
 assert.equal(boundedPositiveInteger("201", 20, 200), null);
+
+assert.deepEqual(validateResumeSkillsPatch({ id: 7, skills: [" TypeScript "] }), {
+  id: 7,
+  skills: ["TypeScript"],
+});
+assert.equal(validateResumeSkillsPatch({ id: 7, skills: [], unexpected: true }), null);
+assert.equal(validateResumeSkillsPatch({ id: "7", skills: ["TypeScript"] }), null);
+assert.equal(validateResumeSkillsPatch({ id: 7, skills: ["x".repeat(201)] }), null);
+
+assert.equal(validateResumeIdBody({ resumeId: 7 }), 7);
+assert.equal(validateResumeIdBody({ resumeId: 7, unexpected: true }), null);
+assert.equal(validateResumeIdBody({ resumeId: "7" }), null);
+
+assert.deepEqual(
+  validateEvidencePatch({ action: "verify_all_skills", resumeId: 7 }),
+  { kind: "bulk", action: "verify_all_skills", resumeId: 7 }
+);
+assert.deepEqual(
+  validateEvidencePatch({ id: 9, verificationStatus: "verified", normalizedText: " Fact " }),
+  { kind: "item", id: 9, verificationStatus: "verified", normalizedText: "Fact" }
+);
+assert.equal(
+  validateEvidencePatch({ action: "verify_all_evidence", resumeId: 7, status: "verified" }),
+  null
+);
+assert.equal(
+  validateEvidencePatch({ id: 9, verificationStatus: "unknown", normalizedText: "Fact" }),
+  null
+);
 
 assert.deepEqual(
   validateApplicationPatch({

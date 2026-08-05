@@ -5,16 +5,11 @@
 - Start `scripts/gmail-sync-runner.sh` for scheduled Gmail sync -- the user
   asked for both on-demand (done, live) and scheduled; only the on-demand
   button has actually been run so far.
-- Finish the API error-handling audit across the remaining miscellaneous
-  actions, resume-evidence, reprocessing, and source-seeding routes. Core
-  Auto-fill, job/application, source sync, Gmail, resume upload, variant,
-  artifact-download, and CV-archive boundaries are now hardened.
 - Decide whether to delete the untracked `data/watch-and-integrate.sh`
   scratch file (abandoned background-merge-watcher, never used).
 - Tune the fit-scoring formula in `lib/matching.ts` per user judgment on
   what should weigh more (skills vs. salary vs. location, etc) -- explicitly
   deferred, not started.
-- Review and validate the uncommitted workflow improvements: canonical skill aliases and mentioned/not-mentioned wording, removal of inaccurate draft skill-gap claims, Remote-only preferred-location enforcement, Auto-fill skill visibility, user-confirmed `applied`, close-without-marking, failure handling, and unchanged skip behavior.
 - Manually verify the new opt-in "Auto-fill & submit" mode against a real, user-authorized test application before relying on it for real submissions -- static checks and a production build passed, but no live ATS run has confirmed the submit-control detection or confirmation logic yet.
 - Retest Twilio's location autocomplete, grouped referral-source question, the narrowly allowlisted submit-mode policy acknowledgements, and exact manual-blocker messaging in a visible browser; static checks pass, but the live form has not been rerun after the latest fixes.
 - Live-retest the pre-submit audit against a user-authorized ATS form and confirm the `UI-validation-error` toast matches the employer-rendered error without activating Submit.
@@ -39,6 +34,15 @@
 - Add repeatable, user-authorized browser tests for field classification, native selects, React-style comboboxes, embedded forms, CAPTCHA boundaries, and the guarantee that submit controls are never activated.
 
 ## Completed
+
+- Completed the API error-boundary audit across Action Center reads, resume
+  skill mutations, evidence extraction and verification, PDF reprocessing,
+  and source seeding. Mutations now require exact bounded request shapes;
+  unexpected database, filesystem, or extraction failures return stable JSON
+  without paths, resume content, SQL details, or stack traces. Reprocessing
+  creates the new resume revision and its evidence atomically. Deterministic
+  validation, disposable route failure injection, the full isolated `npm test`
+  suite, strict TypeScript, scoped lint, and the production build pass.
 
 - Hardened resume-variant and artifact boundaries with exact mutation shapes,
   bounded generation failures, artifact-directory containment, filename and

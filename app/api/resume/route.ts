@@ -9,6 +9,7 @@ import {
   validateResumeUploadMetadata,
 } from "@/lib/resume";
 import { getResumesDir } from "@/lib/runtimePaths";
+import { validateResumeSkillsPatch } from "@/lib/apiValidation";
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[/\\]/g, "_").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -84,18 +85,27 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const body = await req.json();
-  const { id, skills } = body as { id: number; skills: string[] };
-
-  if (!id || !Array.isArray(skills)) {
-    return NextResponse.json({ error: "id and skills[] are required" }, { status: 400 });
+  const body: unknown = await req.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const patch = validateResumeSkillsPatch(body as Record<string, unknown>);
+  if (!patch) {
+    return NextResponse.json({ error: "Invalid resume skill update" }, { status: 400 });
   }
 
-  const db = getDb();
-  db.prepare("UPDATE resumes SET skills_json = ? WHERE id = ?").run(
-    JSON.stringify(skills),
-    id
-  );
-
-  return NextResponse.json({ ok: true });
+  try {
+    const result = getDb()
+      .prepare("UPDATE resumes SET skills_json = ? WHERE id = ?")
+      .run(JSON.stringify(patch.skills), patch.id);
+    if (result.changes === 0) {
+      return NextResponse.json({ error: "Resume not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not update resume skills; please try again" },
+      { status: 500 }
+    );
+  }
 }

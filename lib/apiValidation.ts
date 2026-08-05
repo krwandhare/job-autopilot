@@ -123,6 +123,81 @@ export function boundedPositiveInteger(
   return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= maximum ? parsed : null;
 }
 
+function positiveInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+function hasExactKeys(body: Record<string, unknown>, expected: string[]): boolean {
+  const keys = Object.keys(body);
+  return keys.length === expected.length && expected.every((key) => keys.includes(key));
+}
+
+export function validateResumeSkillsPatch(
+  body: Record<string, unknown>
+): { id: number; skills: string[] } | null {
+  const id = positiveInteger(body.id);
+  if (
+    id === null ||
+    !hasExactKeys(body, ["id", "skills"]) ||
+    !Array.isArray(body.skills) ||
+    body.skills.length > 100 ||
+    !body.skills.every(
+      (skill) => typeof skill === "string" && skill.trim().length > 0 && skill.length <= 200
+    )
+  ) {
+    return null;
+  }
+  return { id, skills: body.skills.map((skill) => skill.trim()) };
+}
+
+export function validateResumeIdBody(body: Record<string, unknown>): number | null {
+  return hasExactKeys(body, ["resumeId"]) ? positiveInteger(body.resumeId) : null;
+}
+
+export type ValidatedEvidencePatch =
+  | { kind: "bulk"; action: "verify_all_skills" | "verify_all_evidence"; resumeId: number }
+  | {
+      kind: "item";
+      id: number;
+      verificationStatus: "extracted" | "verified" | "rejected";
+      normalizedText: string;
+    };
+
+export function validateEvidencePatch(
+  body: Record<string, unknown>
+): ValidatedEvidencePatch | null {
+  if (
+    hasExactKeys(body, ["action", "resumeId"]) &&
+    (body.action === "verify_all_skills" || body.action === "verify_all_evidence")
+  ) {
+    const resumeId = positiveInteger(body.resumeId);
+    return resumeId === null ? null : { kind: "bulk", action: body.action, resumeId };
+  }
+
+  if (!hasExactKeys(body, ["id", "verificationStatus", "normalizedText"])) return null;
+  const id = positiveInteger(body.id);
+  const normalizedText =
+    typeof body.normalizedText === "string" ? body.normalizedText.trim() : "";
+  if (
+    id === null ||
+    (body.verificationStatus !== "extracted" &&
+      body.verificationStatus !== "verified" &&
+      body.verificationStatus !== "rejected") ||
+    !normalizedText ||
+    normalizedText.length > 2_000
+  ) {
+    return null;
+  }
+  return {
+    kind: "item",
+    id,
+    verificationStatus: body.verificationStatus,
+    normalizedText,
+  };
+}
+
 const RESPONSE_TYPES = ["interview", "rejected", "offer", "ghosted"] as const;
 
 export type ValidatedApplicationPatch = {

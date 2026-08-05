@@ -329,4 +329,61 @@ immutable_code="$(
 )"
 [ "$immutable_code" = "409" ]
 
+for route_spec in \
+  "PATCH:/api/resume:{\"id\":$resume_id,\"skills\":[],\"unexpected\":true}" \
+  "POST:/api/resume/evidence:{\"resumeId\":$resume_id,\"unexpected\":true}" \
+  "PATCH:/api/resume/evidence:{\"action\":\"verify_all_evidence\",\"resumeId\":$resume_id,\"unexpected\":true}" \
+  "POST:/api/resume/reprocess:{\"resumeId\":$resume_id,\"unexpected\":true}"
+do
+  method="${route_spec%%:*}"
+  remainder="${route_spec#*:}"
+  route="${remainder%%:*}"
+  body="${remainder#*:}"
+  response_file="$TEST_DATA/invalid-${method}-$(printf '%s' "$route" | tr '/' '-').json"
+  status="$({
+    curl -sS -o "$response_file" -w '%{http_code}' \
+      -X "$method" "http://127.0.0.1:$PORT$route" \
+      -H "Content-Type: application/json" -d "$body"
+  })"
+  [ "$status" = "400" ]
+  python3 -c '
+import json, sys
+payload = json.load(open(sys.argv[1]))
+assert isinstance(payload.get("error"), str)
+assert "unexpected" not in payload["error"].lower()
+' "$response_file"
+done
+
+malformed_resume_status="$({
+  curl -sS -o "$TEST_DATA/malformed-resume.json" -w '%{http_code}' \
+    -X PATCH "http://127.0.0.1:$PORT/api/resume" \
+    -H "Content-Type: application/json" -d '{'
+})"
+[ "$malformed_resume_status" = "400" ]
+
+sqlite3 "$TEST_DATA/app.db" \
+  "INSERT INTO source_configs (type, config_json) VALUES ('greenhouse', 'not-json');"
+seed_failure_status="$({
+  curl -sS -o "$TEST_DATA/seed-failure.json" -w '%{http_code}' \
+    -X POST "http://127.0.0.1:$PORT/api/sources/seed"
+})"
+[ "$seed_failure_status" = "500" ]
+python3 -c '
+import json, sys
+payload = json.load(open(sys.argv[1]))
+assert payload == {"error": "Could not seed job sources; please try again"}
+' "$TEST_DATA/seed-failure.json"
+
+sqlite3 "$TEST_DATA/app.db" "DROP TABLE job_actions;"
+actions_failure_status="$({
+  curl -sS -o "$TEST_DATA/actions-failure.json" -w '%{http_code}' \
+    "http://127.0.0.1:$PORT/api/actions"
+})"
+[ "$actions_failure_status" = "500" ]
+python3 -c '
+import json, sys
+payload = json.load(open(sys.argv[1]))
+assert payload == {"error": "Could not load manual actions; please try again"}
+' "$TEST_DATA/actions-failure.json"
+
 printf 'Disposable resume-analysis, variant, and artifact route E2E passed.\n'

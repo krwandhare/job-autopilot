@@ -1,5 +1,30 @@
 # Session Handoff
 
+## Remaining API error-boundary audit complete
+
+On 2026-08-04, the final miscellaneous API tranche hardened Action Center
+reads, resume skill updates, evidence extraction/bulk verification/item edits,
+PDF reprocessing, and source seeding. Resume and evidence mutations now require
+exact bounded request shapes. Unexpected database, filesystem, parsing, or
+evidence failures return stable actionable JSON without exposing paths, resume
+content, SQL details, or stack traces. PDF reprocessing now commits the new
+resume revision and derived evidence in one SQLite transaction, so a failed
+derivation cannot leave a partial revision.
+
+Validator checks and the disposable resume route E2E cover malformed JSON,
+unknown keys, invalid identifiers and evidence states, bounded skill/text
+fields, and deliberately injected source/action database failures. The route
+suite also corrected a stale assertion: schema initialization intentionally
+creates one default filter row, and a rejected filter mutation must preserve
+that row. The full disposable `npm test` suite, strict TypeScript, scoped lint,
+and the production build pass. The build retains the known non-fatal Turbopack
+NFT trace warning for the resume route. No live database, personal resume,
+mailbox, external posting, employer form, or application submission was used.
+
+The exact next recommended task is to add deterministic fixtures for matching,
+skill extraction, TXT resume parsing, draft generation, HTML cleanup, and
+source normalization to the standard test suite.
+
 ## Auto-fill diagnostic and queue error boundaries
 
 On 2026-08-02, the second Auto-fill audit tranche hardened Inspect, Snapshot,

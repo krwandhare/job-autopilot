@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, type ResumeRow } from "@/lib/db";
 import {
-  EVIDENCE_STATUSES,
   ensureResumeEvidence,
   serializeResumeEvidence,
-  type EvidenceStatus,
   type ResumeEvidenceRow,
 } from "@/lib/resumeEvidence";
+import { validateEvidencePatch, validateResumeIdBody } from "@/lib/apiValidation";
 
 function parseResumeId(value: unknown): number | null {
+  if (typeof value === "string" && !/^\d+$/.test(value)) return null;
   const id = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-export async function GET(req: NextRequest) {
+async function getEvidence(req: NextRequest) {
   const requestedId = req.nextUrl.searchParams.get("resumeId");
   const resumeId = requestedId === null ? null : parseResumeId(requestedId);
   if (requestedId !== null && resumeId === null) {
@@ -44,12 +44,12 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
+async function createEvidence(req: NextRequest) {
   const body: unknown = await req.json().catch(() => null);
-  if (!body || typeof body !== "object") {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  const resumeId = parseResumeId((body as Record<string, unknown>).resumeId);
+  const resumeId = validateResumeIdBody(body as Record<string, unknown>);
   if (resumeId === null) {
     return NextResponse.json({ error: "Valid resumeId is required" }, { status: 400 });
   }
@@ -62,36 +62,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Resume not found" }, { status: 404 });
   }
 
-  const evidence = ensureResumeEvidence(db, resume);
-  return NextResponse.json({
-    resumeId: resume.id,
-    evidence: evidence.map(serializeResumeEvidence),
-  });
+  try {
+    const evidence = ensureResumeEvidence(db, resume);
+    return NextResponse.json({
+      resumeId: resume.id,
+      evidence: evidence.map(serializeResumeEvidence),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not prepare resume evidence; please try again" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function PATCH(req: NextRequest) {
+async function updateEvidence(req: NextRequest) {
   const body: unknown = await req.json().catch(() => null);
-  if (!body || typeof body !== "object") {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  const candidate = body as Record<string, unknown>;
+  const patch = validateEvidencePatch(body as Record<string, unknown>);
+  if (!patch) {
+    return NextResponse.json({ error: "Invalid evidence update" }, { status: 400 });
+  }
 
-  if (
-    candidate.action === "verify_all_skills" ||
-    candidate.action === "verify_all_evidence"
-  ) {
-    const resumeId = parseResumeId(candidate.resumeId);
-    if (resumeId === null) {
-      return NextResponse.json({ error: "Valid resumeId is required" }, { status: 400 });
-    }
-
+  if (patch.kind === "bulk") {
+    const { resumeId } = patch;
     const db = getDb();
     const resume = db.prepare("SELECT id FROM resumes WHERE id = ?").get(resumeId);
     if (!resume) {
       return NextResponse.json({ error: "Resume not found" }, { status: 404 });
     }
 
-    const verifyAllEvidence = candidate.action === "verify_all_evidence";
+    const verifyAllEvidence = patch.action === "verify_all_evidence";
     const result = verifyAllEvidence
       ? db
           .prepare(
@@ -124,23 +127,6 @@ export async function PATCH(req: NextRequest) {
     });
   }
 
-  const id = parseResumeId(candidate.id);
-  const verificationStatus = candidate.verificationStatus;
-  const normalizedText =
-    typeof candidate.normalizedText === "string" ? candidate.normalizedText.trim() : "";
-  if (
-    id === null ||
-    typeof verificationStatus !== "string" ||
-    !EVIDENCE_STATUSES.includes(verificationStatus as EvidenceStatus) ||
-    !normalizedText ||
-    normalizedText.length > 2000
-  ) {
-    return NextResponse.json(
-      { error: "id, valid verificationStatus, and normalizedText are required" },
-      { status: 400 }
-    );
-  }
-
   const db = getDb();
   const result = db
     .prepare(
@@ -148,12 +134,43 @@ export async function PATCH(req: NextRequest) {
        SET normalized_text = ?, verification_status = ?, updated_at = datetime('now')
        WHERE id = ?`
     )
-    .run(normalizedText, verificationStatus, id);
+    .run(patch.normalizedText, patch.verificationStatus, patch.id);
   if (result.changes === 0) {
     return NextResponse.json({ error: "Evidence not found" }, { status: 404 });
   }
-  const row = db.prepare("SELECT * FROM resume_evidence WHERE id = ?").get(id) as
+  const row = db.prepare("SELECT * FROM resume_evidence WHERE id = ?").get(patch.id) as
     | ResumeEvidenceRow
     | undefined;
   return NextResponse.json({ evidence: row ? serializeResumeEvidence(row) : null });
+}
+
+function evidenceFailure() {
+  return NextResponse.json(
+    { error: "Could not access resume evidence; please try again" },
+    { status: 500 }
+  );
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    return await getEvidence(req);
+  } catch {
+    return evidenceFailure();
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    return await createEvidence(req);
+  } catch {
+    return evidenceFailure();
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    return await updateEvidence(req);
+  } catch {
+    return evidenceFailure();
+  }
 }
